@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
-import '../../models/user_model.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+
 import '../../constants/app_colors.dart';
+import '../../constants/app_routes.dart';
 import '../../models/instructor_model.dart';
+import '../../services/supabase_service.dart';
 
 class FindInstructorScreen extends StatefulWidget {
-  const FindInstructorScreen({super.key});
+  const FindInstructorScreen({super.key, this.selectedFocus});
+
+  final String? selectedFocus;
 
   @override
   State<FindInstructorScreen> createState() => _FindInstructorScreenState();
@@ -17,74 +21,33 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
   String _selectedCarType = 'all';
   String _selectedTransmission = 'all';
   double _minRating = 0.0;
+  String? _focusFilter;
 
-  final List<InstructorModel> _instructors = [
-    // Dummy data
-    InstructorModel(
-      id: '1',
-      user: UserModel(
-        id: '1',
-        email: 'john@example.com',
-        firstName: 'John',
-        lastName: 'Smith',
-        role: 'instructor',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-      bio:
-          'Experienced driving instructor with 10+ years of teaching experience. Specialized in defensive driving and highway skills.',
-      yearsOfExperience: 10,
-      hourlyRate: 45.0,
-      rating: 4.8,
-      totalLessons: 250,
-      carTypes: ['sedan', 'suv'],
-      transmissionTypes: ['automatic', 'manual'],
-      latitude: 43.6532,
-      longitude: -79.3832,
-      address: '123 Main St, Toronto, ON',
-      availableDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-      startTime: '09:00',
-      endTime: '17:00',
-      languages: ['english'],
-    ),
-    InstructorModel(
-      id: '2',
-      user: UserModel(
-        id: '2',
-        email: 'sarah@example.com',
-        firstName: 'Sarah',
-        lastName: 'Johnson',
-        role: 'instructor',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-      bio:
-          'Patient and friendly instructor focused on building confidence in new drivers.',
-      yearsOfExperience: 5,
-      hourlyRate: 40.0,
-      rating: 4.9,
-      totalLessons: 180,
-      carTypes: ['sedan', 'hatchback'],
-      transmissionTypes: ['automatic'],
-      latitude: 43.6532,
-      longitude: -79.3832,
-      address: '456 Queen St, Toronto, ON',
-      availableDays: [
-        'monday',
-        'tuesday',
-        'wednesday',
-        'thursday',
-        'friday',
-        'saturday'
-      ],
-      startTime: '08:00',
-      endTime: '18:00',
-      languages: ['english', 'french'],
-    ),
-  ];
+  List<InstructorModel> _instructors = [];
+  bool _isLoading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusFilter = widget.selectedFocus;
+    _loadInstructors();
+  }
+
+  @override
+  void didUpdateWidget(covariant FindInstructorScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedFocus != widget.selectedFocus) {
+      setState(() {
+        _focusFilter = widget.selectedFocus;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final instructors = _filteredInstructors();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Find Instructor'),
@@ -97,7 +60,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
       ),
       body: Column(
         children: [
-          // Search Bar
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
@@ -119,8 +81,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
               ),
             ),
           ),
-
-          // Filter Chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -136,29 +96,50 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 16),
-
-          // Instructors List
           Expanded(
-            child: AnimationLimiter(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: _instructors.length,
-                itemBuilder: (context, index) {
-                  return AnimationConfiguration.staggeredList(
-                    position: index,
-                    duration: const Duration(milliseconds: 600),
-                    child: SlideAnimation(
-                      verticalOffset: 50.0,
-                      child: FadeInAnimation(
-                        child: _buildInstructorCard(_instructors[index]),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          child: Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ),
+                      )
+                    : instructors.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                              child: Text(
+                                'No instructors match your filters yet. Try adjusting the focus or filters.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                            ),
+                          )
+                        : AnimationLimiter(
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: instructors.length,
+                              itemBuilder: (context, index) {
+                                return AnimationConfiguration.staggeredList(
+                                  position: index,
+                                  duration: const Duration(milliseconds: 600),
+                                  child: SlideAnimation(
+                                    verticalOffset: 50.0,
+                                    child: FadeInAnimation(
+                                      child: _buildInstructorCard(instructors[index]),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
           ),
         ],
       ),
@@ -187,7 +168,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
-        onTap: () => context.go('/booking', extra: instructor.id),
+        onTap: () => context.go(AppRoutes.booking, extra: instructor.id),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -196,7 +177,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
             children: [
               Row(
                 children: [
-                  // Profile Image
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
@@ -209,10 +189,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(width: 12),
-
-                  // Instructor Info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,7 +211,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '${instructor.rating} (${instructor.totalLessons} lessons)',
+                              '${instructor.rating.toStringAsFixed(1)} (${instructor.totalLessons} lessons)',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey[600],
@@ -253,13 +230,11 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                       ],
                     ),
                   ),
-
-                  // Price
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '\$${instructor.hourlyRate.toInt()}/hr',
+                        '\$${instructor.hourlyRate.toStringAsFixed(0)}/hr',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -277,10 +252,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 12),
-
-              // Bio
               Text(
                 instructor.bio,
                 style: TextStyle(
@@ -291,90 +263,48 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-
               const SizedBox(height: 12),
-
-              // Car Types and Transmission
               Wrap(
                 spacing: 8,
                 runSpacing: 4,
                 children: [
-                  ...instructor.carTypes
-                      .map((type) => _buildTag(type.toUpperCase())),
-                  ...instructor.transmissionTypes
-                      .map((type) => _buildTag(type.toUpperCase())),
+                  ...instructor.carTypes.map((type) => _buildTag(type.toUpperCase())),
+                  ...instructor.transmissionTypes.map((type) => _buildTag(type.toUpperCase())),
+                  ...instructor.levelsOffered.map(_buildTag),
                 ],
               ),
-
               const SizedBox(height: 12),
-
-              // Location and Availability
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(
-                    Icons.location_on,
-                    size: 16,
-                    color: Colors.grey[600],
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      instructor.address,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on, size: 16, color: AppColors.primaryBlue),
+                          const SizedBox(width: 6),
+                          Text(instructor.address, style: TextStyle(color: Colors.grey[600])),
+                        ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Icon(
-                    Icons.schedule,
-                    size: 16,
-                    color: Colors.grey[600],
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${instructor.startTime} - ${instructor.endTime}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        // TODO: Show instructor details
-                      },
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.primaryBlue),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.language, size: 16, color: AppColors.primaryBlue),
+                          const SizedBox(width: 6),
+                          Text(instructor.languages.join(', '), style: TextStyle(color: Colors.grey[600])),
+                        ],
                       ),
-                      child: const Text('View Profile'),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () =>
-                          context.go('/booking', extra: instructor.id),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text('Book Lesson'),
+                  ElevatedButton(
+                    onPressed: () => context.go(AppRoutes.booking, extra: instructor.id),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryBlue,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
+                    child: const Text('Book Lesson'),
                   ),
                 ],
               ),
@@ -403,6 +333,33 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     );
   }
 
+  List<InstructorModel> _filteredInstructors() {
+    _focusFilter ??= widget.selectedFocus;
+
+    return _instructors.where((instructor) {
+      if (_focusFilter != null && _focusFilter!.isNotEmpty) {
+        final focusLower = _focusFilter!.toLowerCase();
+        final offersFocus = instructor.levelsOffered
+            .map((level) => level.toLowerCase())
+            .contains(focusLower);
+        if (!offersFocus) return false;
+      }
+      if (_minRating > 0 && instructor.rating < _minRating) {
+        return false;
+      }
+      if (_selectedCarType != 'all' &&
+          !instructor.carTypes.map((e) => e.toLowerCase()).contains(_selectedCarType)) {
+        return false;
+      }
+      if (_selectedTransmission != 'all' &&
+          !instructor.transmissionTypes.map((e) => e.toLowerCase()).contains(_selectedTransmission)) {
+        return false;
+      }
+      // TODO: apply more advanced filtering using location/availability.
+      return true;
+    }).toList();
+  }
+
   void _showFilterBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -411,7 +368,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
+        builder: (context, setModalState) => Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -424,133 +381,71 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Car Type Filter
               const Text(
                 'Car Type',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
-
               const SizedBox(height: 12),
-
               Wrap(
                 spacing: 8,
                 children: [
                   _buildFilterOption('All', 'all', _selectedCarType, (value) {
                     setModalState(() => _selectedCarType = value);
                   }),
-                  _buildFilterOption('Sedan', 'sedan', _selectedCarType,
-                      (value) {
+                  _buildFilterOption('Sedan', 'sedan', _selectedCarType, (value) {
                     setModalState(() => _selectedCarType = value);
                   }),
                   _buildFilterOption('SUV', 'suv', _selectedCarType, (value) {
                     setModalState(() => _selectedCarType = value);
                   }),
-                  _buildFilterOption('Hatchback', 'hatchback', _selectedCarType,
-                      (value) {
+                  _buildFilterOption('Hatchback', 'hatchback', _selectedCarType, (value) {
                     setModalState(() => _selectedCarType = value);
                   }),
                 ],
               ),
-
               const SizedBox(height: 24),
-
-              // Transmission Filter
               const Text(
                 'Transmission',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
-
               const SizedBox(height: 12),
-
               Wrap(
                 spacing: 8,
                 children: [
-                  _buildFilterOption('All', 'all', _selectedTransmission,
-                      (value) {
+                  _buildFilterOption('All', 'all', _selectedTransmission, (value) {
                     setModalState(() => _selectedTransmission = value);
                   }),
-                  _buildFilterOption(
-                      'Automatic', 'automatic', _selectedTransmission, (value) {
+                  _buildFilterOption('Automatic', 'automatic', _selectedTransmission, (value) {
                     setModalState(() => _selectedTransmission = value);
                   }),
-                  _buildFilterOption('Manual', 'manual', _selectedTransmission,
-                      (value) {
+                  _buildFilterOption('Manual', 'manual', _selectedTransmission, (value) {
                     setModalState(() => _selectedTransmission = value);
                   }),
                 ],
               ),
-
               const SizedBox(height: 24),
-
-              // Rating Filter
               const Text(
-                'Minimum Rating',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                'Minimum rating',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
-
+              Slider(
+                value: _minRating,
+                onChanged: (value) => setModalState(() => _minRating = value),
+                min: 0,
+                max: 5,
+                divisions: 10,
+                label: _minRating.toStringAsFixed(1),
+              ),
               const SizedBox(height: 12),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: Slider(
-                      value: _minRating,
-                      max: 5.0,
-                      divisions: 10,
-                      label: _minRating.toStringAsFixed(1),
-                      onChanged: (value) {
-                        setModalState(() => _minRating = value);
-                      },
-                    ),
-                  ),
-                  Text(
-                    _minRating.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 32),
-
-              // Apply Button
-              SizedBox(
-                width: double.infinity,
+              Align(
+                alignment: Alignment.centerRight,
                 child: ElevatedButton(
                   onPressed: () {
-                    setState(() {
-                      // Apply filters
-                    });
                     Navigator.pop(context);
+                    setState(() {});
                   },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Apply Filters',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: const Text('Apply'),
                 ),
               ),
             ],
@@ -563,21 +458,41 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
   Widget _buildFilterOption(
     String label,
     String value,
-    String selectedValue,
-    Function(String) onChanged,
+    String groupValue,
+    ValueChanged<String> onSelected,
   ) {
-    final isSelected = selectedValue == value;
-
-    return FilterChip(
+    final isActive = groupValue == value;
+    return ChoiceChip(
       label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) => onChanged(value),
-      selectedColor: AppColors.primaryBlue.withOpacity(0.2),
-      checkmarkColor: AppColors.primaryBlue,
+      selected: isActive,
+      onSelected: (_) => onSelected(value),
+      selectedColor: AppColors.primaryBlue.withOpacity(0.15),
       labelStyle: TextStyle(
-        color: isSelected ? AppColors.primaryBlue : Colors.grey[600],
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        color: isActive ? AppColors.primaryBlue : Colors.grey[700],
+        fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
       ),
     );
+  }
+
+  Future<void> _loadInstructors() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final instructors = await SupabaseService.getInstructors();
+      if (!mounted) return;
+      setState(() {
+        _instructors = instructors;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to load instructors right now. Please try again soon.';
+        _isLoading = false;
+      });
+    }
   }
 }

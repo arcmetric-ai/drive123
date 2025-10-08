@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+
 import '../../constants/app_colors.dart';
+import '../../constants/app_routes.dart';
+import '../../services/supabase_service.dart';
+import '../../models/user_model.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -12,15 +17,25 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _firstNameController = TextEditingController(text: 'John');
-  final _lastNameController = TextEditingController(text: 'Doe');
-  final _emailController = TextEditingController(text: 'john.doe@example.com');
-  final _phoneController = TextEditingController(text: '+1 (555) 123-4567');
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
 
   File? _profileImage;
-  bool _isDarkMode = false;
+  String? _profileImageUrl;
+  String _roleLabel = 'Learner';
+  bool _isVerified = false;
+  bool _isLoading = false;
+  bool _isUploadingImage = false;
   bool _notificationsEnabled = true;
   bool _locationEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
 
   @override
   void dispose() {
@@ -38,7 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('Profile'),
         actions: [
           TextButton(
-            onPressed: _saveProfile,
+            onPressed: _isLoading ? null : _saveProfile,
             child: const Text(
               'Save',
               style: TextStyle(
@@ -49,32 +64,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            // Profile Header
-            _buildProfileHeader(),
-
-            const SizedBox(height: 24),
-
-            // Personal Information
-            _buildPersonalInfoSection(),
-
-            const SizedBox(height: 24),
-
-            // Settings
-            _buildSettingsSection(),
-
-            const SizedBox(height: 24),
-
-            // Account Actions
-            _buildAccountActionsSection(),
-
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  _buildProfileHeader(),
+                  const SizedBox(height: 24),
+                  _buildPersonalInfoSection(),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(),
+                  const SizedBox(height: 24),
+                  _buildAccountActionsSection(),
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
     );
   }
 
@@ -84,7 +90,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // Profile Image
             GestureDetector(
               onTap: _pickProfileImage,
               child: Stack(
@@ -92,13 +97,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   CircleAvatar(
                     radius: 50,
                     backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
-                    backgroundImage: _profileImage != null
-                        ? FileImage(_profileImage!)
-                        : null,
-                    child: _profileImage == null
-                        ? const Text(
-                            'JD',
-                            style: TextStyle(
+                    backgroundImage: _avatarImage,
+                    child: _avatarImage == null
+                        ? Text(
+                            _initials,
+                            style: const TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
                               color: AppColors.primaryBlue,
@@ -106,6 +109,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           )
                         : null,
                   ),
+                  if (_isUploadingImage)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.35),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(18.0),
+                          child: CircularProgressIndicator(strokeWidth: 3),
+                        ),
+                      ),
+                    ),
                   Positioned(
                     bottom: 0,
                     right: 0,
@@ -127,45 +143,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 16),
-
             Text(
-              '${_firstNameController.text} ${_lastNameController.text}',
+              _displayName,
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: AppColors.primaryBlue,
               ),
             ),
-
             const SizedBox(height: 4),
-
             Text(
-              'Learner',
+              _roleLabel,
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey[600],
               ),
             ),
-
             const SizedBox(height: 8),
-
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.success.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'Verified',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.success,
+            if (_isVerified)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Verified',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.success,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -205,6 +216,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               label: 'Email',
               icon: Icons.email_outlined,
               keyboardType: TextInputType.emailAddress,
+              enabled: false,
             ),
             const SizedBox(height: 16),
             _buildTextField(
@@ -236,20 +248,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
             _buildSwitchTile(
-              icon: Icons.dark_mode_outlined,
-              title: 'Dark Mode',
-              subtitle: 'Switch between light and dark themes',
-              value: _isDarkMode,
-              onChanged: (value) => setState(() => _isDarkMode = value),
-            ),
-            const Divider(),
-            _buildSwitchTile(
               icon: Icons.notifications_outlined,
               title: 'Notifications',
               subtitle: 'Receive lesson reminders and updates',
               value: _notificationsEnabled,
-              onChanged: (value) =>
-                  setState(() => _notificationsEnabled = value),
+              onChanged: (value) => setState(() => _notificationsEnabled = value),
             ),
             const Divider(),
             _buildSwitchTile(
@@ -285,27 +288,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: Icons.history,
               title: 'Lesson History',
               subtitle: 'View all your past lessons',
-              onTap: () {
-                // TODO: Navigate to lesson history
-              },
+              onTap: () => context.push(AppRoutes.myLessons),
             ),
             const Divider(),
             _buildActionTile(
               icon: Icons.help_outline,
               title: 'Help & Support',
               subtitle: 'Get help or contact support',
-              onTap: () {
-                // TODO: Navigate to help
-              },
+              onTap: () => context.push(AppRoutes.helpSupport),
             ),
             const Divider(),
             _buildActionTile(
               icon: Icons.info_outline,
               title: 'About',
               subtitle: 'App version and information',
-              onTap: () {
-                _showAboutDialog();
-              },
+              onTap: _showAboutDialog,
             ),
             const Divider(),
             _buildActionTile(
@@ -326,10 +323,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String label,
     required IconData icon,
     TextInputType? keyboardType,
+    bool enabled = true,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      enabled: enabled,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
@@ -339,17 +338,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
+      onChanged: (_) => setState(() {}),
     );
   }
 
@@ -367,9 +362,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       trailing: Switch(
         value: value,
         onChanged: onChanged,
-        activeThumbColor: AppColors.primaryBlue,
+        activeColor: AppColors.primaryBlue,
       ),
-      contentPadding: EdgeInsets.zero,
     );
   }
 
@@ -389,29 +383,152 @@ class _ProfileScreenState extends State<ProfileScreen> {
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
       onTap: onTap,
-      contentPadding: EdgeInsets.zero,
     );
   }
 
-  Future<void> _pickProfileImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+  Future<void> _loadProfile() async {
+    final user = SupabaseService.currentUser;
+    if (user == null) {
+      return;
+    }
 
-    if (image != null) {
-      setState(() {
-        _profileImage = File(image.path);
-      });
+    setState(() => _isLoading = true);
+
+    try {
+      final UserModel? profile = await SupabaseService.getUserProfile(user.id);
+      if (!mounted) return;
+
+      if (profile != null) {
+        _firstNameController.text = profile.firstName;
+        _lastNameController.text = profile.lastName;
+        _emailController.text = profile.email;
+        _phoneController.text = profile.phone ?? '';
+        _profileImageUrl = profile.profileImageUrl;
+        _isVerified = profile.isVerified;
+        _roleLabel = _formatRole(profile.role);
+      } else {
+        _emailController.text = user.email ?? '';
+        _roleLabel = _formatRole(user.userMetadata?['role'] as String?);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading profile: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  void _saveProfile() {
-    // TODO: Implement save profile logic
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Profile saved successfully!'),
-        backgroundColor: AppColors.success,
-      ),
-    );
+  Future<void> _saveProfile() async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No signed-in user found.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final phone = _phoneController.text.trim();
+
+    setState(() => _isLoading = true);
+
+    try {
+      await SupabaseService.updateProfileFields(userId, {
+        'first_name': firstName,
+        'last_name': lastName,
+        'phone': phone.isNotEmpty ? phone : null,
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile saved successfully!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saving profile: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _pickProfileImage() async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in again to update your photo.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image == null) return;
+
+    final selectedFile = File(image.path);
+
+    setState(() {
+      _profileImage = selectedFile;
+      _isUploadingImage = true;
+    });
+
+    try {
+      final uploadedUrl = await SupabaseService.uploadProfileImage(
+        userId: userId,
+        file: selectedFile,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _profileImageUrl = uploadedUrl;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile photo updated!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to upload photo: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploadingImage = false;
+        });
+      }
+    }
   }
 
   void _signOut() {
@@ -426,14 +543,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // TODO: Implement sign out logic
-              context.go('/role-selection');
+              await SupabaseService.signOut();
+              if (!mounted) return;
+              context.go(AppRoutes.roleSelection);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Sign Out'),
           ),
         ],
@@ -446,28 +562,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       applicationName: 'Drive T',
       applicationVersion: '1.0.0',
-      applicationIcon: Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(
-          color: AppColors.primaryBlue,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(
-          child: Text(
-            'T',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: AppColors.accentYellow,
-            ),
-          ),
-        ),
-      ),
-      children: [
-        const Text(
-            'A friendly platform connecting driving learners with verified instructors in Ontario.'),
+      children: const [
+        Text('A friendly platform connecting driving learners with verified instructors in Ontario.'),
       ],
     );
+  }
+
+  ImageProvider<Object>? get _avatarImage {
+    if (_profileImage != null) {
+      return FileImage(_profileImage!);
+    }
+    if (_profileImageUrl != null && _profileImageUrl!.isNotEmpty) {
+      return NetworkImage(_profileImageUrl!);
+    }
+    return null;
+  }
+
+  String get _displayName {
+    final first = _firstNameController.text.trim();
+    final last = _lastNameController.text.trim();
+    final name = [first, last].where((part) => part.isNotEmpty).join(' ');
+    return name.isEmpty ? 'Your name' : name;
+  }
+
+  String get _initials {
+    final first = _firstNameController.text.trim();
+    final last = _lastNameController.text.trim();
+    final initials = (first.isNotEmpty ? first[0] : '') + (last.isNotEmpty ? last[0] : '');
+    if (initials.isEmpty) return 'DT';
+    return initials.toUpperCase();
+  }
+
+  String _formatRole(String? role) {
+    final value = (role ?? 'learner').trim();
+    if (value.isEmpty) return 'Learner';
+    return value[0].toUpperCase() + value.substring(1);
   }
 }

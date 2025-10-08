@@ -1,8 +1,6 @@
 import 'user_model.dart';
 
 class InstructorModel {
-  // ['english', 'french', etc.]
-
   InstructorModel({
     required this.id,
     required this.user,
@@ -13,6 +11,7 @@ class InstructorModel {
     required this.totalLessons,
     required this.carTypes,
     required this.transmissionTypes,
+    required this.levelsOffered,
     this.licenseNumber,
     this.isVerified = false,
     required this.latitude,
@@ -28,22 +27,26 @@ class InstructorModel {
     return InstructorModel(
       id: json['id'] as String,
       user: UserModel.fromJson(json['user'] as Map<String, dynamic>),
-      bio: json['bio'] as String,
-      yearsOfExperience: json['years_of_experience'] as int,
-      hourlyRate: (json['hourly_rate'] as num).toDouble(),
-      rating: (json['rating'] as num).toDouble(),
-      totalLessons: json['total_lessons'] as int,
-      carTypes: List<String>.from(json['car_types'] as List),
-      transmissionTypes: List<String>.from(json['transmission_types'] as List),
-      licenseNumber: json['license_number'] as String?,
+      bio: (json['bio'] as String?) ?? 'Instructor bio coming soon.',
+      yearsOfExperience: json['years_of_experience'] as int? ?? 0,
+      hourlyRate: (json['hourly_rate'] as num?)?.toDouble() ?? 0,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0,
+      totalLessons: json['total_lessons'] as int? ?? 0,
+      carTypes: List<String>.from((json['car_types'] as List?) ?? const []),
+      transmissionTypes:
+          List<String>.from((json['transmission_types'] as List?) ?? const []),
+      levelsOffered:
+          List<String>.from((json['levels_offered'] as List?) ?? const []),
+      licenseNumber: json['licence_number'] as String? ?? json['license_number'] as String?,
       isVerified: json['is_verified'] as bool? ?? false,
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
-      address: json['address'] as String,
-      availableDays: List<String>.from(json['available_days'] as List),
-      startTime: json['start_time'] as String,
-      endTime: json['end_time'] as String,
-      languages: List<String>.from(json['languages'] as List),
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+      address: json['address'] as String? ?? 'Service area not provided',
+      availableDays:
+          List<String>.from((json['available_days'] as List?) ?? const []),
+      startTime: json['start_time'] as String? ?? '09:00',
+      endTime: json['end_time'] as String? ?? '17:00',
+      languages: List<String>.from((json['languages'] as List?) ?? const []),
     );
   }
   final String id;
@@ -55,6 +58,7 @@ class InstructorModel {
   final int totalLessons;
   final List<String> carTypes; // ['automatic', 'manual']
   final List<String> transmissionTypes; // ['automatic', 'manual']
+  final List<String> levelsOffered; // ['G2', 'G', 'PR']
   final String? licenseNumber;
   final bool isVerified;
   final double latitude;
@@ -76,6 +80,7 @@ class InstructorModel {
       'total_lessons': totalLessons,
       'car_types': carTypes,
       'transmission_types': transmissionTypes,
+      'levels_offered': levelsOffered,
       'license_number': licenseNumber,
       'is_verified': isVerified,
       'latitude': latitude,
