@@ -14,11 +14,14 @@ import '../screens/lessons/completed_lesson_detail_screen.dart';
 import '../screens/lessons/my_lessons_screen.dart';
 import '../screens/location/location_setup_screen.dart';
 import '../screens/onboarding/auth_screen.dart';
+import '../screens/onboarding/learner_questionnaire_screen.dart';
+import '../screens/onboarding/instructor_questionnaire_screen.dart';
 import '../screens/onboarding/learning_focus_screen.dart';
 import '../screens/onboarding/license_info_screen.dart';
 import '../screens/onboarding/role_selection_screen.dart';
 import '../screens/onboarding/verification_screen.dart';
 import '../screens/profile/help_support_screen.dart';
+import '../screens/profile/edit_profile_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/progress/progress_tracker_screen.dart';
 import '../screens/splash_screen.dart';
@@ -28,8 +31,11 @@ class AppRoutes {
   static const String roleSelection = '/role-selection';
   static const String auth = '/auth';
   static const String verification = '/verification';
+  static const String learnerQuestionnaire = '/learner-questionnaire';
+  static const String instructorQuestionnaire = '/instructor-questionnaire';
   static const String licenseInfo = '/license-info';
   static const String learningFocus = '/learning-focus';
+  static const String editProfile = '/edit-profile';
   static const String home = '/home';
   static const String instructorHome = '/instructor-home';
   static const String instructorAvailability = '/instructor-availability';
@@ -73,8 +79,53 @@ class AppRoutes {
       GoRoute(
         path: licenseInfo,
         builder: (context, state) {
+          final extra = state.extra;
+          String role = 'learner';
+          String? initialLicenceNumber;
+          DateTime? initialLicenceExpiry;
+          Map<String, dynamic>? questionnaire;
+
+          if (extra is String) {
+            role = extra;
+          } else if (extra is Map) {
+            role = (extra['role'] as String?) ?? role;
+            final licenceNumber = extra['initialLicenceNumber'] as String?;
+            final licenceExpiryIso = extra['initialLicenceExpiry'] as String?;
+            final questionnaireMap = extra['questionnaire'];
+
+            if (licenceNumber != null) {
+              initialLicenceNumber = licenceNumber;
+            }
+
+            if (licenceExpiryIso is String) {
+              initialLicenceExpiry = DateTime.tryParse(licenceExpiryIso);
+            }
+
+            if (questionnaireMap is Map<String, dynamic>) {
+              questionnaire = questionnaireMap;
+            }
+          }
+
+          return LicenseInfoScreen(
+            role: role,
+            initialLicenceNumber: initialLicenceNumber,
+            initialLicenceExpiry: initialLicenceExpiry,
+            questionnaireData: questionnaire,
+          );
+        },
+      ),
+      GoRoute(
+        path: learnerQuestionnaire,
+        builder: (context, state) {
           final role = state.extra as String? ?? 'learner';
-          return LicenseInfoScreen(role: role);
+          return LearnerQuestionnaireScreen(role: role);
+        },
+      ),
+      GoRoute(
+        path: instructorQuestionnaire,
+        builder: (context, state) {
+          final role = state.extra as String? ?? 'instructor';
+          return InstructorQuestionnaireScreen(role: role);
         },
       ),
       GoRoute(
@@ -160,6 +211,10 @@ class AppRoutes {
       GoRoute(
         path: profile,
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: editProfile,
+        builder: (context, state) => const EditProfileScreen(),
       ),
       GoRoute(
         path: helpSupport,

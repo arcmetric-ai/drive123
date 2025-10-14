@@ -8,10 +8,16 @@ import '../../services/supabase_service.dart';
 
 class LicenseInfoScreen extends StatefulWidget {
   final String role;
+  final String? initialLicenceNumber;
+  final DateTime? initialLicenceExpiry;
+  final Map<String, dynamic>? questionnaireData;
 
   const LicenseInfoScreen({
     super.key,
     required this.role,
+    this.initialLicenceNumber,
+    this.initialLicenceExpiry,
+    this.questionnaireData,
   });
 
   @override
@@ -24,6 +30,19 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
   final _expiryController = TextEditingController();
   DateTime? _selectedExpiryDate;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialLicenceNumber?.isNotEmpty ?? false) {
+      _numberController.text = widget.initialLicenceNumber!;
+    }
+    if (widget.initialLicenceExpiry != null) {
+      _selectedExpiryDate = widget.initialLicenceExpiry;
+      _expiryController.text =
+          DateFormat('MMM d, yyyy').format(widget.initialLicenceExpiry!);
+    }
+  }
 
   @override
   void dispose() {
@@ -86,16 +105,163 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
 
     try {
       if (widget.role == 'instructor') {
+        final questionnaire = widget.questionnaireData;
+        List<Map<String, dynamic>>? vehicles;
+        List<Map<String, dynamic>>? areas;
+        int? age;
+        String? gender;
+        List<String>? offerings;
+        Map<String, double>? offeringRates;
+        List<Map<String, dynamic>>? preferredLocations;
+        String? locationNotes;
+
+        if (questionnaire != null) {
+          final rawVehicles = questionnaire['vehicles'];
+          final rawAreas = questionnaire['areas'];
+          final rawAge = questionnaire['age'];
+          final rawGender = questionnaire['gender'];
+          final rawOfferings = questionnaire['offerings'];
+          final rawOfferingRates = questionnaire['offeringRates'];
+          final rawLocations =
+              questionnaire['locations'] ?? questionnaire['preferredLocations'];
+          final rawLocationNotes = questionnaire['otherLocationDetail'];
+
+          if (rawVehicles is List) {
+            vehicles = rawVehicles
+                .where((item) => item is Map)
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+          }
+
+          if (rawAreas is List) {
+            areas = rawAreas
+                .where((item) => item is Map)
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+          }
+
+          if (rawAge is int) {
+            age = rawAge;
+          } else if (rawAge is String) {
+            age = int.tryParse(rawAge);
+          }
+
+          if (rawGender is String && rawGender.isNotEmpty) {
+            gender = rawGender;
+          }
+
+          if (rawOfferings is List) {
+            offerings = rawOfferings.whereType<String>().toList();
+          }
+
+          if (rawOfferingRates is Map) {
+            final parsedRates = <String, double>{};
+            rawOfferingRates.forEach((key, value) {
+              double? parsed;
+              if (value is num) {
+                parsed = value.toDouble();
+              } else if (value is String) {
+                parsed = double.tryParse(value);
+              }
+              if (parsed != null) {
+                parsedRates[key.toString()] = parsed;
+              }
+            });
+            if (parsedRates.isNotEmpty) {
+              offeringRates = parsedRates;
+            }
+          }
+          if (rawLocations is List) {
+            preferredLocations = rawLocations
+                .where((item) => item is Map)
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+          }
+          if (rawLocationNotes is String && rawLocationNotes.isNotEmpty) {
+            locationNotes = rawLocationNotes;
+          }
+        }
+
         await SupabaseService.upsertInstructorProfile(
           userId: userId,
           licenceNumber: licenceNumber,
           licenceExpiry: expiryDate,
+          age: age,
+          gender: gender,
+          vehicles: vehicles,
+          areasOfOperation: areas,
+          offerings: offerings,
+          offeringRates: offeringRates,
+          preferredLocations: preferredLocations,
+          preferredLocationNotes: locationNotes,
         );
       } else {
+        final questionnaire = widget.questionnaireData;
+        String? city;
+        int? age;
+        String? gender;
+        int? classesTaken;
+        DateTime? lastClassDate;
+        DateTime? g1TestDate;
+        List<Map<String, dynamic>>? preferredLocations;
+        String? locationNotes;
+
+        if (questionnaire != null) {
+          final rawCity = questionnaire['city'];
+          final rawAge = questionnaire['age'];
+          final rawGender = questionnaire['gender'];
+          final rawClassesTaken = questionnaire['classesTaken'];
+          final rawLastClassDate = questionnaire['lastClassDate'];
+          final rawG1TestDate = questionnaire['g1TestDate'];
+          final rawLocations =
+              questionnaire['preferredLocations'] ?? questionnaire['locations'];
+          final rawLocationNotes = questionnaire['otherLocationDetail'];
+
+          if (rawCity is String && rawCity.isNotEmpty) {
+            city = rawCity;
+          }
+          if (rawAge is int) {
+            age = rawAge;
+          } else if (rawAge is String) {
+            age = int.tryParse(rawAge);
+          }
+          if (rawGender is String && rawGender.isNotEmpty) {
+            gender = rawGender;
+          }
+          if (rawClassesTaken is int) {
+            classesTaken = rawClassesTaken;
+          } else if (rawClassesTaken is String) {
+            classesTaken = int.tryParse(rawClassesTaken);
+          }
+          if (rawLastClassDate is String) {
+            lastClassDate = DateTime.tryParse(rawLastClassDate);
+          }
+          if (rawG1TestDate is String) {
+            g1TestDate = DateTime.tryParse(rawG1TestDate);
+          }
+          if (rawLocations is List) {
+            preferredLocations = rawLocations
+                .where((item) => item is Map)
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+          }
+          if (rawLocationNotes is String && rawLocationNotes.isNotEmpty) {
+            locationNotes = rawLocationNotes;
+          }
+        }
+
         await SupabaseService.upsertLearnerProfile(
           userId: userId,
           licenceNumber: licenceNumber,
           licenceExpiry: expiryDate,
+          city: city,
+          age: age,
+          gender: gender,
+          classesTaken: classesTaken,
+          lastClassDate: lastClassDate,
+          g1TestDate: g1TestDate,
+          preferredLocations: preferredLocations,
+          locationNotes: locationNotes,
         );
       }
     } catch (e) {
@@ -140,7 +306,8 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
     final subtitle = isLearner
         ? 'Add your G1 license information to continue'
         : 'Add your instructor license details to continue';
-    final numberLabel = isLearner ? 'G1 License Number' : 'Instructor License Number';
+    final numberLabel =
+        isLearner ? 'G1 License Number' : 'Instructor License Number';
     final buttonColor =
         isLearner ? AppColors.primaryBlue : AppColors.accentYellow;
 
@@ -172,7 +339,8 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
                         ),
                         child: Icon(
                           isLearner ? Icons.assignment : Icons.badge,
-                          color: isLearner ? Colors.white : AppColors.primaryBlue,
+                          color:
+                              isLearner ? Colors.white : AppColors.primaryBlue,
                           size: 40,
                         ),
                       ),

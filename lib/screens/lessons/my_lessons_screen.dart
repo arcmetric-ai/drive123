@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import '../../models/instructor_model.dart';
-import '../../models/user_model.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../models/instructor_model.dart';
+import '../../models/user_model.dart';
 import '../../constants/app_colors.dart';
 import '../../models/lesson_model.dart';
+import '../../services/supabase_service.dart';
+import 'ongoing_lesson_screen.dart';
 
 class MyLessonsScreen extends StatefulWidget {
   const MyLessonsScreen({super.key});
@@ -145,10 +147,14 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     ),
   ];
 
+  final List<LessonModel> _cancelledLessons = [];
+  LessonModel? _ongoingLesson;
+  bool _isProcessingAction = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -167,6 +173,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
           tabs: const [
             Tab(text: 'Upcoming'),
             Tab(text: 'Completed'),
+            Tab(text: 'Cancelled'),
           ],
           labelColor: AppColors.primaryBlue,
           unselectedLabelColor: Colors.grey[600],
@@ -178,13 +185,15 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
         children: [
           _buildUpcomingLessons(),
           _buildCompletedLessons(),
+          _buildCancelledLessons(),
         ],
       ),
     );
   }
 
   Widget _buildUpcomingLessons() {
-    if (_upcomingLessons.isEmpty) {
+    final hasOngoing = _ongoingLesson != null;
+    if (_upcomingLessons.isEmpty && !hasOngoing) {
       return _buildEmptyState(
         icon: Icons.schedule_outlined,
         title: 'No Upcoming Lessons',
@@ -194,13 +203,17 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
       );
     }
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.all(16),
-      itemCount: _upcomingLessons.length,
-      itemBuilder: (context, index) {
-        final lesson = _upcomingLessons[index];
-        return _buildLessonCard(lesson, isUpcoming: true);
-      },
+      children: [
+        if (_ongoingLesson != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: _buildOngoingLessonBanner(_ongoingLesson!),
+          ),
+        for (final lesson in _upcomingLessons)
+          _buildLessonCard(lesson, statusLabel: LessonStatus.scheduled),
+      ],
     );
   }
 
@@ -218,12 +231,61 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
       itemCount: _completedLessons.length,
       itemBuilder: (context, index) {
         final lesson = _completedLessons[index];
-        return _buildLessonCard(lesson, isUpcoming: false);
+        return _buildLessonCard(lesson, statusLabel: LessonStatus.completed);
       },
     );
   }
 
-  Widget _buildLessonCard(LessonModel lesson, {required bool isUpcoming}) {
+  Widget _buildCancelledLessons() {
+    if (_cancelledLessons.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.cancel_outlined,
+        title: 'No Cancelled Lessons',
+        subtitle: 'Cancelled lessons will appear here for your records.',
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _cancelledLessons.length,
+      itemBuilder: (context, index) {
+        final lesson = _cancelledLessons[index];
+        return _buildLessonCard(lesson, statusLabel: LessonStatus.cancelled);
+      },
+    );
+  }
+
+  Widget _buildLessonCard(
+    LessonModel lesson, {
+    required LessonStatus statusLabel,
+  }) {
+    Color chipColor;
+    Color textColor;
+    String label;
+
+    switch (statusLabel) {
+      case LessonStatus.scheduled:
+        chipColor = AppColors.primaryBlue.withOpacity(0.1);
+        textColor = AppColors.primaryBlue;
+        label = 'Upcoming';
+        break;
+      case LessonStatus.inProgress:
+        chipColor = AppColors.accentYellow.withOpacity(0.15);
+        textColor = AppColors.accentYellow;
+        label = 'In Progress';
+        break;
+      case LessonStatus.completed:
+        chipColor = AppColors.success.withOpacity(0.12);
+        textColor = AppColors.success;
+        label = 'Completed';
+        break;
+      case LessonStatus.cancelled:
+        chipColor = AppColors.error.withOpacity(0.12);
+        textColor = AppColors.error;
+        label = 'Cancelled';
+        break;
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -277,19 +339,15 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isUpcoming
-                        ? AppColors.primaryBlue.withOpacity(0.1)
-                        : AppColors.success.withOpacity(0.1),
+                    color: chipColor,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    isUpcoming ? 'Upcoming' : 'Completed',
+                    label,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: isUpcoming
-                          ? AppColors.primaryBlue
-                          : AppColors.success,
+                      color: textColor,
                     ),
                   ),
                 ),
@@ -392,7 +450,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
               ),
             ],
 
-            if (isUpcoming) ...[
+            if (statusLabel == LessonStatus.scheduled) ...[
               const SizedBox(height: 16),
 
               // Action Buttons
@@ -400,20 +458,9 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => _showRescheduleDialog(lesson),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.primaryBlue),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text('Reschedule'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _showCancelDialog(lesson),
+                      onPressed: _isProcessingAction
+                          ? null
+                          : () => _showCancelDialog(lesson),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: AppColors.error),
                         shape: RoundedRectangleBorder(
@@ -429,7 +476,9 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () => _startLesson(lesson),
+                      onPressed: _isProcessingAction
+                          ? null
+                          : () => _startLesson(lesson),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryBlue,
                         shape: RoundedRectangleBorder(
@@ -440,6 +489,14 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Need a different time? Cancel this lesson and book a new session that fits your schedule.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                ),
               ),
             ],
           ],
@@ -505,23 +562,6 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     );
   }
 
-  void _showRescheduleDialog(LessonModel lesson) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reschedule Lesson'),
-        content: const Text(
-            'This feature will be available soon. Please contact your instructor directly.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showCancelDialog(LessonModel lesson) {
     showDialog(
       context: context,
@@ -534,16 +574,12 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
             child: const Text('No'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // TODO: Implement cancel lesson
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Lesson cancelled successfully'),
-                  backgroundColor: AppColors.success,
-                ),
-              );
-            },
+            onPressed: _isProcessingAction
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    _cancelLesson(lesson);
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
             ),
@@ -554,19 +590,206 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     );
   }
 
-  void _startLesson(LessonModel lesson) {
-    showDialog(
+  Future<void> _startLesson(LessonModel lesson) async {
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Start Lesson'),
-        content: const Text('Your lesson is starting! Good luck!'),
+        content: Text(
+          'Start your session with ${lesson.instructor.user.firstName}? '
+          'We’ll open the live session view with all the details you need.',
+        ),
         actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not Yet'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // TODO: Implement lesson tracking
-            },
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('Start'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || _isProcessingAction) return;
+
+    setState(() => _isProcessingAction = true);
+
+    LessonModel? updated;
+    try {
+      updated = await SupabaseService.updateLessonStatus(
+        lesson.id,
+        LessonStatus.inProgress.name,
+      );
+    } catch (_) {
+      updated = null;
+    }
+
+    updated ??= lesson.copyWith(
+      status: LessonStatus.inProgress,
+      updatedAt: DateTime.now(),
+    );
+
+    setState(() {
+      _upcomingLessons.removeWhere((l) => l.id == lesson.id);
+      _ongoingLesson = updated;
+      _isProcessingAction = false;
+    });
+
+    if (!mounted) return;
+
+    final result = await Navigator.of(context).push<LessonModel?>(
+      MaterialPageRoute(
+        builder: (context) => OngoingLessonScreen(
+          lesson: updated!,
+          onMarkCompleted: () => _completeLesson(updated!),
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (result != null) {
+      _handleLessonCompletion(result);
+    }
+  }
+
+  Future<void> _cancelLesson(LessonModel lesson) async {
+    if (_isProcessingAction) return;
+
+    setState(() => _isProcessingAction = true);
+
+    LessonModel? updated;
+    try {
+      updated = await SupabaseService.updateLessonStatus(
+        lesson.id,
+        LessonStatus.cancelled.name,
+      );
+    } catch (_) {
+      updated = null;
+    }
+
+    updated ??= lesson.copyWith(
+      status: LessonStatus.cancelled,
+      updatedAt: DateTime.now(),
+    );
+
+    setState(() {
+      _upcomingLessons.removeWhere((l) => l.id == lesson.id);
+      _cancelledLessons.insert(0, updated!);
+      if (_ongoingLesson?.id == lesson.id) {
+        _ongoingLesson = null;
+      }
+      _isProcessingAction = false;
+    });
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Lesson cancelled. You can book another time anytime.'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  Future<LessonModel?> _completeLesson(LessonModel lesson) async {
+    LessonModel? updated;
+    try {
+      updated = await SupabaseService.updateLessonStatus(
+        lesson.id,
+        LessonStatus.completed.name,
+      );
+    } catch (_) {
+      updated = null;
+    }
+
+    updated ??= lesson.copyWith(
+      status: LessonStatus.completed,
+      updatedAt: DateTime.now(),
+    );
+
+    setState(() {
+      if (_ongoingLesson?.id == lesson.id) {
+        _ongoingLesson = null;
+      }
+      _completedLessons.insert(0, updated!);
+    });
+
+    return updated;
+  }
+
+  void _handleLessonCompletion(LessonModel lesson) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Great work! Lesson with ${lesson.instructor.user.firstName} wrapped up.',
+        ),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  Widget _buildOngoingLessonBanner(LessonModel lesson) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.accentYellow.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.play_circle_fill,
+                color: AppColors.accentYellow,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Lesson in progress with ${lesson.instructor.user.firstName} ${lesson.instructor.user.lastName}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Started at ${lesson.startTime}. Tap below to view live session details.',
+            style: TextStyle(
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () async {
+                final result = await Navigator.of(context).push<LessonModel?>(
+                  MaterialPageRoute(
+                    builder: (context) => OngoingLessonScreen(
+                      lesson: lesson,
+                      onMarkCompleted: () => _completeLesson(lesson),
+                    ),
+                  ),
+                );
+                if (!mounted) return;
+                if (result != null) {
+                  _handleLessonCompletion(result);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+              ),
+              child: const Text('Open Session'),
+            ),
           ),
         ],
       ),

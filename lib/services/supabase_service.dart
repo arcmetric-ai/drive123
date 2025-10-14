@@ -76,12 +76,9 @@ class SupabaseService {
   // User Methods
   static Future<UserModel?> getUserProfile(String userId) async {
     try {
-      final response = await _client
-          .from('profiles')
-          .select()
-          .eq('id', userId)
-          .single();
-      
+      final response =
+          await _client.from('profiles').select().eq('id', userId).single();
+
       return UserModel.fromJson(response);
     } catch (e) {
       print('Error fetching user profile: $e');
@@ -97,7 +94,7 @@ class SupabaseService {
           .eq('id', user.id)
           .select()
           .single();
-      
+
       return UserModel.fromJson(response);
     } catch (e) {
       print('Error updating user profile: $e');
@@ -105,7 +102,8 @@ class SupabaseService {
     }
   }
 
-  static Future<void> updateProfileFields(String userId, Map<String, dynamic> data) async {
+  static Future<void> updateProfileFields(
+      String userId, Map<String, dynamic> data) async {
     await _client.from('profiles').update(data).eq('id', userId);
   }
 
@@ -115,7 +113,8 @@ class SupabaseService {
   }) async {
     final bytes = await file.readAsBytes();
     final fileExtension = file.path.split('.').last;
-    final filePath = 'profile_images/$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+    final filePath =
+        'profile_images/$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
 
     await _client.storage.from('avatars').uploadBinary(
           filePath,
@@ -136,18 +135,15 @@ class SupabaseService {
 
   static Future<Map<String, dynamic>?> getRawProfile(String userId) async {
     try {
-      return await _client
-          .from('profiles')
-          .select()
-          .eq('id', userId)
-          .single();
+      return await _client.from('profiles').select().eq('id', userId).single();
     } catch (e) {
       print('Error fetching raw profile: $e');
       return null;
     }
   }
 
-  static Future<Map<String, dynamic>?> getInstructorProfileDetail(String userId) async {
+  static Future<Map<String, dynamic>?> getInstructorProfileDetail(
+      String userId) async {
     try {
       final profile = await _client
           .from('instructor_profiles')
@@ -161,7 +157,8 @@ class SupabaseService {
     }
   }
 
-  static Future<Map<String, dynamic>?> getLearnerProfileDetail(String userId) async {
+  static Future<Map<String, dynamic>?> getLearnerProfileDetail(
+      String userId) async {
     try {
       final profile = await _client
           .from('learner_profiles')
@@ -185,18 +182,73 @@ class SupabaseService {
     String? vehicle,
     List<String>? levelsOffered,
     List<String>? languages,
+    List<Map<String, dynamic>>? vehicles,
+    List<Map<String, dynamic>>? areasOfOperation,
+    int? age,
+    String? gender,
+    List<String>? offerings,
+    Map<String, double>? offeringRates,
+    List<Map<String, dynamic>>? preferredLocations,
+    String? preferredLocationNotes,
   }) async {
-    await _client.from('instructor_profiles').upsert({
+    final data = <String, dynamic>{
       'profile_id': userId,
       'licence_number': licenceNumber,
       'licence_expiry': licenceExpiry?.toIso8601String(),
       'bio': bio,
-      'service_area': serviceArea,
-      'default_rate': defaultRate,
-      'vehicle': vehicle,
       'levels_offered': levelsOffered,
       'languages': languages,
-    });
+      'vehicles': vehicles,
+      'areas_of_operation': areasOfOperation,
+      'age': age,
+      'gender': gender,
+      'offerings': offerings,
+      'offering_rates': offeringRates,
+      'preferred_locations': preferredLocations,
+      'preferred_location_notes': preferredLocationNotes,
+    };
+
+    if (serviceArea != null) {
+      data['service_area'] = serviceArea;
+    } else if (areasOfOperation != null && areasOfOperation.isNotEmpty) {
+      final primaryArea = areasOfOperation.first;
+      data['service_area'] = primaryArea['city'];
+    }
+
+    if (defaultRate != null) {
+      data['default_rate'] = defaultRate;
+    } else if (offeringRates != null && offeringRates.isNotEmpty) {
+      data['default_rate'] = offeringRates.values.first;
+    }
+
+    if (vehicle != null) {
+      data['vehicle'] = vehicle;
+    } else if (vehicles != null && vehicles.isNotEmpty) {
+      final primaryVehicle = vehicles.first;
+      final type = (primaryVehicle['type'] as String?)?.trim();
+      final year = (primaryVehicle['year'] as String?)?.trim();
+      final make = (primaryVehicle['make'] as String?)?.trim();
+      final model = (primaryVehicle['model'] as String?)?.trim();
+      final numberPlate = (primaryVehicle['numberPlate'] as String?)?.trim();
+      final sections = <String>[];
+      if (type != null && type.isNotEmpty) {
+        sections.add(type);
+      }
+      final makeModel = [
+        if (year != null && year.isNotEmpty) year,
+        if (make != null && make.isNotEmpty) make,
+        if (model != null && model.isNotEmpty) model,
+      ].join(' ');
+      if (makeModel.trim().isNotEmpty) {
+        sections.add(makeModel.trim());
+      }
+      if (numberPlate != null && numberPlate.isNotEmpty) {
+        sections.add('Plate: $numberPlate');
+      }
+      data['vehicle'] = sections.join(' • ');
+    }
+
+    await _client.from('instructor_profiles').upsert(data);
   }
 
   static Future<void> upsertLearnerProfile({
@@ -208,6 +260,14 @@ class SupabaseService {
     String? testCentre,
     String? notes,
     List<String>? focusAreas,
+    String? city,
+    int? age,
+    String? gender,
+    int? classesTaken,
+    DateTime? lastClassDate,
+    DateTime? g1TestDate,
+    List<Map<String, dynamic>>? preferredLocations,
+    String? locationNotes,
   }) async {
     await _client.from('learner_profiles').upsert({
       'profile_id': userId,
@@ -218,10 +278,19 @@ class SupabaseService {
       'test_centre': testCentre,
       'notes': notes,
       'focus_areas': focusAreas,
+      'city': city,
+      'age': age,
+      'gender': gender,
+      'classes_taken_total': classesTaken,
+      'last_class_date': lastClassDate?.toIso8601String(),
+      'g1_test_date': g1TestDate?.toIso8601String(),
+      'preferred_locations': preferredLocations,
+      'preferred_location_notes': locationNotes,
     });
   }
 
-  static Future<List<Map<String, dynamic>>> getLearnerSkillProgress(String userId) async {
+  static Future<List<Map<String, dynamic>>> getLearnerSkillProgress(
+      String userId) async {
     try {
       final response = await _client
           .from('learner_skill_progress')
@@ -248,7 +317,8 @@ class SupabaseService {
     });
   }
 
-  static Future<List<Map<String, dynamic>>> getInstructorAvailability(String userId) async {
+  static Future<List<Map<String, dynamic>>> getInstructorAvailability(
+      String userId) async {
     final results = await _client
         .from('instructor_availability')
         .select()
@@ -272,13 +342,11 @@ class SupabaseService {
   }
 
   static Future<void> deleteAvailabilitySlot(String slotId) async {
-    await _client
-        .from('instructor_availability')
-        .delete()
-        .eq('id', slotId);
+    await _client.from('instructor_availability').delete().eq('id', slotId);
   }
 
-  static Future<List<Map<String, dynamic>>> getAvailabilityBlocks(String userId) async {
+  static Future<List<Map<String, dynamic>>> getAvailabilityBlocks(
+      String userId) async {
     final results = await _client
         .from('instructor_availability_blocks')
         .select()
@@ -306,19 +374,23 @@ class SupabaseService {
         .eq('id', blockId);
   }
 
-  static Future<List<Map<String, dynamic>>> getLessonRequestsForInstructor(String userId) async {
+  static Future<List<Map<String, dynamic>>> getLessonRequestsForInstructor(
+      String userId) async {
     final results = await _client
         .from('lesson_requests')
-        .select('*, learner:profiles!lesson_requests_learner_id_fkey(id, first_name, last_name, email)')
+        .select(
+            '*, learner:profiles!lesson_requests_learner_id_fkey(id, first_name, last_name, email)')
         .eq('instructor_id', userId)
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(results);
   }
 
-  static Future<List<Map<String, dynamic>>> getLessonRequestsForLearner(String userId) async {
+  static Future<List<Map<String, dynamic>>> getLessonRequestsForLearner(
+      String userId) async {
     final results = await _client
         .from('lesson_requests')
-        .select('*, instructor:instructor_profiles!lesson_requests_instructor_id_fkey(profile_id), instructor_profile:instructor_profiles!lesson_requests_instructor_id_fkey(bio, service_area)')
+        .select(
+            '*, instructor:instructor_profiles!lesson_requests_instructor_id_fkey(profile_id), instructor_profile:instructor_profiles!lesson_requests_instructor_id_fkey(bio, service_area)')
         .eq('learner_id', userId)
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(results);
@@ -330,8 +402,7 @@ class SupabaseService {
   }) async {
     await _client
         .from('lesson_requests')
-        .update({'status': status})
-        .eq('id', requestId);
+        .update({'status': status}).eq('id', requestId);
   }
 
   static Future<void> createLessonFromRequest({
@@ -381,9 +452,8 @@ class SupabaseService {
     double? minRating,
   }) async {
     try {
-      var query = _client
-          .from('instructor_profiles')
-          .select('*, user:profiles(*)');
+      var query =
+          _client.from('instructor_profiles').select('*, user:profiles(*)');
 
       if (minRating != null) {
         query = query.gte('rating', minRating);
@@ -398,17 +468,18 @@ class SupabaseService {
       }
 
       final response = await query;
-      
-      List<InstructorModel> instructors = response
-          .map((json) => InstructorModel.fromJson(json))
-          .toList();
+
+      List<InstructorModel> instructors =
+          response.map((json) => InstructorModel.fromJson(json)).toList();
 
       // Filter by distance if coordinates provided
       if (latitude != null && longitude != null) {
         instructors = instructors.where((instructor) {
           final distance = _calculateDistance(
-            latitude, longitude,
-            instructor.latitude, instructor.longitude,
+            latitude,
+            longitude,
+            instructor.latitude,
+            instructor.longitude,
           );
           return distance <= radius;
         }).toList();
@@ -428,7 +499,7 @@ class SupabaseService {
           .select('*, user:profiles(*)')
           .eq('id', instructorId)
           .single();
-      
+
       return InstructorModel.fromJson(response);
     } catch (e) {
       print('Error fetching instructor: $e');
@@ -444,10 +515,8 @@ class SupabaseService {
           .select('*, instructor:instructor_profiles(*, user:profiles(*))')
           .eq('learner_id', learnerId)
           .order('scheduled_date', ascending: true);
-      
-      return response
-          .map((json) => LessonModel.fromJson(json))
-          .toList();
+
+      return response.map((json) => LessonModel.fromJson(json)).toList();
     } catch (e) {
       print('Error fetching lessons: $e');
       return [];
@@ -501,7 +570,7 @@ class SupabaseService {
           .eq('id', lessonId)
           .select('*, instructor:instructor_profiles(*, user:profiles(*))')
           .single();
-      
+
       return LessonModel.fromJson(response);
     } catch (e) {
       print('Error updating lesson status: $e');
@@ -511,18 +580,21 @@ class SupabaseService {
 
   // Helper Methods
   static double _calculateDistance(
-    double lat1, double lon1,
-    double lat2, double lon2,
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
   ) {
     const double earthRadius = 6371; // km
     final double dLat = _degreesToRadians(lat2 - lat1);
     final double dLon = _degreesToRadians(lon2 - lon1);
-    
-    final double a = 
-        (dLat / 2) * (dLat / 2) +
-        (dLon / 2) * (dLon / 2) * 
-        (lat1 * 3.14159 / 180) * (lat2 * 3.14159 / 180);
-    
+
+    final double a = (dLat / 2) * (dLat / 2) +
+        (dLon / 2) *
+            (dLon / 2) *
+            (lat1 * 3.14159 / 180) *
+            (lat2 * 3.14159 / 180);
+
     final double c = 2 * math.sqrt(a);
     return earthRadius * c;
   }

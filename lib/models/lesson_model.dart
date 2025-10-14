@@ -83,4 +83,36 @@ class LessonModel {
   bool get isCompleted => status == LessonStatus.completed;
   bool get isCancelled => status == LessonStatus.cancelled;
   bool get isInProgress => status == LessonStatus.inProgress;
+
+  LessonModel copyWith({
+    String? id,
+    String? learnerId,
+    InstructorModel? instructor,
+    DateTime? scheduledDate,
+    String? startTime,
+    String? endTime,
+    double? duration,
+    double? cost,
+    LessonStatus? status,
+    String? notes,
+    String? location,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return LessonModel(
+      id: id ?? this.id,
+      learnerId: learnerId ?? this.learnerId,
+      instructor: instructor ?? this.instructor,
+      scheduledDate: scheduledDate ?? this.scheduledDate,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      duration: duration ?? this.duration,
+      cost: cost ?? this.cost,
+      status: status ?? this.status,
+      notes: notes ?? this.notes,
+      location: location ?? this.location,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }

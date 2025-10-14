@@ -92,7 +92,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
             backgroundColor: AppColors.success,
           ),
         );
-        context.go(AppRoutes.licenseInfo, extra: widget.role);
+        if (widget.role == 'learner') {
+          context.go(AppRoutes.learnerQuestionnaire, extra: widget.role);
+        } else {
+          context.go(AppRoutes.instructorQuestionnaire, extra: widget.role);
+        }
       }
     } catch (e) {
       if (!mounted) return;

@@ -3,6 +3,7 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../../constants/app_colors.dart';
 import '../../services/supabase_service.dart';
+import 'progress_chart_screen.dart';
 
 class ProgressTrackerScreen extends StatefulWidget {
   const ProgressTrackerScreen({super.key});
@@ -54,7 +55,8 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                           child: FadeInAnimation(child: widget),
                         ),
                         children: [
-                          _buildProgressOverviewCard(progressPercentage, completedSkills, totalSkills),
+                          _buildProgressOverviewCard(
+                              progressPercentage, completedSkills, totalSkills),
                           const SizedBox(height: 24),
                           _buildAchievementsCard(),
                           const SizedBox(height: 24),
@@ -101,7 +103,8 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
             LinearProgressIndicator(
               value: progress,
               backgroundColor: Colors.grey[200],
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
               minHeight: 8,
             ),
             const SizedBox(height: 12),
@@ -234,7 +237,9 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isUnlocked ? AppColors.success.withOpacity(0.1) : Colors.grey[100],
+          color: isUnlocked
+              ? AppColors.success.withOpacity(0.1)
+              : Colors.grey[100],
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isUnlocked ? AppColors.success : Colors.grey[300]!,
@@ -310,7 +315,9 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               ),
               child: Icon(
                 skill.isCompleted ? Icons.check : Icons.radio_button_unchecked,
-                color: skill.isCompleted ? AppColors.success : AppColors.primaryBlue,
+                color: skill.isCompleted
+                    ? AppColors.success
+                    : AppColors.primaryBlue,
                 size: 20,
               ),
             ),
@@ -324,8 +331,10 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: skill.isCompleted ? Colors.grey[700] : Colors.black87,
-                      decoration: skill.isCompleted ? TextDecoration.lineThrough : null,
+                      color:
+                          skill.isCompleted ? Colors.grey[700] : Colors.black87,
+                      decoration:
+                          skill.isCompleted ? TextDecoration.lineThrough : null,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -350,9 +359,12 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
             ElevatedButton(
               onPressed: () => _toggleSkillCompletion(skill),
               style: ElevatedButton.styleFrom(
-                backgroundColor: skill.isCompleted ? AppColors.warning : AppColors.primaryBlue,
+                backgroundColor: skill.isCompleted
+                    ? AppColors.warning
+                    : AppColors.primaryBlue,
                 minimumSize: const Size(90, 32),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
               ),
               child: Text(
                 skill.isCompleted ? 'Undo' : 'Mark Done',
@@ -379,7 +391,8 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
       builder: (context) {
         final isCompleting = !skill.isCompleted;
         final title = isCompleting ? 'Mark Skill Complete' : 'Undo Completion';
-        final actionLabel = isCompleting ? 'Mark Complete' : 'Set to In Progress';
+        final actionLabel =
+            isCompleting ? 'Mark Complete' : 'Set to In Progress';
         final message = isCompleting
             ? 'Are you sure you want to mark "${skill.name}" as complete?'
             : 'Set "${skill.name}" back to in progress?';
@@ -404,7 +417,8 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
     await _persistSkillCompletion(skill, complete: !skill.isCompleted);
   }
 
-  Future<void> _persistSkillCompletion(DrivingSkill skill, {required bool complete}) async {
+  Future<void> _persistSkillCompletion(DrivingSkill skill,
+      {required bool complete}) async {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -510,17 +524,33 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
   }
 
   void _showProgressAnalytics() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Progress Analytics'),
-        content: const Text('Detailed analytics will be available soon!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+    final milestones = _skills
+        .where((skill) => skill.isCompleted && skill.completedDate != null)
+        .map(
+          (skill) => ProgressMilestone(
+            title: skill.name,
+            description: skill.description,
+            completedAt: skill.completedDate!,
           ),
-        ],
+        )
+        .toList();
+
+    if (milestones.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Complete a skill to unlock analytics.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ProgressChartScreen(
+          milestones: milestones,
+          totalSkills: _skills.length,
+        ),
       ),
     );
   }
