@@ -91,3 +91,6 @@ app.*.map.json
 
 # Supabase
 .supabase/
+
+# Large archives
+flutter_macos_*.zip
