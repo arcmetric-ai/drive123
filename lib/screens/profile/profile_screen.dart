@@ -9,6 +9,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../models/user_model.dart';
+import '../instructor/instructor_bookings_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -29,8 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isVerified = false;
   bool _isLoading = false;
   bool _isUploadingImage = false;
-  bool _notificationsEnabled = true;
-  bool _locationEnabled = true;
+  bool _openingPreview = false;
   String? _licenceNumber;
   DateTime? _licenceExpiry;
   String? _learnerCity;
@@ -44,10 +44,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<String> _instructorLanguages = [];
   List<String> _instructorOfferings = [];
   List<String> _instructorVehicles = [];
-  List<String> _instructorAreas = [];
+  int? _instructorYearsExperience;
+  bool? _instructorPickupPreference;
   List<String> _learnerLocations = [];
   List<String> _instructorLocations = [];
-  String? _instructorLocationNotes;
+  Map<String, List<String>> _learnerWeeklyAvailability = {};
+  bool _learnerAvailabilityRecurring = true;
+  bool _openingAvailability = false;
 
   @override
   void initState() {
@@ -67,287 +70,343 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.grey100,
+      extendBodyBehindAppBar: false,
       appBar: AppBar(
         title: const Text('Profile'),
+        backgroundColor: AppColors.grey100,
+        foregroundColor: AppColors.primaryBlue,
+        elevation: 0,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  _buildProfileHeader(),
-                  const SizedBox(height: 24),
-                  _buildPersonalInfoSection(),
-                  const SizedBox(height: 24),
-                  _buildSettingsSection(),
-                  const SizedBox(height: 24),
-                  if (_roleLabel == 'Learner')
-                    _buildLearnerDetailsSection()
-                  else
-                    _buildInstructorDetailsSection(),
-                  const SizedBox(height: 24),
-                  _buildAccountActionsSection(),
-                  const SizedBox(height: 32),
-                ],
+          : SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                child: Column(
+                  children: [
+                    _buildProfileHeader(),
+                    const SizedBox(height: 18),
+                    _buildPersonalInfoSection(),
+                    const SizedBox(height: 18),
+                    if (_roleLabel == 'Learner')
+                      _buildLearnerDetailsSection()
+                    else
+                      _buildInstructorDetailsSection(),
+                    const SizedBox(height: 18),
+                    _buildAccountActionsSection(),
+                  ],
+                ),
               ),
             ),
     );
   }
 
+  Widget _profileCard({
+    required Widget child,
+    EdgeInsets padding = const EdgeInsets.all(22),
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
   Widget _buildProfileHeader() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: _pickProfileImage,
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
-                    backgroundImage: _avatarImage,
-                    child: _avatarImage == null
-                        ? Text(
-                            _initials,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primaryBlue,
-                            ),
-                          )
-                        : null,
-                  ),
-                  if (_isUploadingImage)
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.35),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(18.0),
-                          child: CircularProgressIndicator(strokeWidth: 3),
-                        ),
+    return _profileCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: _pickProfileImage,
+            child: Stack(
+              children: [
+                CircleAvatar(
+                  radius: 52,
+                  backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
+                  backgroundImage: _avatarImage,
+                  child: _avatarImage == null
+                      ? Text(
+                          _initials,
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryBlue,
+                          ),
+                        )
+                      : null,
+                ),
+                if (_isUploadingImage)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.35),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.all(18.0),
+                        child: CircularProgressIndicator(strokeWidth: 3),
                       ),
                     ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryBlue,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: const Icon(
-                        Icons.camera_alt,
-                        color: Colors.white,
-                        size: 16,
-                      ),
+                  ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            _displayName,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primaryBlue,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _roleLabel,
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.black.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (_isVerified)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF2EE5A3),
+                    Color(0xFF15C68A),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF15C68A).withOpacity(0.25),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(
+                    Icons.verified_rounded,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Verified',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.25,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              _displayName,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _roleLabel,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_isVerified)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Verified',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.success,
-                  ),
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
 
   Widget _buildPersonalInfoSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Personal Information',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
-              ),
+    return _profileCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Personal Information',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primaryBlue,
             ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.person_outline,
-              label: 'Name',
-              value: _displayName,
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.email_outlined,
-              label: 'Email',
-              value: _emailController.text.isNotEmpty
-                  ? _emailController.text
-                  : (SupabaseService.currentUser?.email ?? 'Not provided'),
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.phone_outlined,
-              label: 'Phone',
-              value: _phoneController.text.trim().isEmpty
-                  ? 'Not provided'
-                  : _phoneController.text.trim(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingsSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Permissions',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildSwitchTile(
-              icon: Icons.notifications_outlined,
-              title: 'Notifications',
-              subtitle: 'Receive lesson reminders and updates',
-              value: _notificationsEnabled,
-              onChanged: (value) =>
-                  setState(() => _notificationsEnabled = value),
-            ),
-            const Divider(),
-            _buildSwitchTile(
-              icon: Icons.location_on_outlined,
-              title: 'Location Services',
-              subtitle: 'Allow location access for nearby instructors',
-              value: _locationEnabled,
-              onChanged: (value) => setState(() => _locationEnabled = value),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 14),
+          _buildInfoRow(
+            icon: Icons.person_outline,
+            label: 'Name',
+            value: _displayName,
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.email_outlined,
+            label: 'Email',
+            value: _emailController.text.isNotEmpty
+                ? _emailController.text
+                : (SupabaseService.currentUser?.email ?? 'Not provided'),
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.phone_outlined,
+            label: 'Phone',
+            value: _phoneController.text.trim().isEmpty
+                ? 'Not provided'
+                : _phoneController.text.trim(),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildAccountActionsSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Account',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
+    final isInstructor = _roleLabel.toLowerCase() == 'instructor';
+    return _profileCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Account',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primaryBlue,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _openingPreview ? null : _openPublicProfilePreview,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              icon: _openingPreview
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.visibility_outlined),
+              label: Text(
+                _openingPreview
+                    ? 'Opening preview...'
+                    : (isInstructor
+                        ? 'Preview Public Instructor Profile'
+                        : 'Preview Public Profile'),
               ),
             ),
-            const SizedBox(height: 16),
-            _buildActionTile(
-              icon: Icons.edit_outlined,
-              title: 'Edit Profile',
-              subtitle: 'Update licence, questionnaire, and preferences',
-              onTap: _openEditProfile,
-            ),
-            const Divider(),
-            _buildActionTile(
-              icon: Icons.history,
-              title: 'Lesson History',
-              subtitle: 'View all your past lessons',
-              onTap: () => context.push(AppRoutes.myLessons),
-            ),
-            const Divider(),
-            _buildActionTile(
-              icon: Icons.help_outline,
-              title: 'Help & Support',
-              subtitle: 'Get help or contact support',
-              onTap: () => context.push(AppRoutes.helpSupport),
-            ),
-            const Divider(),
-            _buildActionTile(
-              icon: Icons.info_outline,
-              title: 'About',
-              subtitle: 'App version and information',
-              onTap: _showAboutDialog,
-            ),
-            const Divider(),
-            _buildActionTile(
-              icon: Icons.logout,
-              title: 'Sign Out',
-              subtitle: 'Sign out of your account',
-              onTap: _signOut,
-              textColor: AppColors.error,
+          ),
+          if (_roleLabel.toLowerCase() == 'learner') ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed:
+                    _openingAvailability ? null : _openLearnerAvailabilityEditor,
+                icon: _openingAvailability
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.schedule_outlined),
+                label: Text(
+                  _openingAvailability
+                      ? 'Loading availability...'
+                      : 'Update Weekly Availability',
+                ),
+              ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSwitchTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.primaryBlue),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeColor: AppColors.primaryBlue,
+          const SizedBox(height: 12),
+          _buildActionTile(
+            icon: Icons.edit_outlined,
+            title: 'Edit Profile',
+            subtitle: 'Update licence, questionnaire, and preferences',
+            onTap: _openEditProfile,
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.history,
+            title: isInstructor ? 'Bookings History' : 'Lesson History',
+            subtitle: isInstructor
+                ? 'Review all previous bookings'
+                : 'View all your past lessons',
+            onTap: isInstructor
+                ? () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const InstructorBookingsHistoryScreen(),
+                      ),
+                    )
+                : () => context.push(AppRoutes.myLessons),
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.lock_reset_outlined,
+            title: 'Update Password',
+            subtitle: 'Keep your account secure',
+            onTap: _showUpdatePasswordSheet,
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.help_outline,
+            title: 'Help & Support',
+            subtitle: 'Get help or contact support',
+            onTap: () => context.push(AppRoutes.helpSupport),
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.info_outline,
+            title: 'About',
+            subtitle: 'App version and information',
+            onTap: _showAboutDialog,
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.logout,
+            title: 'Sign Out',
+            subtitle: 'Sign out of your account',
+            onTap: _signOut,
+            textColor: AppColors.error,
+          ),
+        ],
       ),
     );
   }
@@ -370,6 +429,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       onTap: onTap,
     );
   }
+
+  Widget _buildActionDivider() => const Divider(
+        height: 20,
+        color: Color(0xFFE6ECF7),
+      );
 
   Widget _buildInfoRow({
     required IconData icon,
@@ -418,81 +482,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
       licenceParts.add('Expiry: ${dateFormatter.format(_licenceExpiry!)}');
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Learner Details',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
-              ),
+    return _profileCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Learner Details',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primaryBlue,
             ),
-            const SizedBox(height: 12),
+          ),
+          const SizedBox(height: 14),
+          _buildInfoRow(
+            icon: Icons.credit_card,
+            label: 'G1 Licence',
+            value:
+                licenceParts.isEmpty ? 'Not provided' : licenceParts.join(' - '),
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.location_on_outlined,
+            label: 'City',
+            value: _learnerCity ?? 'Not provided',
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.meeting_room_outlined,
+            label: 'Preferred Locations',
+            value: _learnerLocations.isNotEmpty
+                ? _learnerLocations.join(', ')
+                : 'Not provided',
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.access_time,
+            label: 'Weekly Availability',
+            value: _formatWeeklyAvailabilitySummary(),
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.cake_outlined,
+            label: 'Age',
+            value: _learnerAge != null ? '$_learnerAge years' : 'Not provided',
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.person_outline,
+            label: 'Gender',
+            value: _learnerGender ?? 'Not provided',
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.school_outlined,
+            label: 'Lesson Progress',
+            value: _learnerClassesTaken != null
+                ? '${_learnerClassesTaken} classes completed'
+                : 'No lessons recorded yet',
+          ),
+          if (_learnerLastClassDate != null) ...[
+            const SizedBox(height: 16),
             _buildInfoRow(
-              icon: Icons.credit_card,
-              label: 'G1 Licence',
-              value: licenceParts.isEmpty
-                  ? 'Not provided'
-                  : licenceParts.join(' • '),
+              icon: Icons.event_available_outlined,
+              label: 'Last Class',
+              value: dateFormatter.format(_learnerLastClassDate!),
             ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.location_on_outlined,
-              label: 'City',
-              value: _learnerCity ?? 'Not provided',
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.meeting_room_outlined,
-              label: 'Preferred Locations',
-              value: _learnerLocations.isNotEmpty
-                  ? _learnerLocations.join(', ')
-                  : 'Not provided',
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.cake_outlined,
-              label: 'Age',
-              value:
-                  _learnerAge != null ? '$_learnerAge years' : 'Not provided',
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.person_outline,
-              label: 'Gender',
-              value: _learnerGender ?? 'Not provided',
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.school_outlined,
-              label: 'Lesson Progress',
-              value: _learnerClassesTaken != null
-                  ? '${_learnerClassesTaken} classes completed'
-                  : 'No lessons recorded yet',
-            ),
-            if (_learnerLastClassDate != null) ...[
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                icon: Icons.event_available_outlined,
-                label: 'Last Class',
-                value: dateFormatter.format(_learnerLastClassDate!),
-              ),
-            ],
-            if (_learnerTestDate != null) ...[
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                icon: Icons.assignment_outlined,
-                label: 'G1 Test Date',
-                value: dateFormatter.format(_learnerTestDate!),
-              ),
-            ],
           ],
-        ),
+          if (_learnerTestDate != null) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              icon: Icons.assignment_outlined,
+              label: 'G1 Test Date',
+              value: dateFormatter.format(_learnerTestDate!),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -507,93 +572,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
       licenceParts.add('Expiry: ${dateFormatter.format(_licenceExpiry!)}');
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Instructor Details',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
-              ),
+    return _profileCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Instructor Details',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primaryBlue,
             ),
-            const SizedBox(height: 12),
+          ),
+          const SizedBox(height: 14),
+          _buildInfoRow(
+            icon: Icons.badge_outlined,
+            label: 'Instructor Licence',
+            value:
+                licenceParts.isEmpty ? 'Not provided' : licenceParts.join(' - '),
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.map_outlined,
+            label: 'Service Area',
+            value: _instructorServiceArea ?? 'Not provided',
+          ),
+          if (_instructorYearsExperience != null) ...[
+            const SizedBox(height: 16),
             _buildInfoRow(
-              icon: Icons.badge_outlined,
-              label: 'Instructor Licence',
-              value: licenceParts.isEmpty
-                  ? 'Not provided'
-                  : licenceParts.join(' • '),
+              icon: Icons.timeline_outlined,
+              label: 'Years of Experience',
+              value: _instructorYearsExperience == 1
+                  ? '1 year'
+                  : '${_instructorYearsExperience} years',
             ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.map_outlined,
-              label: 'Service Area',
-              value: _instructorServiceArea ?? 'Not provided',
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              icon: Icons.description_outlined,
-              label: 'Bio',
-              value: _instructorBio != null && _instructorBio!.isNotEmpty
-                  ? _instructorBio!
-                  : 'Share your experience so learners know what to expect.',
-            ),
-            if (_instructorOfferings.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                icon: Icons.local_play_outlined,
-                label: 'Offerings',
-                value: _instructorOfferings.join(', '),
-              ),
-            ],
-            if (_instructorLanguages.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                icon: Icons.language_outlined,
-                label: 'Languages',
-                value: _instructorLanguages.join(', '),
-              ),
-            ],
-            if (_instructorLocations.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                icon: Icons.meeting_room_outlined,
-                label: 'Preferred Lesson Locations',
-                value: _instructorLocations.join(', '),
-              ),
-            ],
-            if (_instructorLocationNotes != null &&
-                _instructorLocationNotes!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                icon: Icons.note_alt_outlined,
-                label: 'Location Notes',
-                value: _instructorLocationNotes!,
-              ),
-            ],
-            if (_instructorVehicles.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                icon: Icons.directions_car_filled_outlined,
-                label: 'Vehicles',
-                value: _instructorVehicles.join('\n'),
-              ),
-            ],
-            if (_instructorAreas.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                icon: Icons.location_city_outlined,
-                label: 'Areas of Operation',
-                value: _instructorAreas.join('\n'),
-              ),
-            ],
           ],
-        ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            icon: Icons.description_outlined,
+            label: 'Bio',
+            value: _instructorBio != null && _instructorBio!.isNotEmpty
+                ? _instructorBio!
+                : 'Share your experience so learners know what to expect.',
+          ),
+          if (_instructorOfferings.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              icon: Icons.local_play_outlined,
+              label: 'Offerings',
+              value: _instructorOfferings.join(', '),
+            ),
+          ],
+          if (_instructorLanguages.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              icon: Icons.language_outlined,
+              label: 'Languages',
+              value: _instructorLanguages.join(', '),
+            ),
+          ],
+          if (_instructorPickupPreference != null) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              icon: Icons.directions_car_outlined,
+              label: 'Learner Pickup',
+              value: _instructorPickupPreference! ? 'Offered' : 'Not offered',
+            ),
+          ],
+          if (_instructorLocations.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              icon: Icons.meeting_room_outlined,
+              label: 'Preferred Lesson Locations',
+              value: _instructorLocations.join(', '),
+            ),
+          ],
+          if (_instructorVehicles.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              icon: Icons.directions_car_filled_outlined,
+              label: 'Vehicles',
+              value: _instructorVehicles.join('\n'),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -618,7 +680,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _instructorLanguages = [];
     _instructorOfferings = [];
     _instructorVehicles = [];
-    _instructorAreas = [];
+    _instructorYearsExperience = null;
+    _instructorPickupPreference = null;
 
     try {
       final UserModel? profile = await SupabaseService.getUserProfile(user.id);
@@ -639,8 +702,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       } else {
         _emailController.text = user.email ?? '';
-        _roleLabel = _formatRole(user.userMetadata?['role'] as String?);
-        final fallbackRole = user.userMetadata?['role'] as String?;
+        _roleLabel = _formatRole(_asString(user.userMetadata?['role']));
+        final fallbackRole = _asString(user.userMetadata?['role']);
         if (fallbackRole == 'learner') {
           await _populateLearnerDetails(user.id);
         } else if (fallbackRole == 'instructor') {
@@ -667,28 +730,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final detail = await SupabaseService.getLearnerProfileDetail(userId);
       if (!mounted || detail == null) return;
 
+      final profileMap = detail['profile'] is Map
+          ? Map<String, dynamic>.from(detail['profile'] as Map)
+          : <String, dynamic>{};
       setState(() {
-        _licenceNumber = detail['licence_number'] as String?;
-        final expiry = detail['licence_expiry'] as String?;
+        _licenceNumber = _asString(profileMap['licence_number']);
+        final expiry = _asString(profileMap['licence_expiry']);
         _licenceExpiry = expiry != null ? DateTime.tryParse(expiry) : null;
-        _learnerCity = detail['city'] as String?;
-        final age = detail['age'];
+        _learnerCity = _asString(profileMap['city']);
+        final age = profileMap['age'];
         if (age is int) {
           _learnerAge = age;
         } else if (age is String) {
           _learnerAge = int.tryParse(age);
         }
-        _learnerGender = detail['gender'] as String?;
-        final classesTaken = detail['classes_taken_total'];
+        _learnerGender = _asString(profileMap['gender']);
+        final classesTaken = detail['classes_taken_sofar'];
         if (classesTaken is int) {
           _learnerClassesTaken = classesTaken;
         } else if (classesTaken is String) {
           _learnerClassesTaken = int.tryParse(classesTaken);
         }
-        final lastClass = detail['last_class_date'] as String?;
+        final lastClass = _asString(detail['last_class_date']);
         _learnerLastClassDate =
             lastClass != null ? DateTime.tryParse(lastClass) : null;
-        final testDate = detail['g1_test_date'] as String?;
+        final testDate = _asString(detail['target_test_date']);
         _learnerTestDate =
             testDate != null ? DateTime.tryParse(testDate) : null;
         final locations = detail['preferred_locations'];
@@ -696,13 +762,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (locations is List) {
           for (final entry in locations) {
             if (entry is Map) {
-              final label = (entry['label'] as String?)?.trim();
-              final address = (entry['address'] as String?)?.trim();
+              final label = _asString(entry['label'])?.trim();
+              final address = _asString(entry['address'])?.trim();
               if ((label?.isNotEmpty ?? false) ||
                   (address?.isNotEmpty ?? false)) {
                 final title = (label != null && label.isNotEmpty)
                     ? label
-                    : (entry['type'] as String? ?? 'Location');
+                    : (_asString(entry['type']) ?? 'Location');
                 final combined = address != null && address.isNotEmpty
                     ? '$title: $address'
                     : title ?? 'Location';
@@ -713,6 +779,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
         }
+        _learnerWeeklyAvailability =
+            _parseWeeklyAvailability(detail['weekly_availability']);
+        _learnerAvailabilityRecurring =
+            detail['availability_recurring'] == true;
       });
     } catch (e) {
       // ignore but log? for now just print
@@ -725,6 +795,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final detail = await SupabaseService.getInstructorProfileDetail(userId);
       if (!mounted || detail == null) return;
 
+      final profileMap = detail['profile'] is Map
+          ? Map<String, dynamic>.from(detail['profile'] as Map)
+          : <String, dynamic>{};
       final vehicles = <String>[];
       final areas = <String>[];
       final offerings = <String>[];
@@ -734,11 +807,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (rawVehicles is List) {
         for (final entry in rawVehicles) {
           if (entry is Map) {
-            final type = (entry['type'] as String? ?? '').trim();
-            final year = (entry['year'] as String? ?? '').trim();
-            final make = (entry['make'] as String? ?? '').trim();
-            final model = (entry['model'] as String? ?? '').trim();
-            final plate = (entry['numberPlate'] as String? ?? '').trim();
+            final type = (_asString(entry['type']) ?? '').trim();
+            final year = (_asString(entry['year']) ?? '').trim();
+            final make = (_asString(entry['make']) ?? '').trim();
+            final model = (_asString(entry['model']) ?? '').trim();
+            final plate = (_asString(entry['numberPlate']) ?? '').trim();
 
             final makeModelParts = <String>[];
             if (year.isNotEmpty) makeModelParts.add(year);
@@ -751,7 +824,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (makeModel.isNotEmpty) segments.add(makeModel);
             if (plate.isNotEmpty) segments.add('Plate: $plate');
 
-            final label = segments.join(' • ');
+            final label = segments.join(' - ');
             if (label.isNotEmpty) {
               vehicles.add(label);
             }
@@ -761,12 +834,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
 
-      final rawAreas = detail['areas_of_operation'];
+      final rawAreas = detail['preferred_locations'];
       if (rawAreas is List) {
         for (final entry in rawAreas) {
           if (entry is Map) {
-            final city = entry['city'] as String?;
-            final radius = entry['radiusKm'];
+            final city = _asString(entry['city']);
+            final radius = entry['radiusKm'] ?? entry['radius_km'];
             double? parsedRadius;
             if (radius is num) {
               parsedRadius = radius.toDouble();
@@ -774,7 +847,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               parsedRadius = double.tryParse(radius);
             }
             if (city != null && parsedRadius != null) {
-              areas.add('$city • ${parsedRadius.toStringAsFixed(1)} km');
+              areas.add('$city - ${parsedRadius.toStringAsFixed(1)} km');
             }
           }
         }
@@ -785,34 +858,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
         offerings.addAll(rawOfferings.whereType<String>());
       }
 
-      final rawLanguages = detail['languages'];
+      final rawLanguages = profileMap['languages'];
       if (rawLanguages is List) {
-        languages.addAll(rawLanguages.whereType<String>());
+        languages.addAll(
+          rawLanguages
+              .whereType<String>()
+              .map(_titleCase)
+              .where((value) => value.isNotEmpty),
+        );
       }
 
-      final expiry = detail['licence_expiry'] as String?;
+      final rawYears = detail['years_of_experience'];
+      int? yearsExperience;
+      if (rawYears is num) {
+        yearsExperience = rawYears.toInt();
+      } else if (rawYears is String) {
+        yearsExperience = int.tryParse(rawYears);
+      }
+
+      final rawPickup = detail['pickup_preference'];
+      bool? pickupPreference;
+      if (rawPickup is bool) {
+        pickupPreference = rawPickup;
+      } else if (rawPickup is String) {
+        final normalized = rawPickup.toLowerCase();
+        if (normalized == 'true' || normalized == '1') {
+          pickupPreference = true;
+        } else if (normalized == 'false' || normalized == '0') {
+          pickupPreference = false;
+        }
+      }
+
+      final expiry = _asString(profileMap['licence_expiry']);
+      final profileCity = _asString(profileMap['city']);
 
       setState(() {
-        _licenceNumber = detail['licence_number'] as String?;
+        _instructorYearsExperience = yearsExperience;
+        _instructorPickupPreference = pickupPreference;
+        _licenceNumber = _asString(profileMap['licence_number']);
         _licenceExpiry = expiry != null ? DateTime.tryParse(expiry) : null;
-        _instructorServiceArea = detail['service_area'] as String?;
-        _instructorBio = detail['bio'] as String?;
+        _instructorServiceArea =
+            profileCity ?? (areas.isNotEmpty ? areas.first : null);
+        _instructorBio = _asString(detail['bio']);
         _instructorLanguages = languages;
         _instructorOfferings = offerings;
         _instructorVehicles = vehicles;
-        _instructorAreas = areas;
         final locations = detail['preferred_locations'];
         _instructorLocations = [];
         if (locations is List) {
           for (final entry in locations) {
             if (entry is Map) {
-              final label = (entry['label'] as String?)?.trim();
-              final address = (entry['address'] as String?)?.trim();
+              final label = _asString(entry['label'])?.trim();
+              final address = _asString(entry['address'])?.trim();
               if ((label?.isNotEmpty ?? false) ||
                   (address?.isNotEmpty ?? false)) {
                 final title = (label != null && label.isNotEmpty)
                     ? label
-                    : (entry['type'] as String? ?? 'Location');
+                    : (_asString(entry['type']) ?? 'Location');
                 final combined = address != null && address.isNotEmpty
                     ? '$title: $address'
                     : title;
@@ -823,21 +925,488 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
         }
-        final locationNotes = detail['preferred_location_notes'];
-        _instructorLocationNotes =
-            locationNotes is String && locationNotes.isNotEmpty
-                ? locationNotes
-                : null;
       });
     } catch (e) {
       debugPrint('Error loading instructor details: $e');
     }
   }
 
+  Future<void> _openPublicProfilePreview() async {
+    final user = SupabaseService.currentUser;
+    if (user == null || _openingPreview) return;
+    setState(() => _openingPreview = true);
+    try {
+      final role = _roleLabel.toLowerCase();
+      if (role == 'instructor') {
+        final rawProfile = await SupabaseService.getRawProfile(user.id);
+        final detail =
+            await SupabaseService.getInstructorProfileDetail(user.id);
+        if (!mounted) return;
+        final payload = _buildInstructorPreviewPayload(
+          rawProfile is Map<String, dynamic>
+              ? Map<String, dynamic>.from(rawProfile)
+              : null,
+          detail is Map<String, dynamic>
+              ? Map<String, dynamic>.from(detail)
+              : null,
+        );
+        await context.push(
+          AppRoutes.instructorProfilePreview,
+          extra: payload,
+        );
+      } else {
+        await context.push(
+          AppRoutes.instructorLearnerDetail,
+          extra: {
+            'profile_id': user.id,
+            'status': 'public_preview',
+          },
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to open preview: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _openingPreview = false);
+      }
+    }
+  }
+
+  Future<void> _openLearnerAvailabilityEditor() async {
+    final user = SupabaseService.currentUser;
+    if (user == null || _openingAvailability) return;
+    setState(() => _openingAvailability = true);
+    try {
+      final result =
+          await context.push<bool>(AppRoutes.editLearnerAvailability);
+      if (result == true) {
+        await _loadProfile();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to open availability editor: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _openingAvailability = false);
+      }
+    }
+  }
+
+  Map<String, dynamic> _buildInstructorPreviewPayload(
+    Map<String, dynamic>? profile,
+    Map<String, dynamic>? detail,
+  ) {
+    final profileMap = profile ?? <String, dynamic>{};
+    final detailMap = detail ?? <String, dynamic>{};
+
+    String? clean(dynamic value) => _asString(value)?.trim();
+
+    String? firstVehiclePhoto(dynamic rawVehicles) {
+      if (rawVehicles is List) {
+        for (final entry in rawVehicles) {
+          if (entry is Map) {
+            final url = clean(entry['photoUrl']) ??
+                clean(entry['photo_url']) ??
+                clean(entry['imageUrl']) ??
+                clean(entry['image_url']);
+            if (url != null && url.isNotEmpty) return url;
+          }
+        }
+      }
+      return null;
+    }
+
+    String combineName() {
+      final first =
+          clean(profileMap['first_name']) ?? _firstNameController.text.trim();
+      final last =
+          clean(profileMap['last_name']) ?? _lastNameController.text.trim();
+      final parts =
+          [first, last].where((value) => value != null && value.isNotEmpty);
+      final name = parts.join(' ').trim();
+      if (name.isNotEmpty) return name;
+      return _displayName;
+    }
+
+    List<String> summarizeVehicles(dynamic raw) {
+      final vehicles = <String>[];
+      if (raw is List) {
+        for (final entry in raw) {
+          if (entry is Map) {
+            final type = clean(entry['type']);
+            final year = clean(entry['year']);
+            final make = clean(entry['make']);
+            final model = clean(entry['model']);
+            final plate = clean(entry['numberPlate']);
+            final makeModelParts = <String>[];
+            if (year != null && year.isNotEmpty) makeModelParts.add(year);
+            if (make != null && make.isNotEmpty) makeModelParts.add(make);
+            if (model != null && model.isNotEmpty) makeModelParts.add(model);
+            final makeModel = makeModelParts.join(' ').trim();
+            final segments = <String>[];
+            if (type != null && type.isNotEmpty) segments.add(type);
+            if (makeModel.isNotEmpty) segments.add(makeModel);
+            if (plate != null && plate.isNotEmpty)
+              segments.add('Plate: $plate');
+            final summary = segments.join(' - ').trim();
+            if (summary.isNotEmpty) {
+              vehicles.add(summary);
+            }
+          } else if (entry is String && entry.trim().isNotEmpty) {
+            vehicles.add(entry.trim());
+          }
+        }
+      }
+      if (vehicles.isEmpty) {
+        vehicles.addAll(_instructorVehicles);
+      }
+      return vehicles;
+    }
+
+    List<String> composePreferredLocations(dynamic raw) {
+      final locations = <String>[];
+      if (raw is List) {
+        for (final entry in raw) {
+          if (entry is Map) {
+            final label = clean(entry['label']);
+            final address = clean(entry['address']);
+            final type = clean(entry['type']);
+            String? combined;
+            if (label != null && address != null) {
+              combined = '$label - $address';
+            } else if (address != null) {
+              combined = address;
+            } else if (label != null) {
+              combined = label;
+            } else if (type != null) {
+              combined = type;
+            }
+            if (combined != null && combined.isNotEmpty) {
+              locations.add(combined);
+            }
+          } else if (entry is String && entry.trim().isNotEmpty) {
+            locations.add(entry.trim());
+          }
+        }
+      }
+      if (locations.isEmpty) {
+        locations.addAll(_instructorLocations);
+      }
+      return locations;
+    }
+
+    List<String> composeAreas(dynamic raw) {
+      final areas = <String>[];
+      if (raw is List) {
+        for (final entry in raw) {
+          if (entry is Map) {
+            final areaName = clean(entry['area']) ?? clean(entry['areaName']);
+            final city = clean(entry['city']);
+            final radius = entry['radiusKm'] ?? entry['radius_km'];
+            double? radiusValue;
+            if (radius is num) {
+              radiusValue = radius.toDouble();
+            } else if (radius is String) {
+              radiusValue = double.tryParse(radius);
+            }
+            final parts = <String>[];
+            if (areaName != null && areaName.isNotEmpty) {
+              parts.add(areaName);
+            }
+            if (city != null && city.isNotEmpty) {
+              parts.add(city);
+            }
+            if (radiusValue != null) {
+              parts.add(
+                  '${radiusValue.toStringAsFixed(radiusValue == radiusValue.roundToDouble() ? 0 : 1)} km radius');
+            }
+            final label = parts.join(' - ').trim();
+            if (label.isNotEmpty) {
+              areas.add(label);
+            }
+          }
+        }
+      }
+      return areas;
+    }
+
+    Map<String, String> composeOfferingRates(dynamic raw) {
+      final rates = <String, String>{};
+      if (raw is Map) {
+        raw.forEach((key, value) {
+          final label = key.toString();
+          if (value is num) {
+            rates[label] = '\$${value.toDouble().toStringAsFixed(0)}/hr';
+          } else if (value is String && value.trim().isNotEmpty) {
+            rates[label] = value.trim();
+          }
+        });
+      }
+      return rates;
+    }
+
+    String composeRatesLabel(
+        dynamic defaultRateRaw, Map<String, String> rates) {
+      if (defaultRateRaw is num && defaultRateRaw > 0) {
+        return 'Standard lesson: \$${defaultRateRaw.toDouble().toStringAsFixed(0)}/hr';
+      }
+      if (rates.isNotEmpty) {
+        final first = rates.entries.first;
+        return '${first.key}: ${first.value}';
+      }
+      return 'Add your rates';
+    }
+
+    final vehicles = summarizeVehicles(detailMap['vehicles']);
+    final preferredLocations =
+        composePreferredLocations(detailMap['preferred_locations']);
+    final areas = composeAreas(detailMap['areas_of_operation']);
+    final offeringRates = composeOfferingRates(detailMap['offering_rates']);
+    final languages = (profileMap['languages'] is List
+            ? (profileMap['languages'] as List)
+                .whereType<String>()
+                .map(_titleCase)
+                .where((value) => value.isNotEmpty)
+                .toList()
+            : _instructorLanguages)
+        .toList();
+    final offerings = detailMap['offerings'] is List
+        ? List<String>.from(
+            (detailMap['offerings'] as List).whereType<String>())
+        : _instructorOfferings;
+    final focus = detailMap['levels_offered'] is List
+        ? List<String>.from(
+            (detailMap['levels_offered'] as List).whereType<String>())
+        : offerings;
+    final defaultRate = detailMap['default_rate'];
+    final ratesLabel = composeRatesLabel(defaultRate, offeringRates);
+
+    final vehiclePhotoUrl = clean(detailMap['vehicle_photo_url']) ??
+        clean(detailMap['vehiclePhotoUrl']) ??
+        clean(profileMap['vehicle_photo_url']) ??
+        firstVehiclePhoto(detailMap['vehicles']) ??
+        firstVehiclePhoto(profileMap['vehicles']) ??
+        '';
+    final bio = _instructorBio ?? clean(detailMap['bio']) ?? '';
+    final serviceArea = _instructorServiceArea ??
+        clean(detailMap['service_area']) ??
+        clean(profileMap['city']) ??
+        '';
+    final serviceAreaArea = clean(detailMap['service_area_area']);
+    final serviceAreaCity = clean(detailMap['service_area_city']);
+
+    final name = combineName();
+    final email = _emailController.text.trim().isNotEmpty
+        ? _emailController.text.trim()
+        : clean(profileMap['email']) ?? '';
+    final phone = _phoneController.text.trim().isNotEmpty
+        ? _phoneController.text.trim()
+        : clean(profileMap['phone']) ?? '';
+
+    return {
+      'id': profileMap['id'] ?? SupabaseService.currentUser?.id,
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'bio': bio,
+      'profileImageUrl':
+          _profileImageUrl ?? clean(profileMap['profile_image_url']) ?? '',
+      'vehiclePhotoUrl': vehiclePhotoUrl,
+      'detail': detailMap,
+      'serviceArea': serviceArea,
+      'serviceAreaArea': serviceAreaArea,
+      'serviceAreaCity': serviceAreaCity,
+      'car': vehicles.isNotEmpty ? vehicles.first : '',
+      'vehicles': vehicles,
+      'areas': areas,
+      'languages': languages,
+      'offerings': offerings,
+      'offeringRates': offeringRates,
+      'focus': focus,
+      'rates': ratesLabel,
+      'preferredLocations': preferredLocations,
+      'pickupPreference': _instructorPickupPreference,
+      'yearsOfExperience': _instructorYearsExperience,
+      'isVerified': _isVerified,
+      'licenseNumber': _licenceNumber ?? clean(profileMap['licence_number']),
+      'licenseExpiry': _licenceExpiry?.toIso8601String() ??
+          clean(profileMap['licence_expiry']),
+      'age': clean(profileMap['age']) ?? '',
+      'gender': clean(profileMap['gender']) ?? '',
+    };
+  }
+
   Future<void> _openEditProfile() async {
     final result = await context.push<bool>(AppRoutes.editProfile);
     if (result == true) {
       await _loadProfile();
+    }
+  }
+
+  Future<void> _showUpdatePasswordSheet() async {
+    final formKey = GlobalKey<FormState>();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool isSubmitting = false;
+    String? error;
+
+    final success = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final viewInsets = MediaQuery.of(context).viewInsets;
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  top: 24,
+                  bottom: 24 + viewInsets.bottom,
+                ),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Update password',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: newPasswordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'New password',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a new password';
+                          }
+                          if (value.trim().length < 8) {
+                            return 'Password must be at least 8 characters';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: confirmPasswordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm password',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Confirm your new password';
+                          }
+                          if (value.trim() !=
+                              newPasswordController.text.trim()) {
+                            return 'Passwords do not match';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          error!,
+                          style: const TextStyle(color: AppColors.error),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  if (!formKey.currentState!.validate()) {
+                                    return;
+                                  }
+                                  setModalState(() {
+                                    isSubmitting = true;
+                                    error = null;
+                                  });
+                                  try {
+                                    await SupabaseService.updatePassword(
+                                      newPasswordController.text.trim(),
+                                    );
+                                    if (context.mounted) {
+                                      Navigator.of(context).pop(true);
+                                    }
+                                  } catch (e) {
+                                    setModalState(() {
+                                      isSubmitting = false;
+                                      error = e.toString();
+                                    });
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Update password'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton(
+                          onPressed: isSubmitting
+                              ? null
+                              : () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
+
+    if (success == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password updated successfully.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
     }
   }
 
@@ -912,10 +1481,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context);
+              // Capture the State's context (not the dialog's) to use after async gaps.
+              final stateContext = this.context;
+              Navigator.pop(stateContext);
               await SupabaseService.signOut();
               if (!mounted) return;
-              context.go(AppRoutes.roleSelection);
+              stateContext.go(AppRoutes.roleSelection);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Sign Out'),
@@ -961,6 +1532,109 @@ class _ProfileScreenState extends State<ProfileScreen> {
         (first.isNotEmpty ? first[0] : '') + (last.isNotEmpty ? last[0] : '');
     if (initials.isEmpty) return 'DT';
     return initials.toUpperCase();
+  }
+
+  String _formatWeeklyAvailabilitySummary() {
+    if (_learnerWeeklyAvailability.isEmpty) {
+      return 'Not provided';
+    }
+    final entries = _learnerWeeklyAvailability.entries.toList()
+      ..sort(
+        (a, b) => _weekdayOrder(a.key).compareTo(_weekdayOrder(b.key)),
+      );
+    final lines = <String>[];
+    for (final entry in entries) {
+      final dayLabel = _titleCase(entry.key);
+      final slots = entry.value.map(_titleCase).join(', ');
+      lines.add('$dayLabel: $slots');
+    }
+    lines.add(
+      "Recurring weekly: ${_learnerAvailabilityRecurring ? 'Yes' : 'No'}",
+    );
+    return lines.join('\n');
+  }
+
+  Map<String, List<String>> _parseWeeklyAvailability(dynamic raw) {
+    final result = <String, List<String>>{};
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        final day = key.toString().toLowerCase();
+        final slots = (value as List?)
+                ?.whereType<String>()
+                .map((slot) => slot.trim().toLowerCase())
+                .where((slot) => slot.isNotEmpty)
+                .toSet()
+                .toList() ??
+            const <String>[];
+        if (day.isNotEmpty && slots.isNotEmpty) {
+          slots.sort();
+          result[day] = slots;
+        }
+      });
+    } else if (raw is Iterable) {
+      for (final entry in raw) {
+        if (entry is Map) {
+          final day = entry['day']?.toString().toLowerCase();
+          final slots = (entry['slots'] as List?)
+                  ?.whereType<String>()
+                  .map((slot) => slot.trim().toLowerCase())
+                  .where((slot) => slot.isNotEmpty)
+                  .toSet()
+                  .toList() ??
+              const <String>[];
+          if (day != null && day.isNotEmpty && slots.isNotEmpty) {
+            slots.sort();
+            result[day] = slots;
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  int _weekdayOrder(String day) {
+    switch (day.toLowerCase()) {
+      case 'monday':
+        return 0;
+      case 'tuesday':
+        return 1;
+      case 'wednesday':
+        return 2;
+      case 'thursday':
+        return 3;
+      case 'friday':
+        return 4;
+      case 'saturday':
+        return 5;
+      case 'sunday':
+        return 6;
+      default:
+        return 7;
+    }
+  }
+
+  String? _asString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed.toLowerCase() == 'null') return null;
+      return trimmed;
+    }
+    if (value is num || value is bool) {
+      return value.toString();
+    }
+    return null;
+  }
+
+  String _titleCase(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    final words = trimmed.split(RegExp(r'\s+'));
+    return words
+        .map((word) => word.isEmpty
+            ? ''
+            : word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .join(' ');
   }
 
   String _formatRole(String? role) {

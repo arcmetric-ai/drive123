@@ -1,0 +1,451 @@
+[
+  {
+    "schemaname": "public",
+    "tablename": "instructor_profiles",
+    "policyname": "Instructor owns instructor_profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "(auth.uid() = profile_id)",
+    "with_check": "(auth.uid() = profile_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "instructor_profiles",
+    "policyname": "Learner can see instructor listings",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_profiles",
+    "policyname": "Instructors can read learner_profiles",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'instructor'::user_role))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_profiles",
+    "policyname": "Instructors read learner_profiles",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = profile_id) OR (EXISTS ( SELECT 1\n   FROM (learner_requests lr\n     JOIN instructor_profiles ip ON ((ip.profile_id = lr.instructor_id)))\n  WHERE ((lr.learner_id = learner_profiles.profile_id) AND (ip.profile_id = auth.uid()) AND (lr.status = ANY (ARRAY['accepted'::text, 'active'::text, 'in_progress'::text]))))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_profiles",
+    "policyname": "Learner can insert learner profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = profile_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_profiles",
+    "policyname": "Learner can read learner profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(auth.uid() = profile_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_profiles",
+    "policyname": "Learner can update learner profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(auth.uid() = profile_id)",
+    "with_check": "(auth.uid() = profile_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_requests",
+    "policyname": "Either party deletes own requests",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "((auth.uid() = learner_id) OR (auth.uid() = instructor_id))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_requests",
+    "policyname": "Instructor reads assigned requests",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = instructor_id) OR (EXISTS ( SELECT 1\n   FROM instructor_profiles ip\n  WHERE ((ip.profile_id = learner_requests.instructor_id) AND (ip.profile_id = auth.uid())))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_requests",
+    "policyname": "Instructor updates requests",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "(auth.uid() = instructor_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_requests",
+    "policyname": "Instructors read learner requests",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM instructor_profiles ip\n  WHERE ((ip.profile_id = learner_requests.instructor_id) AND (ip.profile_id = auth.uid()))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_requests",
+    "policyname": "Learner creates requests",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = learner_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_requests",
+    "policyname": "Learner reads own requests",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = learner_id) OR (auth.uid() = instructor_id))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_skill_progress",
+    "policyname": "Learner can insert learner profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = profile_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_skill_progress",
+    "policyname": "Learner can read learner profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(auth.uid() = profile_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_skill_progress",
+    "policyname": "Learner can update learner profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(auth.uid() = profile_id)",
+    "with_check": "(auth.uid() = profile_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "lessons",
+    "policyname": "Lesson participants manage lessons",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "((auth.uid() = learner_id) OR (auth.uid() = instructor_id))",
+    "with_check": "((auth.uid() = learner_id) OR (auth.uid() = instructor_id))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "lessons",
+    "policyname": "Participants can manage lessons",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "((auth.uid() = learner_id) OR (auth.uid() = instructor_id))",
+    "with_check": "((auth.uid() = learner_id) OR (auth.uid() = instructor_id))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "policyname": "Insert own profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "policyname": "Instructors read learner profiles",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.role() = 'authenticated'::text) AND ((auth.uid() = id) OR (EXISTS ( SELECT 1\n   FROM (learner_requests lr\n     JOIN instructor_profiles ip ON ((ip.profile_id = lr.instructor_id)))\n  WHERE ((lr.learner_id = lr.id) AND (ip.profile_id = auth.uid()) AND (lr.status = ANY (ARRAY['accepted'::text, 'active'::text, 'in_progress'::text])))))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "policyname": "Learner can read instructor profiles",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(role = 'instructor'::user_role)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "policyname": "Read own profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(auth.uid() = id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "policyname": "Update own profile",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "(auth.uid() = id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Anyone can read avatars",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(bucket_id = 'avatars'::text)",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Anyone can view avatars",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(bucket_id = 'avatars'::text)",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Users can manage avatar files",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'avatars'::text) AND (auth.role() = 'authenticated'::text))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Users can update avatar files",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "((bucket_id = 'avatars'::text) AND (auth.role() = 'authenticated'::text))",
+    "with_check": "(bucket_id = 'avatars'::text)"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Users manage own files",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "(auth.uid() = owner)",
+    "with_check": "(auth.uid() = owner)"
+  }
+]
+
+
+
+
+
+--------------
+
+[
+  {
+    "schemaname": "auth",
+    "tablename": "audit_log_entries",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "flow_state",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "identities",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "instances",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "mfa_amr_claims",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "mfa_challenges",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "mfa_factors",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "one_time_tokens",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "refresh_tokens",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "saml_providers",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "saml_relay_states",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "schema_migrations",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "sessions",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "sso_domains",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "sso_providers",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "auth",
+    "tablename": "users",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "public",
+    "tablename": "instructor_profiles",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_profiles",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_requests",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "public",
+    "tablename": "learner_skill_progress",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "public",
+    "tablename": "lessons",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "realtime",
+    "tablename": "messages",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "buckets",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "buckets_analytics",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "buckets_vectors",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "migrations",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "prefixes",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "s3_multipart_uploads",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "s3_multipart_uploads_parts",
+    "rowsecurity": true
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "vector_indexes",
+    "rowsecurity": true
+  }
+]

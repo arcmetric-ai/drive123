@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
+import '../../models/location_preference.dart';
+import '../../services/supabase_service.dart';
 import '../../models/instructor_model.dart';
 
 class BookingScreen extends StatefulWidget {
@@ -20,7 +22,9 @@ class _BookingScreenState extends State<BookingScreen> {
   String? _selectedTime;
   String? _selectedDuration;
   String? _selectedLocation;
+  String? _selectedLocationOption;
   final TextEditingController _notesController = TextEditingController();
+  final List<PreferredLocation> _preferredLocations = [];
 
   final List<String> _timeSlots = [
     '09:00',
@@ -36,16 +40,102 @@ class _BookingScreenState extends State<BookingScreen> {
 
   final List<String> _durations = ['1 hour', '1.5 hours', '2 hours'];
 
-  final List<String> _locations = [
+  final List<String> _fallbackLocations = [
     'Pick up from home',
     'Meet at instructor location',
     'Driving school parking lot',
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadPreferredLocations();
+  }
+
+  InstructorModel? _instructor;
+  bool _loadingInstructor = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // If an instructorId was provided, load their profile
+    final id = widget.instructorId;
+    if (id != null && _instructor == null && !_loadingInstructor) {
+      _loadingInstructor = true;
+      SupabaseService.getInstructor(id).then((result) {
+        if (!mounted) return;
+        setState(() {
+          _instructor = result;
+          _loadingInstructor = false;
+        });
+      }).catchError((_) {
+        if (!mounted) return;
+        setState(() => _loadingInstructor = false);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _notesController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPreferredLocations() async {
+    final stored = await LocationPreferenceStorage.load();
+    final parsedLocations = <PreferredLocation>[];
+
+    final userId = SupabaseService.currentUser?.id;
+    if (userId != null) {
+      try {
+        final detail = await SupabaseService.getLearnerProfileDetail(userId);
+        final rawLocations = detail?['preferred_locations'];
+        if (rawLocations is List) {
+          for (final entry in rawLocations) {
+            if (entry is Map) {
+              final location = PreferredLocation.fromMap(entry);
+              if (location.displayText.trim().isNotEmpty) {
+                parsedLocations.add(location);
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // ignore profile lookup errors here
+      }
+    }
+
+    PreferredLocation? matched;
+    if (stored.key != null) {
+      matched = _findPreferredByKey(parsedLocations, stored.key!);
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _preferredLocations
+        ..clear()
+        ..addAll(parsedLocations);
+      if (matched != null) {
+        _selectedLocationOption = 'saved:${matched.storageKey}';
+        _selectedLocation = matched.displayText;
+      } else if (stored.display != null && stored.display!.isNotEmpty) {
+        _selectedLocationOption = null;
+        _selectedLocation = stored.display;
+      }
+    });
+  }
+
+  PreferredLocation? _findPreferredByKey(
+    List<PreferredLocation> locations,
+    String key,
+  ) {
+    for (final location in locations) {
+      if (location.storageKey == key) {
+        return location;
+      }
+    }
+    return null;
   }
 
   @override
@@ -59,7 +149,7 @@ class _BookingScreenState extends State<BookingScreen> {
             child: const Text(
               'Book',
               style: TextStyle(
-                color: AppColors.primaryBlue,
+                color: AppColors.ocean,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -112,6 +202,7 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Widget _buildInstructorCard() {
+    final instr = _instructor;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -119,13 +210,15 @@ class _BookingScreenState extends State<BookingScreen> {
           children: [
             CircleAvatar(
               radius: 30,
-              backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
-              child: const Text(
-                'JS',
-                style: TextStyle(
+              backgroundColor: AppColors.ocean.withAlpha((0.1 * 255).round()),
+              child: Text(
+                instr != null
+                    ? '${instr.user.firstName.isNotEmpty ? instr.user.firstName[0] : 'J'}${instr.user.lastName.isNotEmpty ? instr.user.lastName[0] : 'S'}'
+                    : 'JS',
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primaryBlue,
+                  color: AppColors.ocean,
                 ),
               ),
             ),
@@ -134,28 +227,21 @@ class _BookingScreenState extends State<BookingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'John Smith',
-                    style: TextStyle(
+                  Text(
+                    instr != null
+                        ? '${instr.user.firstName} ${instr.user.lastName}'.trim()
+                        : 'John Smith',
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Row(
-                    children: [
-                      Icon(
-                        Icons.star,
-                        color: AppColors.accentYellow,
-                        size: 16,
-                      ),
-                      SizedBox(width: 4),
-                      Text('4.8 (250 lessons)'),
-                    ],
-                  ),
+                  // Ratings temporarily hidden on booking page
+                  const SizedBox.shrink(),
                   const SizedBox(height: 4),
                   Text(
-                    '10 years experience',
+                    instr != null ? '${instr.yearsOfExperience} years experience' : '10 years experience',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[600],
@@ -167,12 +253,12 @@ class _BookingScreenState extends State<BookingScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const Text(
-                  '\$45/hr',
-                  style: TextStyle(
+                Text(
+                  instr != null ? '\$${instr.hourlyRate.toStringAsFixed(0)}/hr' : '\$45/hr',
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primaryBlue,
+                    color: AppColors.ocean,
                   ),
                 ),
                 Text(
@@ -211,7 +297,7 @@ class _BookingScreenState extends State<BookingScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: _selectedDate != null
-                    ? AppColors.primaryBlue
+                    ? AppColors.ocean
                     : Colors.grey[300]!,
                 width: _selectedDate != null ? 2 : 1,
               ),
@@ -221,7 +307,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 Icon(
                   Icons.calendar_today,
                   color: _selectedDate != null
-                      ? AppColors.primaryBlue
+                      ? AppColors.ocean
                       : Colors.grey[600],
                 ),
                 const SizedBox(width: 12),
@@ -267,11 +353,11 @@ class _BookingScreenState extends State<BookingScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primaryBlue : Colors.grey[50],
+                  color: isSelected ? AppColors.ocean : Colors.grey[50],
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color:
-                        isSelected ? AppColors.primaryBlue : Colors.grey[300]!,
+                        isSelected ? AppColors.ocean : Colors.grey[300]!,
                   ),
                 ),
                 child: Text(
@@ -303,7 +389,6 @@ class _BookingScreenState extends State<BookingScreen> {
         ),
         const SizedBox(height: 12),
         ..._durations.map((duration) {
-          final isSelected = _selectedDuration == duration;
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: RadioListTile<String>(
@@ -311,7 +396,7 @@ class _BookingScreenState extends State<BookingScreen> {
               value: duration,
               groupValue: _selectedDuration,
               onChanged: (value) => setState(() => _selectedDuration = value),
-              activeColor: AppColors.primaryBlue,
+              activeColor: AppColors.ocean,
               contentPadding: EdgeInsets.zero,
             ),
           );
@@ -332,16 +417,63 @@ class _BookingScreenState extends State<BookingScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        ..._locations.map((location) {
-          final isSelected = _selectedLocation == location;
+        if (_preferredLocations.isNotEmpty) ...[
+          const Text(
+            'Saved pickup locations',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ..._preferredLocations.map((location) {
+            final value = 'saved:${location.storageKey}';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: RadioListTile<String>(
+                title: Text(location.displayText),
+                value: value,
+                groupValue: _selectedLocationOption,
+                onChanged: (selected) {
+                  if (selected == null) return;
+                  setState(() {
+                    _selectedLocationOption = selected;
+                    _selectedLocation = location.displayText;
+                  });
+                },
+                activeColor: AppColors.ocean,
+                contentPadding: EdgeInsets.zero,
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+          Divider(color: Colors.grey[300]),
+          const SizedBox(height: 12),
+        ],
+        const Text(
+          'Other options',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ..._fallbackLocations.map((location) {
+          final value = 'fallback:$location';
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: RadioListTile<String>(
               title: Text(location),
-              value: location,
-              groupValue: _selectedLocation,
-              onChanged: (value) => setState(() => _selectedLocation = value),
-              activeColor: AppColors.primaryBlue,
+              value: value,
+              groupValue: _selectedLocationOption,
+              onChanged: (selected) {
+                if (selected == null) return;
+                setState(() {
+                  _selectedLocationOption = selected;
+                  _selectedLocation = location;
+                });
+              },
+              activeColor: AppColors.ocean,
               contentPadding: EdgeInsets.zero,
             ),
           );
@@ -426,7 +558,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primaryBlue,
+                    color: AppColors.ocean,
                   ),
                 ),
               ],
@@ -460,31 +592,111 @@ class _BookingScreenState extends State<BookingScreen> {
   void _bookLesson() {
     if (!_isFormValid()) return;
 
-    // TODO: Implement booking logic
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Lesson Booked!'),
-        content: Text(
-          'Your lesson with John Smith has been booked for ${DateFormat('EEEE, MMMM d').format(_selectedDate!)} at $_selectedTime.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.go('/my-lessons');
-            },
-            child: const Text('View Lessons'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.go('/home');
-            },
-            child: const Text('Done'),
-          ),
-        ],
-      ),
+    // Build lesson parameters
+    final learnerId = SupabaseService.currentUser?.id;
+    if (learnerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must be signed in to book a lesson.')),
+      );
+      return;
+    }
+
+    final instructorId = widget.instructorId ?? _instructor?.id;
+    if (instructorId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to determine instructor.')),
+      );
+      return;
+    }
+
+    // Parse duration into hours
+    final durationHours = _selectedDuration == '1 hour'
+        ? 1.0
+        : _selectedDuration == '1.5 hours'
+            ? 1.5
+            : 2.0;
+
+    // Compute start/end times (simple approximation using selected time + duration)
+    final startParts = (_selectedTime ?? '09:00').split(':');
+    final startHour = int.tryParse(startParts[0]) ?? 9;
+    final startMinute = int.tryParse(startParts.length > 1 ? startParts[1] : '0') ?? 0;
+    final scheduledDate = DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
     );
+    final startTime = '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
+    final endDateTime = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, startHour, startMinute).add(Duration(minutes: (durationHours * 60).toInt()));
+    final endTime = '${endDateTime.hour.toString().padLeft(2, '0')}:${endDateTime.minute.toString().padLeft(2, '0')}';
+
+    // Prepare UI state and strings before async call to avoid using BuildContext across async gaps
+  final confirmationInstructorName = _instructor != null
+    ? ('${_instructor!.user.firstName} ${_instructor!.user.lastName}').trim()
+    : 'John Smith';
+    final confirmationWhen = DateFormat('EEEE, MMMM d').format(_selectedDate!);
+    final confirmationTime = _selectedTime ?? '';
+    final confirmationDuration = _selectedDuration != null ? ' (${_selectedDuration})' : '';
+    final confirmationLocation = _selectedLocation != null ? '\nLocation: $_selectedLocation' : '';
+
+    // Show loading dialog
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    SupabaseService.createLesson(
+      learnerId: learnerId,
+      instructorId: instructorId,
+      scheduledDate: scheduledDate,
+      startTime: startTime,
+      endTime: endTime,
+      duration: durationHours,
+      cost: (_instructor?.hourlyRate ?? 45.0) * durationHours,
+      notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+      location: _selectedLocation,
+    ).then((lesson) {
+      if (!mounted) return;
+      Navigator.pop(context); // remove loading
+      if (lesson == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to create lesson. Please try again.')),
+        );
+        return;
+      }
+
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Lesson Booked!'),
+          content: Text(
+            'Your lesson with $confirmationInstructorName has been booked for $confirmationWhen at $confirmationTime$confirmationDuration$confirmationLocation.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                if (mounted) context.go('/my-lessons');
+              },
+              child: const Text('View Lessons'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                if (mounted) context.go('/home');
+              },
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    }).catchError((e) {
+      if (!mounted) return;
+      Navigator.pop(context); // remove loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error creating lesson: $e')),
+      );
+    });
   }
 }
+

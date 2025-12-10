@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'app_colors.dart';
 
 class AppTheme {
@@ -10,10 +9,14 @@ class AppTheme {
       useMaterial3: true,
       fontFamily: _fontFamily,
       colorScheme: const ColorScheme.light(
-        primary: AppColors.primaryBlue,
-        secondary: AppColors.accentYellow,
-        onSecondary: AppColors.grey900,
+        primary: AppColors.ocean,
+        onPrimary: AppColors.dreamy,
+        secondary: AppColors.golden,
+        onSecondary: AppColors.ocean,
+        surface: AppColors.lightSurface,
         onSurface: AppColors.lightOnSurface,
+        background: AppColors.lightBackground,
+        onBackground: AppColors.lightOnBackground,
         error: AppColors.error,
       ),
       appBarTheme: const AppBarTheme(
@@ -30,8 +33,8 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryBlue,
-          foregroundColor: Colors.white,
+          backgroundColor: AppColors.ocean,
+          foregroundColor: AppColors.dreamy,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(
@@ -46,8 +49,8 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primaryBlue,
-          side: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
+          foregroundColor: AppColors.ocean,
+          side: const BorderSide(color: AppColors.ocean, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -61,7 +64,7 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.primaryBlue,
+          foregroundColor: AppColors.ocean,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           textStyle: const TextStyle(
             fontFamily: _fontFamily,
@@ -72,7 +75,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.grey50,
+        fillColor: AppColors.lightSurface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -83,7 +86,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+          borderSide: const BorderSide(color: AppColors.ocean, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -110,7 +113,7 @@ class AppTheme {
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: AppColors.lightSurface,
-        selectedItemColor: AppColors.primaryBlue,
+        selectedItemColor: AppColors.ocean,
         unselectedItemColor: AppColors.grey500,
         type: BottomNavigationBarType.fixed,
         elevation: 8,
@@ -123,12 +126,14 @@ class AppTheme {
       useMaterial3: true,
       fontFamily: _fontFamily,
       colorScheme: const ColorScheme.dark(
-        primary: AppColors.primaryBlue,
-        secondary: AppColors.accentYellow,
+        primary: AppColors.ocean,
+        onPrimary: AppColors.dreamy,
+        secondary: AppColors.golden,
         surface: AppColors.darkSurface,
-        onPrimary: Colors.white,
-        onSecondary: AppColors.grey900,
+        onSecondary: AppColors.ocean,
         onSurface: AppColors.darkOnSurface,
+        background: AppColors.darkBackground,
+        onBackground: AppColors.darkOnBackground,
         error: AppColors.error,
       ),
       appBarTheme: const AppBarTheme(
@@ -145,8 +150,8 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryBlue,
-          foregroundColor: Colors.white,
+          backgroundColor: AppColors.ocean,
+          foregroundColor: AppColors.dreamy,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(
@@ -161,8 +166,8 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primaryBlue,
-          side: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
+          foregroundColor: AppColors.ocean,
+          side: const BorderSide(color: AppColors.ocean, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -176,7 +181,7 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.primaryBlue,
+          foregroundColor: AppColors.golden,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           textStyle: const TextStyle(
             fontFamily: _fontFamily,
@@ -198,7 +203,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+          borderSide: const BorderSide(color: AppColors.ocean, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -225,7 +230,7 @@ class AppTheme {
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: AppColors.darkSurface,
-        selectedItemColor: AppColors.primaryBlue,
+        selectedItemColor: AppColors.ocean,
         unselectedItemColor: AppColors.grey500,
         type: BottomNavigationBarType.fixed,
         elevation: 8,
@@ -233,3 +238,4 @@ class AppTheme {
     );
   }
 }
+

@@ -1,36 +1,66 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../constants/app_colors.dart';
+import '../../models/location_preference.dart';
 
 class LocationSetupScreen extends StatefulWidget {
-  const LocationSetupScreen({super.key});
+  const LocationSetupScreen({
+    super.key,
+    this.savedLocations = const [],
+    this.initialSelectionKey,
+    this.initialManualAddress,
+  });
+
+  final List<PreferredLocation> savedLocations;
+  final String? initialSelectionKey;
+  final String? initialManualAddress;
 
   @override
   State<LocationSetupScreen> createState() => _LocationSetupScreenState();
 }
 
 class _LocationSetupScreenState extends State<LocationSetupScreen> {
-  final _searchController = TextEditingController();
   final _manualAddressController = TextEditingController();
+  PreferredLocation? _selectedSavedLocation;
+  String? _selectedSavedLocationKey;
   bool _isSaving = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.initialSelectionKey != null) {
+      final match = _findLocation(widget.initialSelectionKey!);
+      if (match != null) {
+        _selectedSavedLocation = match;
+        _selectedSavedLocationKey = match.storageKey;
+      }
+    }
+    if (_selectedSavedLocation == null && widget.initialManualAddress != null) {
+      _manualAddressController.text = widget.initialManualAddress!;
+    }
+  }
+
+  @override
   void dispose() {
-    _searchController.dispose();
     _manualAddressController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleSave() async {
-    final location = _manualAddressController.text.trim().isNotEmpty
-        ? _manualAddressController.text.trim()
-        : _searchController.text.trim();
+  PreferredLocation? _findLocation(String key) {
+    for (final location in widget.savedLocations) {
+      if (location.storageKey == key) {
+        return location;
+      }
+    }
+    return null;
+  }
 
-    if (location.isEmpty) {
+  Future<void> _handleSave() async {
+    final manualLocation = _manualAddressController.text.trim();
+    final hasManual = manualLocation.isNotEmpty;
+    if (!hasManual && _selectedSavedLocation == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Enter or search for a location to continue.'),
+          content: Text('Select a saved location or enter one manually.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -42,7 +72,11 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
 
     if (!mounted) return;
 
-    context.pop(location);
+    final result = hasManual
+        ? LocationSelectionResult.manual(manualLocation)
+        : LocationSelectionResult.saved(_selectedSavedLocation!);
+
+    Navigator.of(context).pop(result);
   }
 
   @override
@@ -64,7 +98,7 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primaryBlue,
+                  color: AppColors.ocean,
                 ),
               ),
               const SizedBox(height: 8),
@@ -77,41 +111,43 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  labelText: 'Search address',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.my_location),
-                    onPressed: () {
-                      // TODO: Fetch current GPS location.
-                    },
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey[50],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: AppColors.primaryBlue,
-                      width: 2,
-                    ),
+              if (widget.savedLocations.isNotEmpty) ...[
+                const Text(
+                  'Saved pickup locations',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.ocean,
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Divider(color: Colors.grey[200]),
-              const SizedBox(height: 20),
+                const SizedBox(height: 12),
+                ...widget.savedLocations.map((location) {
+                  return RadioListTile<String>(
+                    value: location.storageKey,
+                    groupValue: _selectedSavedLocationKey,
+                    activeColor: AppColors.ocean,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(location.displayText),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _selectedSavedLocationKey = value;
+                        _selectedSavedLocation = _findLocation(value);
+                        _manualAddressController.clear();
+                      });
+                    },
+                  );
+                }),
+                const SizedBox(height: 20),
+                Divider(color: Colors.grey[200]),
+                const SizedBox(height: 20),
+              ],
               const Text(
-                'Or type address manually',
+                'Enter a one-time pickup location',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.primaryBlue,
+                  color: AppColors.ocean,
                 ),
               ),
               const SizedBox(height: 12),
@@ -130,7 +166,7 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: const BorderSide(
-                      color: AppColors.primaryBlue,
+                      color: AppColors.ocean,
                       width: 2,
                     ),
                   ),
@@ -142,7 +178,7 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
                 child: ElevatedButton(
                   onPressed: _isSaving ? null : _handleSave,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
+                    backgroundColor: AppColors.ocean,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -170,3 +206,4 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
     );
   }
 }
+

@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
+import '../../constants/ontario_locations.dart';
 import '../../services/supabase_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -29,7 +33,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   // Learner fields
   final _g1TestDateController = TextEditingController();
-  final _cityController = TextEditingController();
+  String? _selectedArea;
+  String? _selectedCity;
   final _ageController = TextEditingController();
   final _genderOptions = const [
     'Female',
@@ -46,6 +51,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   // Instructor fields
   final _instructorAgeController = TextEditingController();
   String? _instructorGender;
+  String? _instructorSelectedCity;
+  final _yearsExperienceController = TextEditingController();
+  bool _pickupPreference = false;
 
   final List<String> _vehicleTypes = const [
     'Sedan',
@@ -64,9 +72,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _vehicleModelController = TextEditingController();
   final _vehiclePlateController = TextEditingController();
   final List<_VehicleEntry> _vehicles = [];
+  String? _pendingVehicleImagePath;
+  final ImagePicker _imagePicker = ImagePicker();
 
-  final List<_AreaEntry> _areas = [];
-  final _serviceAreaController = TextEditingController();
   final _bioController = TextEditingController();
   final _languagesController = TextEditingController();
   final _homeLocationController = TextEditingController();
@@ -84,6 +92,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   ];
   final Map<String, bool> _selectedOfferings = {};
   final Map<String, TextEditingController> _rateControllers = {};
+
+  String? _stringOrNull(dynamic value) {
+    if (value == null) return null;
+    if (value is String) {
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+    final converted = value.toString().trim();
+    return converted.isEmpty ? null : converted;
+  }
+
+  String _titleCase(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    final words = trimmed.split(RegExp(r'\s+'));
+    return words
+        .map((word) => word.isEmpty
+            ? ''
+            : word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .join(' ');
+  }
+
+  List<String> _instructorCityOptions() {
+    final options = List<String>.from(OntarioLocations.allCities);
+    if (_instructorSelectedCity != null &&
+        _instructorSelectedCity!.isNotEmpty &&
+        !options.contains(_instructorSelectedCity)) {
+      options.insert(0, _instructorSelectedCity!);
+    }
+    return options;
+  }
 
   @override
   void initState() {
@@ -103,16 +142,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _licenceNumberController.dispose();
     _licenceExpiryController.dispose();
     _g1TestDateController.dispose();
-    _cityController.dispose();
     _ageController.dispose();
     _classesTakenController.dispose();
     _lastClassDateController.dispose();
     _instructorAgeController.dispose();
+    _yearsExperienceController.dispose();
     _vehicleYearController.dispose();
     _vehicleMakeController.dispose();
     _vehicleModelController.dispose();
     _vehiclePlateController.dispose();
-    _serviceAreaController.dispose();
     _bioController.dispose();
     _languagesController.dispose();
     _homeLocationController.dispose();
@@ -142,22 +180,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       final rawProfile = await SupabaseService.getRawProfile(currentUser.id);
-      final firstName = (rawProfile?['first_name'] as String?) ??
-          (currentUser.userMetadata?['first_name'] as String?) ??
+      final firstName = _stringOrNull(rawProfile?['first_name']) ??
+          _stringOrNull(currentUser.userMetadata?['first_name']) ??
           '';
-      final lastName = (rawProfile?['last_name'] as String?) ??
-          (currentUser.userMetadata?['last_name'] as String?) ??
+      final lastName = _stringOrNull(rawProfile?['last_name']) ??
+          _stringOrNull(currentUser.userMetadata?['last_name']) ??
           '';
-      final phone = (rawProfile?['phone'] as String?) ??
-          (currentUser.userMetadata?['phone'] as String?) ??
+      final phone = _stringOrNull(rawProfile?['phone']) ??
+          _stringOrNull(currentUser.userMetadata?['phone']) ??
           '';
-      _email = (rawProfile?['email'] as String?) ?? currentUser.email ?? '';
+      _email = _stringOrNull(rawProfile?['email']) ?? currentUser.email ?? '';
       _firstNameController.text = firstName;
       _lastNameController.text = lastName;
       _phoneController.text = phone;
 
-      final role =
-          (rawProfile?['role'] as String?) ?? currentUser.userMetadata?['role'];
+      final role = _stringOrNull(rawProfile?['role']) ??
+          currentUser.userMetadata?['role'];
       setState(() {
         _role = (role == 'instructor' || role == 'learner') ? role! : 'learner';
       });
@@ -186,10 +224,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final detail = await SupabaseService.getLearnerProfileDetail(userId);
     if (detail == null) return;
 
-    final licenceNumber = detail['licence_number'] as String?;
-    final licenceExpiry = detail['licence_expiry'] as String?;
-    final testDate = detail['g1_test_date'] as String?;
-    final lastClass = detail['last_class_date'] as String?;
+    final profileMap = detail['profile'] is Map
+        ? Map<String, dynamic>.from(detail['profile'] as Map)
+        : <String, dynamic>{};
+    final licenceNumber = _stringOrNull(profileMap['licence_number']);
+    final licenceExpiry = _stringOrNull(profileMap['licence_expiry']);
+    final targetTestDate = _stringOrNull(detail['target_test_date']);
+    final lastClass = _stringOrNull(detail['last_class_date']);
 
     _licenceNumberController.text = licenceNumber ?? '';
     if (licenceExpiry != null) {
@@ -200,8 +241,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     }
 
-    if (testDate != null) {
-      final parsed = DateTime.tryParse(testDate);
+    if (targetTestDate != null) {
+      final parsed = DateTime.tryParse(targetTestDate);
       if (parsed != null) {
         _g1TestDate = parsed;
         _g1TestDateController.text = DateFormat('yyyy-MM-dd').format(parsed);
@@ -216,22 +257,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     }
 
-    _cityController.text = (detail['city'] as String?) ?? '';
-    final age = detail['age'];
+    _selectedCity = _stringOrNull(profileMap['city']);
+    if (_selectedCity != null) {
+      _selectedArea = OntarioLocations.areaForCity(_selectedCity);
+    }
+    final age = profileMap['age'];
     if (age is int) {
       _ageController.text = age.toString();
     } else if (age is String) {
       _ageController.text = age;
     }
 
-    final gender = detail['gender'];
+    final gender = _stringOrNull(profileMap['gender']);
     if (gender is String && gender.isNotEmpty) {
       _selectedGender = gender;
     } else {
       _selectedGender = null;
     }
 
-    final classesTaken = detail['classes_taken_total'];
+    final classesTaken = detail['classes_taken_sofar'];
     if (classesTaken is int) {
       _classesTakenController.text = classesTaken.toString();
     } else if (classesTaken is String) {
@@ -251,9 +295,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (locations is List) {
       for (final entry in locations) {
         if (entry is Map) {
-          final type = (entry['type'] as String?)?.toLowerCase();
-          final label = entry['label'] as String?;
-          final address = entry['address'] as String?;
+          final type = _stringOrNull(entry['type'])?.toLowerCase();
+          final label = _stringOrNull(entry['label']);
+          final address = _stringOrNull(entry['address']);
           if (type == 'home') {
             _homeLocationSelected = true;
             _homeLocationController.text = address ?? '';
@@ -275,10 +319,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (detail == null) return;
 
     _vehicles.clear();
-    _areas.clear();
+    _pickupPreference = false;
 
-    final licenceNumber = detail['licence_number'] as String?;
-    final licenceExpiry = detail['licence_expiry'] as String?;
+    final profileMap = detail['profile'] is Map
+        ? Map<String, dynamic>.from(detail['profile'] as Map)
+        : <String, dynamic>{};
+    final licenceNumber = _stringOrNull(profileMap['licence_number']);
+    final licenceExpiry = _stringOrNull(profileMap['licence_expiry']);
 
     _licenceNumberController.text = licenceNumber ?? '';
     if (licenceExpiry != null) {
@@ -289,38 +336,56 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     }
 
-    final age = detail['age'];
+    final age = profileMap['age'];
     if (age is int) {
       _instructorAgeController.text = age.toString();
     } else if (age is String) {
       _instructorAgeController.text = age;
     }
 
-    final gender = detail['gender'];
-    if (gender is String && gender.isNotEmpty) {
-      _instructorGender = gender;
+    final genderValue = _stringOrNull(profileMap['gender']);
+    _instructorGender =
+        genderValue != null && genderValue.isNotEmpty ? genderValue : null;
+    final yearsExperienceRaw = detail['years_of_experience'];
+    if (yearsExperienceRaw is num) {
+      _yearsExperienceController.text = yearsExperienceRaw.toInt().toString();
+    } else if (yearsExperienceRaw is String &&
+        yearsExperienceRaw.trim().isNotEmpty) {
+      _yearsExperienceController.text = yearsExperienceRaw.trim();
     } else {
-      _instructorGender = null;
+      _yearsExperienceController.clear();
+    }
+    final pickupPreferenceRaw = detail['pickup_preference'];
+    if (pickupPreferenceRaw is bool) {
+      _pickupPreference = pickupPreferenceRaw;
+    } else if (pickupPreferenceRaw is String) {
+      final lowercase = pickupPreferenceRaw.toLowerCase();
+      if (lowercase == 'true' || lowercase == '1') {
+        _pickupPreference = true;
+      } else if (lowercase == 'false' || lowercase == '0') {
+        _pickupPreference = false;
+      }
     }
 
-    _serviceAreaController.text = (detail['service_area'] as String?) ?? '';
-    _bioController.text = (detail['bio'] as String?) ?? '';
+    _instructorSelectedCity = _stringOrNull(profileMap['city']);
+    _bioController.text = _stringOrNull(detail['bio']) ?? '';
 
     final vehicles = detail['vehicles'];
     if (vehicles is List) {
       for (final entry in vehicles) {
         if (entry is Map) {
-          final type = entry['type'] as String?;
-          final year = entry['year'] as String?;
-          final make = entry['make'] as String?;
-          final model = entry['model'] as String?;
-          final plate = entry['numberPlate'] as String?;
+          final type = _stringOrNull(entry['type']);
+          final year = _stringOrNull(entry['year']);
+          final make = _stringOrNull(entry['make']);
+          final model = _stringOrNull(entry['model']);
+          final plate = _stringOrNull(entry['numberPlate']);
 
           if (type != null &&
               year != null &&
               make != null &&
               model != null &&
               plate != null) {
+            final transmission = _stringOrNull(entry['transmission']);
             _vehicles.add(
               _VehicleEntry(
                 type: type,
@@ -328,27 +393,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 make: make,
                 model: model,
                 numberPlate: plate,
+                transmission:
+                    transmission?.isNotEmpty == true ? transmission : null,
+                photoUrl: _stringOrNull(entry['photoUrl']) ??
+                    _stringOrNull(entry['photo_url']),
               ),
             );
-          }
-        }
-      }
-    }
-
-    final areas = detail['areas_of_operation'];
-    if (areas is List) {
-      for (final entry in areas) {
-        if (entry is Map) {
-          final city = entry['city'] as String?;
-          final radius = entry['radiusKm'];
-          double? parsedRadius;
-          if (radius is num) {
-            parsedRadius = radius.toDouble();
-          } else if (radius is String) {
-            parsedRadius = double.tryParse(radius);
-          }
-          if (city != null && parsedRadius != null) {
-            _areas.add(_AreaEntry(city: city, radiusKm: parsedRadius));
           }
         }
       }
@@ -376,9 +426,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       });
     }
 
-    final languages = detail['languages'];
+    final languages = profileMap['languages'];
     if (languages is List) {
-      _languagesController.text = languages.whereType<String>().join(', ');
+      final formattedLanguages = languages
+          .whereType<String>()
+          .map(_titleCase)
+          .where((value) => value.isNotEmpty)
+          .toList();
+      _languagesController.text = formattedLanguages.join(', ');
     } else {
       _languagesController.text = '';
     }
@@ -394,9 +449,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (locations is List) {
       for (final entry in locations) {
         if (entry is Map) {
-          final type = (entry['type'] as String?)?.toLowerCase();
-          final label = entry['label'] as String?;
-          final address = entry['address'] as String?;
+          final type = _stringOrNull(entry['type'])?.toLowerCase();
+          final label = _stringOrNull(entry['label']);
+          final address = _stringOrNull(entry['address']);
           if (type == 'home') {
             _homeLocationSelected = true;
             _homeLocationController.text = address ?? '';
@@ -595,12 +650,63 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         const SizedBox(height: 24),
         _buildSectionTitle('Personal Details'),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _cityController,
+        DropdownButtonFormField<String>(
+          value: _selectedArea,
+          decoration: const InputDecoration(
+            labelText: 'Area',
+            border: OutlineInputBorder(),
+          ),
+          items: [
+            const DropdownMenuItem<String>(
+              value: null,
+              child: Text('Select area'),
+            ),
+            ...OntarioLocations.areaNames.map(
+              (area) => DropdownMenuItem(
+                value: area,
+                child: Text(area),
+              ),
+            ),
+          ],
+          onChanged: (value) => setState(() {
+            _selectedArea = value;
+            if (value != null) {
+              final cities = OntarioLocations.citiesForArea(value);
+              if (cities.isNotEmpty) {
+                if (_selectedCity == null || !cities.contains(_selectedCity)) {
+                  _selectedCity = cities.first;
+                }
+              } else {
+                _selectedCity = null;
+              }
+            } else {
+              _selectedCity = null;
+            }
+          }),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _selectedCity,
           decoration: const InputDecoration(
             labelText: 'City',
             border: OutlineInputBorder(),
           ),
+          items: [
+            const DropdownMenuItem<String>(
+              value: null,
+              child: Text('Select city'),
+            ),
+            ...((_selectedArea != null
+                    ? OntarioLocations.citiesForArea(_selectedArea)
+                    : OntarioLocations.allCities))
+                .map(
+              (city) => DropdownMenuItem(
+                value: city,
+                child: Text(city),
+              ),
+            ),
+          ],
+          onChanged: (value) => setState(() => _selectedCity = value),
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
               return 'City is required';
@@ -823,12 +929,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         const SizedBox(height: 24),
         _buildSectionTitle('Professional Profile'),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _serviceAreaController,
+        DropdownButtonFormField<String>(
+          value: _instructorSelectedCity,
           decoration: const InputDecoration(
-            labelText: 'Primary Service Area',
+            labelText: 'City',
             border: OutlineInputBorder(),
           ),
+          items: [
+            const DropdownMenuItem<String>(
+              value: null,
+              child: Text('Select city'),
+            ),
+            ..._instructorCityOptions().map(
+              (city) => DropdownMenuItem(
+                value: city,
+                child: Text(city),
+              ),
+            ),
+          ],
+          onChanged: (value) => setState(() {
+            _instructorSelectedCity =
+                value != null && value.isNotEmpty ? value : null;
+          }),
+          validator: (value) {
+            if (_role != 'instructor') return null;
+            if (value == null || value.trim().isEmpty) {
+              return 'City is required';
+            }
+            return null;
+          },
         ),
         const SizedBox(height: 12),
         TextFormField(
@@ -849,7 +978,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             border: OutlineInputBorder(),
           ),
         ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _yearsExperienceController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Years of experience',
+            border: OutlineInputBorder(),
+          ),
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return null;
+            }
+            final parsed = int.tryParse(value.trim());
+            if (parsed == null || parsed < 0) {
+              return 'Enter a valid number of years';
+            }
+            return null;
+          },
+        ),
         const SizedBox(height: 24),
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Offer learner pickup?'),
+          subtitle: const Text(
+            'I can pick learners up from their location.',
+          ),
+          value: _pickupPreference,
+          onChanged: (value) => setState(() => _pickupPreference = value),
+        ),
+        const SizedBox(height: 12),
         _buildSectionTitle('Preferred Lesson Locations'),
         const SizedBox(height: 12),
         CheckboxListTile(
@@ -997,6 +1155,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickPendingVehicleImage,
+              icon: const Icon(Icons.photo_camera_back_outlined),
+              label: Text(
+                _pendingVehicleImagePath == null
+                    ? 'Add vehicle photo'
+                    : 'Change vehicle photo',
+              ),
+            ),
+            if (_pendingVehicleImagePath != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Remove selected photo',
+                onPressed: () => setState(() => _pendingVehicleImagePath = null),
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ],
+        ),
+        if (_pendingVehicleImagePath != null) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            height: 160,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(_pendingVehicleImagePath!),
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,
           child: OutlinedButton.icon(
@@ -1013,10 +1207,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   (vehicle) => Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
+                      leading: _buildVehiclePhotoChip(vehicle),
                       title: Text(
                         '${vehicle.type} • ${vehicle.year} ${vehicle.make} ${vehicle.model}',
                       ),
-                      subtitle: Text('Plate: ${vehicle.numberPlate}'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Plate: ${vehicle.numberPlate}'),
+                          if (vehicle.hasPhoto)
+                            Text(
+                              'Photo attached',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                        ],
+                      ),
                       trailing: IconButton(
                         icon: const Icon(Icons.close),
                         onPressed: () => setState(() {
@@ -1029,43 +1237,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 .toList(),
           ),
         ],
-        const SizedBox(height: 24),
-        _buildSectionTitle('Areas of Operation'),
-        const SizedBox(height: 12),
-        if (_areas.isEmpty)
-          Text(
-            'No areas added yet. Add the cities you operate in and your radius.',
-            style: TextStyle(
-              color: Colors.grey[600],
-            ),
-          ),
-        Column(
-          children: _areas
-              .map(
-                (area) => Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    title: Text(area.city),
-                    subtitle: Text('Radius: ${area.radiusKm} km'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => setState(() {
-                        _areas.remove(area);
-                      }),
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: _showAddAreaDialog,
-            icon: const Icon(Icons.add),
-            label: const Text('Add service area'),
-          ),
-        ),
         const SizedBox(height: 24),
         _buildSectionTitle('Personal Details'),
         const SizedBox(height: 12),
@@ -1250,25 +1421,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isSaving = true);
 
     try {
-      await SupabaseService.updateProfileFields(userId, {
+      final profileUpdates = <String, dynamic>{
         'first_name': firstName,
         'last_name': lastName,
         'phone': phone.isNotEmpty ? phone : null,
-      });
+      };
+      final licenceNumber = _licenceNumberController.text.trim();
+      if (licenceNumber.isNotEmpty) {
+        profileUpdates['licence_number'] = licenceNumber;
+      }
+      if (_licenceExpiryDate != null) {
+        profileUpdates['licence_expiry'] =
+            _licenceExpiryDate!.toIso8601String();
+      }
+      if (_selectedCity != null && _selectedCity!.trim().isNotEmpty) {
+        profileUpdates['city'] = _selectedCity!.trim();
+      }
+      if (age != null) {
+        profileUpdates['age'] = age;
+      }
+      if (_selectedGender != null && _selectedGender!.trim().isNotEmpty) {
+        profileUpdates['gender'] = _selectedGender!.trim();
+      }
+
+      await SupabaseService.updateProfileFields(userId, profileUpdates);
 
       await SupabaseService.upsertLearnerProfile(
         userId: userId,
-        licenceNumber: _licenceNumberController.text.trim(),
-        licenceExpiry: _licenceExpiryDate,
-        city: _cityController.text.trim(),
-        age: age,
-        gender: _selectedGender,
-        classesTaken: classesTaken,
+        classesTakenSoFar: classesTaken,
         lastClassDate: _lastClassDate,
-        g1TestDate: _g1TestDate,
-        preferredLocations: locations
-            .map((entry) => Map<String, dynamic>.from(entry))
-            .toList(),
+        targetTestDate: _g1TestDate,
+        preferredLocations:
+            locations.map((entry) => Map<String, dynamic>.from(entry)).toList(),
       );
 
       if (!mounted) return;
@@ -1310,16 +1494,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Add at least one vehicle you teach with.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
-    if (_areas.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add at least one area of operation.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -1379,7 +1553,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final phone = _phoneController.text.trim();
     final languages = _languagesController.text
         .split(',')
-        .map((value) => value.trim())
+        .map((value) => _titleCase(value))
         .where((value) => value.isNotEmpty)
         .toList();
 
@@ -1429,48 +1603,83 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isSaving = true);
 
     try {
-      await SupabaseService.updateProfileFields(userId, {
+      final profileUpdates = <String, dynamic>{
         'first_name': firstName,
         'last_name': lastName,
         'phone': phone.isNotEmpty ? phone : null,
-      });
+        'languages': languages.isNotEmpty ? languages : null,
+      };
+
+      final licenceNumber = _licenceNumberController.text.trim();
+      if (licenceNumber.isNotEmpty) {
+        profileUpdates['licence_number'] = licenceNumber;
+      }
+      if (_licenceExpiryDate != null) {
+        profileUpdates['licence_expiry'] =
+            _licenceExpiryDate!.toIso8601String();
+      }
+      if (age != null) {
+        profileUpdates['age'] = age;
+      }
+      if (_instructorGender != null && _instructorGender!.trim().isNotEmpty) {
+        profileUpdates['gender'] = _instructorGender!.trim();
+      }
+
+      _instructorSelectedCity =
+          (_instructorSelectedCity != null && _instructorSelectedCity!.trim().isNotEmpty)
+              ? _instructorSelectedCity!.trim()
+              : null;
+      final profileCity = _instructorSelectedCity ?? '';
+
+      if (profileCity.isNotEmpty) {
+        profileUpdates['city'] = profileCity;
+      }
+
+      await SupabaseService.updateProfileFields(userId, profileUpdates);
+
+      final preparedVehicles = await _prepareVehiclesForUpload(userId);
+      if (mounted) {
+        setState(() {
+          _vehicles
+            ..clear()
+            ..addAll(preparedVehicles);
+        });
+      }
+
+      final vehiclePayload = preparedVehicles.map((vehicle) {
+        final map = {
+          'type': vehicle.type,
+          'year': vehicle.year,
+          'make': vehicle.make,
+          'model': vehicle.model,
+          'numberPlate': vehicle.numberPlate,
+        };
+        final transmission = vehicle.transmission;
+        if (transmission != null && transmission.isNotEmpty) {
+          map['transmission'] = transmission;
+        }
+        if (vehicle.photoUrl != null && vehicle.photoUrl!.isNotEmpty) {
+          map['photoUrl'] = vehicle.photoUrl!;
+        }
+        return map;
+      }).toList();
+      final locationPayload =
+          locations.map((entry) => Map<String, dynamic>.from(entry)).toList();
+      final yearsExperience =
+          int.tryParse(_yearsExperienceController.text.trim());
 
       await SupabaseService.upsertInstructorProfile(
         userId: userId,
-        licenceNumber: _licenceNumberController.text.trim(),
-        licenceExpiry: _licenceExpiryDate,
-        serviceArea: _serviceAreaController.text.trim().isNotEmpty
-            ? _serviceAreaController.text.trim()
-            : null,
         bio: _bioController.text.trim().isNotEmpty
             ? _bioController.text.trim()
             : null,
-        age: age,
-        gender: _instructorGender,
-        vehicles: _vehicles
-            .map(
-              (vehicle) => {
-                'type': vehicle.type,
-                'year': vehicle.year,
-                'make': vehicle.make,
-                'model': vehicle.model,
-                'numberPlate': vehicle.numberPlate,
-              },
-            )
-            .toList(),
-        areasOfOperation: _areas
-            .map(
-              (area) => {
-                'city': area.city,
-                'radiusKm': area.radiusKm,
-              },
-            )
-            .toList(),
+        defaultRate: rates.isNotEmpty ? rates.values.first : null,
+        vehicles: vehiclePayload,
         offerings: selectedOfferings,
         offeringRates: rates,
-        preferredLocations:
-            locations.map((entry) => Map<String, dynamic>.from(entry)).toList(),
-        languages: languages.isEmpty ? null : languages,
+        preferredLocations: locationPayload,
+        yearsOfExperience: yearsExperience,
+        pickupPreference: _pickupPreference,
       );
 
       if (!mounted) return;
@@ -1512,6 +1721,45 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (picked != null) {
       onSelected(picked);
       controller.text = DateFormat('yyyy-MM-dd').format(picked);
+    }
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: AppColors.primaryBlue,
+      ),
+    );
+  }
+
+  String _labelForOffering(String code) {
+    final match = _offeringOptions.firstWhere(
+      (option) => option.code == code,
+      orElse: () => const _OfferingOption(code: '', label: ''),
+    );
+    return match.label.isNotEmpty ? match.label : code;
+  }
+
+  Future<void> _pickPendingVehicleImage() async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        setState(() => _pendingVehicleImagePath = picked.path);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to pick image: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
     }
   }
 
@@ -1558,13 +1806,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           make: make,
           model: model,
           numberPlate: plate,
+          localImagePath: _pendingVehicleImagePath,
         ),
       );
       _vehicleYearController.clear();
       _vehicleMakeController.clear();
       _vehicleModelController.clear();
       _vehiclePlateController.clear();
+      _pendingVehicleImagePath = null;
     });
+  }
+
+  Future<List<_VehicleEntry>> _prepareVehiclesForUpload(String userId) async {
+    final updated = <_VehicleEntry>[];
+    for (final vehicle in _vehicles) {
+      var current = vehicle;
+      final localPath = vehicle.localImagePath;
+      if (localPath != null && localPath.trim().isNotEmpty) {
+        final file = File(localPath);
+        if (await file.exists()) {
+          final url = await SupabaseService.uploadVehicleGalleryImage(
+            userId: userId,
+            file: file,
+          );
+          if (url != null && url.isNotEmpty) {
+            current = current.copyWith(
+              photoUrl: url,
+              localImagePath: null,
+            );
+          }
+        }
+      }
+      updated.add(current);
+    }
+    return updated;
   }
 
   void _showInlineError(String message) {
@@ -1576,79 +1851,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Future<void> _showAddAreaDialog() async {
-    final cityController = TextEditingController();
-    final radiusController = TextEditingController();
-
-    final result = await showDialog<_AreaEntry>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add Service Area'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: cityController,
-                decoration: const InputDecoration(labelText: 'City'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: radiusController,
-                decoration: const InputDecoration(
-                  labelText: 'Radius (km)',
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final city = cityController.text.trim();
-                final radius = double.tryParse(radiusController.text.trim());
-                if (city.isEmpty || radius == null || radius <= 0) {
-                  return;
-                }
-                Navigator.pop(
-                    context, _AreaEntry(city: city, radiusKm: radius));
-              },
-              child: const Text('Add'),
-            ),
-          ],
+  Widget _buildVehiclePhotoChip(_VehicleEntry vehicle) {
+    const double size = 56;
+    Widget? imageWidget;
+    if (vehicle.localImagePath != null &&
+        vehicle.localImagePath!.trim().isNotEmpty) {
+      final file = File(vehicle.localImagePath!);
+      if (file.existsSync()) {
+        imageWidget = Image.file(
+          file,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
         );
-      },
-    );
-
-    if (result != null) {
-      setState(() {
-        _areas.add(result);
-      });
+      }
+    } else if (vehicle.photoUrl != null &&
+        vehicle.photoUrl!.trim().isNotEmpty) {
+      imageWidget = Image.network(
+        vehicle.photoUrl!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.directions_car),
+      );
     }
-  }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: AppColors.primaryBlue,
-      ),
-    );
-  }
+    if (imageWidget == null) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(
+          Icons.directions_car,
+          color: AppColors.primaryBlue,
+        ),
+      );
+    }
 
-  String _labelForOffering(String code) {
-    final match = _offeringOptions.firstWhere(
-      (option) => option.code == code,
-      orElse: () => const _OfferingOption(code: '', label: ''),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: imageWidget,
     );
-    return match.label.isNotEmpty ? match.label : code;
   }
 }
 
@@ -1659,6 +1905,9 @@ class _VehicleEntry {
     required this.make,
     required this.model,
     required this.numberPlate,
+    this.transmission,
+    this.photoUrl,
+    this.localImagePath,
   });
 
   final String type;
@@ -1666,16 +1915,35 @@ class _VehicleEntry {
   final String make;
   final String model;
   final String numberPlate;
-}
+  final String? transmission;
+  final String? photoUrl;
+  final String? localImagePath;
 
-class _AreaEntry {
-  const _AreaEntry({
-    required this.city,
-    required this.radiusKm,
-  });
+  bool get hasPhoto =>
+      (photoUrl != null && photoUrl!.trim().isNotEmpty) ||
+      (localImagePath != null && localImagePath!.trim().isNotEmpty);
 
-  final String city;
-  final double radiusKm;
+  _VehicleEntry copyWith({
+    String? type,
+    String? year,
+    String? make,
+    String? model,
+    String? numberPlate,
+    String? transmission,
+    String? photoUrl,
+    String? localImagePath,
+  }) {
+    return _VehicleEntry(
+      type: type ?? this.type,
+      year: year ?? this.year,
+      make: make ?? this.make,
+      model: model ?? this.model,
+      numberPlate: numberPlate ?? this.numberPlate,
+      transmission: transmission ?? this.transmission,
+      photoUrl: photoUrl ?? this.photoUrl,
+      localImagePath: localImagePath ?? this.localImagePath,
+    );
+  }
 }
 
 class _OfferingOption {

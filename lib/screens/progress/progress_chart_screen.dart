@@ -1,4 +1,4 @@
-import 'package:fl_chart/fl_chart.dart';
+﻿import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -38,7 +38,7 @@ class ProgressChartScreen extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.primaryBlue,
+                        color: AppColors.ocean,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -82,7 +82,7 @@ class ProgressChartScreen extends StatelessWidget {
       aspectRatio: 1.4,
       child: Card(
         elevation: 0,
-        color: AppColors.primaryBlue.withOpacity(0.05),
+        color: AppColors.ocean.withOpacity(0.05),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: LineChart(
@@ -148,13 +148,13 @@ class ProgressChartScreen extends StatelessWidget {
                 LineChartBarData(
                   spots: spots,
                   isCurved: true,
-                  color: AppColors.primaryBlue,
+                  color: AppColors.ocean,
                   barWidth: 3,
                   dotData: FlDotData(
                     show: true,
                     getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
                       radius: 4,
-                      color: AppColors.primaryBlue,
+                      color: AppColors.ocean,
                       strokeColor: Colors.white,
                       strokeWidth: 2,
                     ),
@@ -163,8 +163,8 @@ class ProgressChartScreen extends StatelessWidget {
                     show: true,
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.primaryBlue.withOpacity(0.3),
-                        AppColors.primaryBlue.withOpacity(0.05),
+                        AppColors.ocean.withOpacity(0.3),
+                        AppColors.ocean.withOpacity(0.05),
                       ],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
@@ -175,13 +175,13 @@ class ProgressChartScreen extends StatelessWidget {
               lineTouchData: LineTouchData(
                 enabled: true,
                 touchTooltipData: LineTouchTooltipData(
-                  tooltipBgColor: Colors.white,
+                  getTooltipColor: (_) => Colors.white,
                   getTooltipItems: (spots) => spots.map((spot) {
                     final date = firstDate.add(Duration(days: spot.x.toInt()));
                     return LineTooltipItem(
                       '${DateFormat.yMMMd().format(date)}\nProgress: ${spot.y.toStringAsFixed(1)}%',
                       const TextStyle(
-                        color: AppColors.primaryBlue,
+                        color: AppColors.ocean,
                         fontWeight: FontWeight.w600,
                       ),
                     );
@@ -213,7 +213,7 @@ class ProgressChartScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
+                color: AppColors.ocean,
               ),
             ),
             const SizedBox(height: 12),
@@ -251,7 +251,7 @@ class _MilestoneTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final formatter = DateFormat('EEEE, MMM d • h:mm a');
+    final formatter = DateFormat('EEEE, MMM d - h:mm a');
     return Card(
       elevation: 0,
       child: Padding(
@@ -262,12 +262,12 @@ class _MilestoneTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.primaryBlue.withOpacity(0.1),
+                color: AppColors.ocean.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(
                 Icons.check_circle,
-                color: AppColors.primaryBlue,
+                color: AppColors.ocean,
               ),
             ),
             const SizedBox(width: 12),
@@ -309,3 +309,4 @@ class _MilestoneTile extends StatelessWidget {
     );
   }
 }
+

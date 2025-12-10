@@ -2,18 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/lesson_model.dart';
-import '../screens/booking/booking_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/home/instructor_home_screen.dart';
 import '../screens/instructor/find_instructor_screen.dart';
 import '../screens/instructor/instructor_availability_screen.dart';
 import '../screens/instructor/instructor_lesson_detail_screen.dart';
-import '../screens/instructor/instructor_requests_screen.dart';
 import '../screens/instructor/instructor_learner_detail_screen.dart';
+import '../screens/instructor/learner_roster_detail_screen.dart';
+import '../screens/instructor/instructor_profile_preview_screen.dart';
+import '../screens/instructor/review_learner_request_screen.dart';
+import '../screens/instructor/instructor_lesson_edit_screen.dart';
+import '../screens/learner/learner_instructor_detail_screen.dart';
 import '../screens/lessons/completed_lesson_detail_screen.dart';
 import '../screens/lessons/my_lessons_screen.dart';
 import '../screens/location/location_setup_screen.dart';
 import '../screens/onboarding/auth_screen.dart';
+import '../screens/onboarding/intro_flow_screen.dart';
 import '../screens/onboarding/learner_questionnaire_screen.dart';
 import '../screens/onboarding/instructor_questionnaire_screen.dart';
 import '../screens/onboarding/learning_focus_screen.dart';
@@ -22,12 +26,15 @@ import '../screens/onboarding/role_selection_screen.dart';
 import '../screens/onboarding/verification_screen.dart';
 import '../screens/profile/help_support_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
+import '../screens/profile/learner_availability_screen.dart';
+import '../models/location_preference.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/progress/progress_tracker_screen.dart';
 import '../screens/splash_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
+  static const String intro = '/intro';
   static const String roleSelection = '/role-selection';
   static const String auth = '/auth';
   static const String verification = '/verification';
@@ -36,14 +43,19 @@ class AppRoutes {
   static const String licenseInfo = '/license-info';
   static const String learningFocus = '/learning-focus';
   static const String editProfile = '/edit-profile';
+  static const String editLearnerAvailability = '/learner-availability';
   static const String home = '/home';
   static const String instructorHome = '/instructor-home';
   static const String instructorAvailability = '/instructor-availability';
   static const String instructorLessonDetail = '/instructor-lesson-detail';
-  static const String instructorRequests = '/instructor-requests';
+  static const String instructorLessonEdit = '/instructor-lesson-edit';
   static const String instructorLearnerDetail = '/instructor-learner-detail';
+  static const String instructorLearnerRosterPreview =
+      '/instructor-learner-roster-preview';
+  static const String instructorProfilePreview = '/instructor-profile-preview';
+  static const String reviewLearnerRequest = '/review-learner-request';
+  static const String learnerInstructorDetail = '/learner-instructor-detail';
   static const String findInstructor = '/find-instructor';
-  static const String booking = '/booking';
   static const String myLessons = '/my-lessons';
   static const String completedLessonDetail = '/completed-lesson-detail';
   static const String progressTracker = '/progress-tracker';
@@ -57,6 +69,10 @@ class AppRoutes {
       GoRoute(
         path: splash,
         builder: (context, state) => const SplashScreen(),
+      ),
+      GoRoute(
+        path: intro,
+        builder: (context, state) => const IntroFlowScreen(),
       ),
       GoRoute(
         path: roleSelection,
@@ -164,8 +180,33 @@ class AppRoutes {
         },
       ),
       GoRoute(
-        path: instructorRequests,
-        builder: (context, state) => const InstructorRequestsScreen(),
+        path: instructorLessonEdit,
+        builder: (context, state) {
+          final lesson = state.extra as Map<String, dynamic>? ?? const {};
+          return InstructorLessonEditScreen(lesson: lesson);
+        },
+      ),
+      GoRoute(
+        path: instructorLearnerRosterPreview,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? const {};
+          final learner =
+              (extra['learner'] as Map<String, dynamic>?) ?? const {};
+          final availabilityLines =
+              (extra['availability'] as List?)?.whereType<String>().toList();
+          final summary =
+              (extra['summary'] as Map?)?.cast<String, dynamic>() ?? const {};
+          final onViewProfile = extra['onViewProfile'] as VoidCallback?;
+          final onRemoveLearner =
+              extra['onRemoveLearner'] as Future<bool> Function(BuildContext)?;
+          return InstructorLearnerRosterPreviewScreen(
+            learner: learner,
+            availabilityLines: availabilityLines,
+            summary: summary,
+            onViewProfile: onViewProfile,
+            onRemoveLearner: onRemoveLearner,
+          );
+        },
       ),
       GoRoute(
         path: instructorLearnerDetail,
@@ -175,17 +216,31 @@ class AppRoutes {
         },
       ),
       GoRoute(
+        path: instructorProfilePreview,
+        builder: (context, state) {
+          final profile = state.extra as Map<String, dynamic>? ?? const {};
+          return InstructorProfilePreviewScreen(profile: profile);
+        },
+      ),
+      GoRoute(
+        path: reviewLearnerRequest,
+        builder: (context, state) {
+          final request = state.extra as Map<String, dynamic>?;
+          return ReviewLearnerRequestScreen(request: request);
+        },
+      ),
+      GoRoute(
+        path: learnerInstructorDetail,
+        builder: (context, state) {
+          final profile = state.extra as Map<String, dynamic>? ?? const {};
+          return LearnerInstructorDetailScreen(profile: profile);
+        },
+      ),
+      GoRoute(
         path: findInstructor,
         builder: (context, state) {
           final focus = state.extra as String?;
           return FindInstructorScreen(selectedFocus: focus);
-        },
-      ),
-      GoRoute(
-        path: booking,
-        builder: (context, state) {
-          final instructorId = state.extra as String?;
-          return BookingScreen(instructorId: instructorId);
         },
       ),
       GoRoute(
@@ -217,12 +272,23 @@ class AppRoutes {
         builder: (context, state) => const EditProfileScreen(),
       ),
       GoRoute(
+        path: editLearnerAvailability,
+        builder: (context, state) => const LearnerAvailabilityScreen(),
+      ),
+      GoRoute(
         path: helpSupport,
         builder: (context, state) => const HelpSupportScreen(),
       ),
       GoRoute(
         path: locationSetup,
-        builder: (context, state) => const LocationSetupScreen(),
+        builder: (context, state) {
+          final args = state.extra as LocationSetupArgs?;
+          return LocationSetupScreen(
+            savedLocations: args?.savedLocations ?? const [],
+            initialSelectionKey: args?.initialSelectionKey,
+            initialManualAddress: args?.initialManualAddress,
+          );
+        },
       ),
     ],
   );

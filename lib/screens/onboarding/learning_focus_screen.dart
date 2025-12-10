@@ -143,7 +143,7 @@ class _LearningFocusScreenState extends State<LearningFocusScreen> {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primaryBlue,
+                  color: AppColors.ocean,
                 ),
               ),
               const SizedBox(height: 8),
@@ -179,7 +179,7 @@ class _LearningFocusScreenState extends State<LearningFocusScreen> {
                 child: ElevatedButton(
                   onPressed: _isSubmitting ? null : _handleContinue,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
+                    backgroundColor: AppColors.ocean,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -242,11 +242,11 @@ class _FocusTile extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primaryBlue.withAlpha((0.12 * 255).round())
+              ? AppColors.ocean.withAlpha((0.12 * 255).round())
               : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? AppColors.primaryBlue : Colors.grey[300]!,
+            color: isSelected ? AppColors.ocean : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
@@ -263,12 +263,12 @@ class _FocusTile extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: AppColors.primaryBlue.withAlpha((0.15 * 255).round()),
+                color: AppColors.ocean.withAlpha((0.15 * 255).round()),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 option.icon,
-                color: AppColors.primaryBlue,
+                color: AppColors.ocean,
                 size: 28,
               ),
             ),
@@ -282,7 +282,7 @@ class _FocusTile extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.primaryBlue,
+                      color: AppColors.ocean,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -302,7 +302,7 @@ class _FocusTile extends StatelessWidget {
               opacity: isSelected ? 1 : 0,
               child: const Icon(
                 Icons.check_circle,
-                color: AppColors.primaryBlue,
+                color: AppColors.ocean,
               ),
             ),
           ],
@@ -311,3 +311,4 @@ class _FocusTile extends StatelessWidget {
     );
   }
 }
+

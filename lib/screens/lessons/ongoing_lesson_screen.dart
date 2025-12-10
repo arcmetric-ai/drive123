@@ -119,7 +119,7 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
               const SizedBox(height: 24),
               Card(
                 elevation: 0,
-                color: AppColors.primaryBlue.withOpacity(0.08),
+                color: AppColors.ocean.withOpacity(0.08),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -130,14 +130,14 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
                     children: [
                       const Icon(
                         Icons.info_outline,
-                        color: AppColors.primaryBlue,
+                        color: AppColors.ocean,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'Focus on your driving – we’re keeping track of this session in the background.',
                           style: TextStyle(
-                            color: AppColors.primaryBlue.withOpacity(0.9),
+                            color: AppColors.ocean.withOpacity(0.9),
                             fontSize: 14,
                           ),
                         ),
@@ -153,7 +153,7 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
                   ElevatedButton(
                     onPressed: _isCompleting ? null : _handleComplete,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryBlue,
+                      backgroundColor: AppColors.ocean,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -198,11 +198,11 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
       children: [
         CircleAvatar(
           radius: 28,
-          backgroundColor: AppColors.primaryBlue.withOpacity(0.15),
+          backgroundColor: AppColors.ocean.withOpacity(0.15),
           child: Text(
             '${instructor.firstName[0]}${instructor.lastName[0]}',
             style: const TextStyle(
-              color: AppColors.primaryBlue,
+              color: AppColors.ocean,
               fontWeight: FontWeight.bold,
               fontSize: 20,
             ),
@@ -248,7 +248,7 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
         children: [
           Icon(
             icon,
-            color: AppColors.primaryBlue,
+            color: AppColors.ocean,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -260,7 +260,7 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.primaryBlue,
+                    color: AppColors.ocean,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -279,3 +279,4 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
     );
   }
 }
+

@@ -1,5 +1,3 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 class UserModel {
   UserModel({
     required this.id,
@@ -15,16 +13,42 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    String _stringOrDefault(dynamic value, [String fallback = '']) {
+      if (value == null) return fallback;
+      if (value is String) return value;
+      if (value is num || value is bool) return value.toString();
+      return fallback;
+    }
+
+    String? _stringOrNull(dynamic value) {
+      if (value == null) return null;
+      if (value is String) return value;
+      if (value is num || value is bool) return value.toString();
+      return null;
+    }
+
+    DateTime _parseDate(dynamic value) {
+      if (value is DateTime) return value;
+      if (value is String) return DateTime.parse(value);
+      if (value is int) {
+        return DateTime.fromMillisecondsSinceEpoch(value);
+      }
+      if (value is double) {
+        return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+      }
+      throw FormatException('Unsupported date value: $value');
+    }
+
     return UserModel(
       id: json['id'] as String,
-      email: json['email'] as String,
-      phone: json['phone'] as String?,
-      firstName: json['first_name'] as String,
-      lastName: json['last_name'] as String,
-      role: json['role'] as String,
-      profileImageUrl: json['profile_image_url'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      email: _stringOrDefault(json['email']),
+      phone: _stringOrNull(json['phone']),
+      firstName: _stringOrDefault(json['first_name']),
+      lastName: _stringOrDefault(json['last_name']),
+      role: _stringOrDefault(json['role']),
+      profileImageUrl: _stringOrNull(json['profile_image_url']),
+      createdAt: _parseDate(json['created_at']),
+      updatedAt: _parseDate(json['updated_at']),
       isVerified: json['is_verified'] as bool? ?? false,
     );
   }

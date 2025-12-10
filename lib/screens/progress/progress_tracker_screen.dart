@@ -86,7 +86,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primaryBlue,
+                    color: AppColors.ocean,
                   ),
                 ),
                 Text(
@@ -94,7 +94,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primaryBlue,
+                    color: AppColors.ocean,
                   ),
                 ),
               ],
@@ -104,7 +104,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               value: progress,
               backgroundColor: Colors.grey[200],
               valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                  const AlwaysStoppedAnimation<Color>(AppColors.ocean),
               minHeight: 8,
             ),
             const SizedBox(height: 12),
@@ -132,7 +132,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primaryBlue,
+                  color: AppColors.ocean,
                 ),
               ),
             ] else
@@ -182,7 +182,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
+                color: AppColors.ocean,
               ),
             ),
             const SizedBox(height: 16),
@@ -288,7 +288,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: AppColors.primaryBlue,
+            color: AppColors.ocean,
           ),
         ),
         const SizedBox(height: 16),
@@ -310,14 +310,14 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               decoration: BoxDecoration(
                 color: skill.isCompleted
                     ? AppColors.success.withOpacity(0.1)
-                    : AppColors.primaryBlue.withOpacity(0.1),
+                    : AppColors.ocean.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(
                 skill.isCompleted ? Icons.check : Icons.radio_button_unchecked,
                 color: skill.isCompleted
                     ? AppColors.success
-                    : AppColors.primaryBlue,
+                    : AppColors.ocean,
                 size: 20,
               ),
             ),
@@ -361,7 +361,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: skill.isCompleted
                     ? AppColors.warning
-                    : AppColors.primaryBlue,
+                    : AppColors.ocean,
                 minimumSize: const Size(90, 32),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16)),
@@ -624,3 +624,4 @@ List<DrivingSkill> _buildDefaultSkills() {
     ),
   ];
 }
+

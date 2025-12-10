@@ -1,0 +1,193 @@
+create table public.learner_profiles (
+  profile_id uuid not null,
+  learning_focus text null,
+  target_test_date date null,
+  target_test_centre text null,
+  notes text null,
+  classes_taken_sofar integer null,
+  last_class_date date null,
+  preferred_locations jsonb null,
+  preferred_location_notes text null,
+  weekly_availability jsonb null default '[]'::jsonb,
+  availability_recurring boolean null default false,
+  constraint learner_profiles_pkey primary key (profile_id),
+  constraint learner_profiles_profile_id_fkey foreign KEY (profile_id) references profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+-------------
+
+create table public.learner_requests (
+  id uuid not null default gen_random_uuid (),
+  learner_id uuid null,
+  instructor_id uuid null,
+  focus text null,
+  message text null,
+  status text null default 'pending'::text,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  requested_first_name text null,
+  requested_last_name text null,
+  requested_profile_url text null,
+  constraint lesson_requests_pkey primary key (id),
+  constraint learner_requests_learner_id_fkey foreign KEY (learner_id) references learner_profiles (profile_id),
+  constraint lesson_requests_instructor_id_fkey foreign KEY (instructor_id) references instructor_profiles (profile_id) on delete CASCADE,
+  constraint lesson_requests_status_check check (
+    (
+      status = any (
+        array[
+          'pending'::text,
+          'accepted'::text,
+          'active'::text,
+          'in_progress'::text,
+          'declined'::text,
+          'cancelled'::text,
+          'removed'::text
+        ]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create trigger lesson_requests_touch BEFORE
+update on learner_requests for EACH row
+execute FUNCTION touch_lesson_requests_updated_at ();
+
+
+------------------------------
+
+
+create table public.profiles (
+  id uuid not null,
+  email text null,
+  role public.user_role null,
+  created_at timestamp with time zone null default now(),
+  first_name text null,
+  last_name text null,
+  city text null,
+  updated_at timestamp with time zone null default now(),
+  profile_image_url text null,
+  phone numeric null,
+  age smallint null,
+  gender text null,
+  licence_number text null,
+  licence_expiry date null,
+  is_verified boolean null,
+  total_lessons numeric null,
+  languages text[] null,
+  constraint profiles_pkey primary key (id),
+  constraint profiles_email_key unique (email),
+  constraint profiles_Phone_key unique (phone),
+  constraint profiles_id_fkey foreign KEY (id) references auth.users (id) on delete CASCADE,
+  constraint profiles_phone_check check ((phone > (9)::numeric)),
+  constraint profiles_total_lessons_check check ((total_lessons >= (0)::numeric)),
+  constraint profiles_age_check check ((age >= 16)),
+  constraint profiles_languages_nonempty_check check (
+    (
+      (languages is null)
+      or (array_length(languages, 1) >= 1)
+    )
+  ),
+  constraint profiles_licence_expiry_check check (
+    (
+      (licence_expiry is null)
+      or (
+        licence_expiry >= ((now() AT TIME ZONE 'utc'::text))::date
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists profiles_languages_gin_idx on public.profiles using gin (languages) TABLESPACE pg_default;
+
+create trigger profiles_touch_updated_at BEFORE
+update on profiles for EACH row
+execute FUNCTION touch_profiles_updated_at ();
+
+create trigger trg_normalize_languages BEFORE INSERT
+or
+update on profiles for EACH row
+execute FUNCTION normalize_and_validate_languages ();
+
+--------------------------------    
+
+
+create table public.lessons (
+  id uuid not null default gen_random_uuid (),
+  learner_id uuid null,
+  instructor_id uuid null,
+  scheduled_at timestamp with time zone not null,
+  duration_hours integer not null,
+  focus text null,
+  pickup_location text null,
+  status text null default 'scheduled'::text,
+  notes text null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  start_time time without time zone null,
+  end_time time without time zone null,
+  cost numeric null default 0,
+  lesson_date date null,
+  constraint lessons_pkey primary key (id),
+  constraint lessons_instructor_id_fkey foreign KEY (instructor_id) references instructor_profiles (profile_id) on delete CASCADE,
+  constraint lessons_learner_id_fkey foreign KEY (learner_id) references profiles (id) on delete CASCADE,
+  constraint lessons_status_check check (
+    (
+      status = any (
+        array[
+          'scheduled'::text,
+          'in_progress'::text,
+          'completed'::text,
+          'cancelled'::text
+        ]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+
+--------------------------------------  
+
+create table public.instructor_profiles (
+  profile_id uuid not null,
+  bio text null,
+  default_rate numeric(10, 2) null,
+  vehicles jsonb null,
+  offerings text[] null,
+  offering_rates jsonb null,
+  preferred_locations jsonb null,
+  preferred_location_notes text null,
+  years_of_experience integer null,
+  vehicle_photo_url text null,
+  pickup_preference boolean null,
+  updated_at timestamp with time zone null,
+  constraint instructor_profiles_pkey primary key (profile_id),
+  constraint instructor_profiles_profile_id_fkey foreign KEY (profile_id) references profiles (id) on delete CASCADE,
+  constraint instructor_pickup_pref_check check (
+    (
+      (pickup_preference is null)
+      or (
+        (pickup_preference = true)
+        and (preferred_locations is null)
+      )
+      or (
+        (pickup_preference = false)
+        and (preferred_locations is not null)
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create trigger instructor_profiles_touch BEFORE
+update on instructor_profiles for EACH row
+execute FUNCTION touch_instructor_profiles_updated_at ();    
+
+----------------------------------------------   
+
+create table public.learner_skill_progress (
+  profile_id uuid not null,
+  skill_id text not null,
+  is_completed boolean null default false,
+  completed_at timestamp with time zone null,
+  constraint learner_skill_progress_pkey primary key (profile_id, skill_id),
+  constraint learner_skill_progress_profile_id_fkey foreign KEY (profile_id) references profiles (id) on delete CASCADE
+) TABLESPACE pg_default;

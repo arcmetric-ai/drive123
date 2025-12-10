@@ -1,0 +1,41 @@
+Launching lib\main.dart on sdk
+gphone64 x86 64 in debug mode...    
+Running Gradle task 'assembleDebug'.lib/screens/home/instructor_home_screen.dart:218:9: Error: No named parameter with the name 'scheduled'.    
+Running Gradle task 'assembleDebug'.        scheduled: scheduled,       
+Running Gradle task 'assembleDebug'.        ^^^^^^^^^
+Running Gradle task 'assembleDebug'.lib/services/supabase_service.dart:659:23: Context: Found this candidate, but the arguments don't match.    
+Running Gradle task 'assembleDebug'.  static Future<void> createLessonFromRequest({
+Running Gradle task 'assembleDebug'.                      ^^^^^^^^^^^^^^^^^^^^^^^
+Running Gradle task 'assembleDebug'.lib/screens/home/instructor_home_screen.dart:1296:62: Error: The getter 'scheduled' isn't defined for the type '_BookingsTabState'.
+Running Gradle task 'assembleDebug'. - '_BookingsTabState' is from 'package:drive_t/screens/home/instructor_home_screen.dart' ('lib/screens/home/instructor_home_screen.dart').     
+Running Gradle task 'assembleDebug'.Try correcting the name to the name of an existing getter, or defining a getter or field named 'scheduled'. 
+Running Gradle task 'assembleDebug'.        updated['slot'] = DateFormat.yMMMd().add_jm().format(scheduled);
+Running Gradle task 'assembleDebug'.                          ^^^^^^^^^ 
+Running Gradle task 'assembleDebug'.lib/screens/home/instructor_home_screen.dart:1297:35: Error: The getter 'scheduled' isn't defined for the type '_BookingsTabState'.
+Running Gradle task 'assembleDebug'. - '_BookingsTabState' is from 'package:drive_t/screens/home/instructor_home_screen.dart' ('lib/screens/home/instructor_home_screen.dart').     
+Running Gradle task 'assembleDebug'.Try correcting the name to the name of an existing getter, or defining a getter or field named 'scheduled'. 
+Running Gradle task 'assembleDebug'.        updated['scheduled_at'] = scheduled.toIso8601String();
+Running Gradle task 'assembleDebug'.                          ^^^^^^^^^ 
+Running Gradle task 'assembleDebug'.Target kernel_snapshot_program failed: Exception
+Running Gradle task 'assembleDebug'.                                    
+Running Gradle task 'assembleDebug'.
+
+Running Gradle task 'assembleDebug'.FAILURE: Build failed with an exception.
+Running Gradle task 'assembleDebug'.
+
+Running Gradle task 'assembleDebug'.* What went wrong:
+Running Gradle task 'assembleDebug'.Execution failed for task ':app:compileFlutterBuildDebug'.
+Running Gradle task 'assembleDebug'.> Process 'command 'C:\Users\indar\DT\flutter\bin\flutter.bat'' finished with non-zero exit value 1
+Running Gradle task 'assembleDebug'.
+
+Running Gradle task 'assembleDebug'.* Try:
+Running Gradle task 'assembleDebug'.> Run with --stacktrace option to get the stack trace.
+Running Gradle task 'assembleDebug'.> Run with --info or --debug option to get more log output.
+Running Gradle task 'assembleDebug'.> Run with --scan to get full insights.
+Running Gradle task 'assembleDebug'.> Get more help at https://help.gradle.org.
+Running Gradle task 'assembleDebug'.
+
+Running Gradle task 'assembleDebug'.BUILD FAILED in 40s
+Running Gradle task 'assembleDebug'...                            40.9s\
+Error: Gradle task assembleDebug
+failed with exit code 1

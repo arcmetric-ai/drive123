@@ -112,7 +112,7 @@ class _HeaderCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        const Icon(Icons.star, color: AppColors.accentYellow, size: 16),
+                        const Icon(Icons.star, color: AppColors.golden, size: 16),
                         const SizedBox(width: 4),
                         Text(
                           instructor.rating.toStringAsFixed(1),
@@ -166,7 +166,7 @@ class _SectionCard extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.primaryBlue,
+                color: AppColors.ocean,
               ),
             ),
             const SizedBox(height: 12),
@@ -203,3 +203,4 @@ class _DetailRow extends StatelessWidget {
     );
   }
 }
+

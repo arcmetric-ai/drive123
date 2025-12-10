@@ -27,9 +27,14 @@ class AppConstants {
   
   static const List<String> carTypes = [
     'sedan',
-    'suv',
     'hatchback',
-    'coupe'
+    'suv',
+    'truck',
+    'van',
+    'coupe',
+    'convertible',
+    'electric',
+    'other',
   ];
   
   static const List<String> transmissionTypes = [

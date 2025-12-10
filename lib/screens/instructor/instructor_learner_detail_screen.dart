@@ -1,195 +1,731 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/app_colors.dart';
+import '../../services/supabase_service.dart';
 
-class InstructorLearnerDetailScreen extends StatelessWidget {
+class InstructorLearnerDetailScreen extends StatefulWidget {
+  /// Accepts either a full learner map or an object with a 'profile_id' / 'id'.
   final Map<String, dynamic>? learner;
 
   const InstructorLearnerDetailScreen({super.key, this.learner});
 
-  Map<String, dynamic> get _data => learner ?? const {
-        'name': 'Alice Lee',
-        'email': 'alice.lee@example.com',
-        'phone': '+1 647-555-1200',
-        'level': 'G2 practice',
-        'progress': '3 / 6 sessions completed',
-        'upcoming': 'Next lesson: Oct 14 • 2:00 PM',
-        'notes':
-            'Working on improving confidence with lane changes. Responds well to checklists and visual cues.',
-        'focusAreas': ['Lane changes', 'Downtown traffic', 'Parking'],
-        'recentLessons': [
-          {
-            'date': 'Oct 7, 2024',
-            'summary': 'Practised parallel parking and 3-point turns.',
-            'feedback': 'Needs smoother steering input when reversing. Improved mirror usage.',
-          },
-          {
-            'date': 'Sep 30, 2024',
-            'summary': 'City driving – rush hour intersections.',
-            'feedback': 'Better observation before left turns. Continue monitoring speed control.',
-          },
-        ],
-        'testPrep': {
-          'targetDate': 'Nov 18, 2024',
-          'testCentre': 'Etobicoke DriveTest',
-          'readiness': 'On track',
-        },
+  @override
+  State<InstructorLearnerDetailScreen> createState() =>
+      _InstructorLearnerDetailScreenState();
+}
+
+class _InstructorLearnerDetailScreenState
+    extends State<InstructorLearnerDetailScreen> {
+  bool _loading = true;
+  Map<String, dynamic> _profile = {};
+  Map<String, dynamic> _learner = {};
+  static const List<String> _daySequence = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+  static const Map<String, int> _slotOrder = {
+    'early': 0,
+    'morning': 1,
+    'afternoon': 2,
+    'evening': 3,
+  };
+  static const Map<String, String> _slotLabels = {
+    'early': 'Early (7am-9am)',
+    'morning': 'Morning (9am-12pm)',
+    'afternoon': 'Afternoon (12pm-4pm)',
+    'evening': 'Evening (4pm-8pm)',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _initData();
+  }
+
+  Future<void> _initData() async {
+    setState(() => _loading = true);
+
+    final passed = widget.learner ?? {};
+
+    // Prefer explicit profile data passed in. If a profile id is provided, fetch raw profile + learner detail.
+    final profileId =
+        (passed['profile_id'] ?? passed['id'] ?? passed['userId'])?.toString();
+
+    if (profileId != null) {
+      final learnerDetail =
+          await SupabaseService.getLearnerProfileDetail(profileId);
+      if (learnerDetail != null) {
+        setState(() {
+          _learner = {
+            ...learnerDetail,
+            ...passed,
+          };
+          _profile = _mapOrNull(learnerDetail['profile']) ?? {};
+          _normalizeLearnerDetail();
+          _loading = false;
+        });
+      } else {
+        // Fallback to fetching raw profile if learner detail is not found
+        final rawProfile = await SupabaseService.getRawProfile(profileId);
+        setState(() {
+          _profile = rawProfile ?? {};
+          _learner = passed;
+          _normalizeLearnerDetail();
+          _loading = false;
+        });
+      }
+      return;
+    }
+
+    // No id — use passed map values (may be placeholder data).
+    setState(() {
+      _profile = {
+        'email': passed['email'] ?? '',
+        'phone': passed['phone'] ?? '',
       };
+      _learner = passed;
+      _normalizeLearnerDetail();
+      _loading = false;
+    });
+  }
+
+  void _normalizeLearnerDetail() {
+    final profileMap = _mapOrNull(_learner['profile']);
+    if (profileMap != null) {
+      if (_profile.isEmpty) {
+        _profile = Map<String, dynamic>.from(profileMap);
+      } else {
+        _profile.addAll(
+          profileMap.map((key, value) => MapEntry(key.toString(), value)),
+        );
+      }
+    }
+
+    String? _pickString(List<dynamic> candidates) {
+      for (final candidate in candidates) {
+        final value = _asNullableString(candidate);
+        if (value != null && value.isNotEmpty) return value;
+      }
+      return null;
+    }
+
+    int? _pickInt(List<dynamic> candidates) {
+      for (final candidate in candidates) {
+        final value = _asNullableInt(candidate);
+        if (value != null) return value;
+      }
+      return null;
+    }
+
+    DateTime? _pickDate(List<dynamic> candidates) {
+      for (final candidate in candidates) {
+        final value = _asNullableDate(candidate);
+        if (value != null) return value;
+      }
+      return null;
+    }
+
+    _learner['email'] ??= _pickString([
+      _learner['email'],
+      profileMap?['email'],
+      _profile['email'],
+    ]);
+    _learner['phone'] ??= _pickString([
+      _learner['phone'],
+      profileMap?['phone'],
+      _profile['phone'],
+    ]);
+    _learner['city'] ??= _pickString([
+      _learner['city'],
+      profileMap?['city'],
+      _profile['city'],
+    ]);
+    _learner['age'] ??= _pickInt([
+      _learner['age'],
+      profileMap?['age'],
+      _profile['age'],
+    ]);
+    _learner['gender'] ??= _pickString([
+      _learner['gender'],
+      profileMap?['gender'],
+      _profile['gender'],
+    ]);
+
+    final licenceNumber = _pickString([
+      _learner['licence_number'],
+      _learner['license_number'],
+      profileMap?['licence_number'],
+      profileMap?['license_number'],
+      _profile['licence_number'],
+      _profile['license_number'],
+    ]);
+    if (licenceNumber != null) {
+      _learner['licence_number'] = licenceNumber;
+    }
+
+    final licenceExpiry = _pickDate([
+      _learner['licence_expiry'],
+      _learner['license_expiry'],
+      profileMap?['licence_expiry'],
+      profileMap?['license_expiry'],
+      _profile['licence_expiry'],
+      _profile['license_expiry'],
+    ]);
+    if (licenceExpiry != null) {
+      _learner['licence_expiry'] = licenceExpiry.toIso8601String();
+    }
+
+    if (_profile['home_address'] == null &&
+        profileMap != null &&
+        profileMap['home_address'] != null) {
+      _profile['home_address'] = profileMap['home_address'];
+    }
+    if (_learner['home_address'] == null &&
+        profileMap != null &&
+        profileMap['home_address'] != null) {
+      _learner['home_address'] = profileMap['home_address'];
+    }
+
+    final availabilityRaw =
+        _learner['weekly_availability'] ?? profileMap?['weekly_availability'];
+    if (availabilityRaw != null) {
+      _learner['weekly_availability'] =
+          _normalizeWeeklyAvailability(availabilityRaw);
+    }
+
+    if (_learner['availability_recurring'] == null &&
+        profileMap?['availability_recurring'] != null) {
+      _learner['availability_recurring'] =
+          profileMap?['availability_recurring'];
+    }
+  }
+
+  String? _asNullableString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) {
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+    return value.toString().trim().isEmpty ? null : value.toString().trim();
+  }
+
+  int? _asNullableInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
+  }
+
+  DateTime? _asNullableDate(dynamic value) {
+    if (value is DateTime) return value;
+    if (value is String && value.trim().isNotEmpty) {
+      return DateTime.tryParse(value.trim());
+    }
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(value);
+    }
+    if (value is double) {
+      return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    }
+    return null;
+  }
+
+  bool? _asNullableBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) {
+      if (value == 1) return true;
+      if (value == 0) return false;
+    }
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized.isEmpty) return null;
+      if (normalized == 'true' ||
+          normalized == '1' ||
+          normalized == 'yes' ||
+          normalized == 'y') {
+        return true;
+      }
+      if (normalized == 'false' ||
+          normalized == '0' ||
+          normalized == 'no' ||
+          normalized == 'n') {
+        return false;
+      }
+    }
+    return null;
+  }
+
+  String? _formatDate(DateTime? value) {
+    if (value == null) return null;
+    return DateFormat('MMM d, yyyy').format(value);
+  }
+
+  Map<String, dynamic>? _mapOrNull(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  Map<String, List<String>> _normalizeWeeklyAvailability(dynamic raw) {
+    final result = <String, List<String>>{};
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        final day = key.toString().toLowerCase();
+        final slots = (value as List?)
+                ?.whereType<String>()
+                .map((slot) => slot.toLowerCase())
+                .where((slot) => slot.isNotEmpty)
+                .toSet()
+                .toList() ??
+            const <String>[];
+        if (day.isNotEmpty && slots.isNotEmpty) {
+          slots.sort();
+          result[day] = slots;
+        }
+      });
+    } else if (raw is Iterable) {
+      for (final entry in raw) {
+        if (entry is Map) {
+          final day = entry['day']?.toString().toLowerCase();
+          final slots = (entry['slots'] as List?)
+                  ?.whereType<String>()
+                  .map((slot) => slot.toLowerCase())
+                  .where((slot) => slot.isNotEmpty)
+                  .toSet()
+                  .toList() ??
+              const <String>[];
+          if (day != null && day.isNotEmpty && slots.isNotEmpty) {
+            slots.sort();
+            result[day] = slots;
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  List<String> _preferredLocationSummaries() {
+    final source = _learner['preferred_locations'] ??
+        _profile['preferred_locations'] ??
+        _learner['preferredLocations'];
+    final results = <String>[];
+    if (source is List) {
+      for (final entry in source) {
+        if (entry is Map) {
+          final label = _asNullableString(entry['label']);
+          final address = _asNullableString(entry['address']);
+          final type = _asNullableString(entry['type']);
+          String? value;
+          if (label != null && address != null) {
+            value = '$label - $address';
+          } else if (address != null) {
+            value = address;
+          } else if (label != null) {
+            value = label;
+          } else if (type != null) {
+            value = type;
+          }
+          if (value != null && value.isNotEmpty) {
+            results.add(value);
+          }
+        } else if (entry is String && entry.trim().isNotEmpty) {
+          results.add(entry.trim());
+        }
+      }
+    } else if (source is String && source.trim().isNotEmpty) {
+      results.add(source.trim());
+    }
+    return results;
+  }
+
+  String get _name {
+    final explicit = _asNullableString(_learner['name']);
+    if (explicit != null && explicit.isNotEmpty) {
+      return explicit;
+    }
+    final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
+    final first = _asNullableString(profileMap?['first_name']) ??
+        _asNullableString(_profile['first_name']);
+    final last = _asNullableString(profileMap?['last_name']) ??
+        _asNullableString(_profile['last_name']);
+    final combined = [first, last]
+        .whereType<String>()
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .join(' ');
+    if (combined.isNotEmpty) {
+      return combined;
+    }
+    final fallback = _asNullableString(profileMap?['full_name']) ??
+        _asNullableString(profileMap?['name']) ??
+        _asNullableString(_profile['full_name']) ??
+        _asNullableString(_profile['name']);
+    return fallback?.isNotEmpty == true ? fallback! : 'Learner';
+  }
+
+  String get _phone {
+    final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
+    return _asNullableString(profileMap?['phone']) ??
+        _asNullableString(_profile['phone']) ??
+        _asNullableString(_learner['phone']) ??
+        '';
+  }
+
+  String get _address {
+    final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
+    final addressMap = _learner['home_address'] ??
+        _profile['home_address'] ??
+        profileMap?['home_address'] ??
+        _learner['address'] ??
+        _profile['address'];
+    if (addressMap is Map<String, dynamic>) {
+      final line1 = (addressMap['address_line1'] ?? addressMap['line1'] ?? '')
+          .toString()
+          .trim();
+      final line2 = (addressMap['address_line2'] ?? addressMap['line2'] ?? '')
+          .toString()
+          .trim();
+      final city = (addressMap['city'] ?? '').toString().trim();
+      final province = (addressMap['province'] ?? addressMap['state'] ?? '')
+          .toString()
+          .trim();
+      final postal = (addressMap['postal_code'] ?? addressMap['zip'] ?? '')
+          .toString()
+          .trim();
+      final parts = <String>[
+        if (line1.isNotEmpty) line1,
+        if (line2.isNotEmpty) line2,
+        if (city.isNotEmpty) city,
+        if (province.isNotEmpty) province,
+        if (postal.isNotEmpty) postal,
+      ];
+      if (parts.isNotEmpty) return parts.join(', ');
+    }
+    return '';
+  }
+
+  String? get _relationshipStatus {
+    final status = widget.learner?['status'] ??
+        _learner['status'] ??
+        _learner['requestStatus'] ??
+        _learner['learner_status'];
+    if (status is String) {
+      return status.toLowerCase();
+    }
+    return null;
+  }
+
+  bool get _isActiveLearner {
+    const activeStatuses = {'accepted', 'active', 'in_progress'};
+    final status = _relationshipStatus;
+    if (status == null) return false;
+    return activeStatuses.contains(status);
+  }
+
+  bool get _isVerifiedLearner {
+    final direct = _asNullableBool(_profile['is_verified']);
+    if (direct != null) return direct;
+    final profileMap = _mapOrNull(_learner['profile']);
+    final nested = _asNullableBool(profileMap?['is_verified']);
+    return nested ?? false;
+  }
+
+  String? get _profileImageUrl {
+    final direct = _asNullableString(_profile['profile_image_url']);
+    if (direct != null) return direct;
+    final profileMap = _mapOrNull(_learner['profile']);
+    final nested = _asNullableString(profileMap?['profile_image_url']);
+    if (nested != null) return nested;
+    final fallback = _asNullableString(_learner['profileImageUrl'] ??
+        _learner['profile_image_url'] ??
+        widget.learner?['profile_image_url']);
+    return fallback;
+  }
+
+  Future<void> _launchPhone() async {
+    if (_phone.trim().isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: _phone);
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
+  Map<String, List<String>> _normalizeAvailability(dynamic raw) {
+    final result = <String, List<String>>{};
+    if (raw is List) {
+      for (final entry in raw.whereType<Map>()) {
+        final dayRaw = entry['day'];
+        final slotsRaw = entry['slots'];
+        if (dayRaw == null) continue;
+        final day = dayRaw.toString().toLowerCase();
+        final slots = slotsRaw is List
+            ? slotsRaw
+                .whereType<String>()
+                .map((slot) => slot.toLowerCase())
+                .toList()
+            : <String>[];
+        if (slots.isEmpty) continue;
+        slots.sort(
+            (a, b) => (_slotOrder[a] ?? 99).compareTo(_slotOrder[b] ?? 99));
+        result[day] = slots;
+      }
+    } else if (raw is Map) {
+      for (final entry in raw.entries) {
+        final day = entry.key.toString().toLowerCase();
+        final value = entry.value;
+        final slots = value is List
+            ? value
+                .whereType<String>()
+                .map((slot) => slot.toLowerCase())
+                .toList()
+            : <String>[];
+        if (slots.isEmpty) continue;
+        slots.sort(
+            (a, b) => (_slotOrder[a] ?? 99).compareTo(_slotOrder[b] ?? 99));
+        result[day] = slots;
+      }
+    }
+    return result;
+  }
+
+  String _slotLabel(String key) {
+    return _slotLabels[key] ?? key;
+  }
+
+  String _capitalize(String value) {
+    if (value.isEmpty) return value;
+    return value[0].toUpperCase() + value.substring(1);
+  }
+
+  String _titleCase(String value) {
+    if (value.isEmpty) return value;
+    final parts =
+        value.split(RegExp(r'[_\s]+')).where((part) => part.isNotEmpty);
+    return parts.map(_capitalize).join(' ');
+  }
+
+  Widget _buildWeeklyAvailability() {
+    final rawAvailability =
+        _learner['weekly_availability'] ?? _profile['weekly_availability'];
+    final availability = _normalizeAvailability(rawAvailability);
+    if (availability.isEmpty) {
+      return const Text('Availability not set.');
+    }
+    final sortedDays = availability.keys.toList()
+      ..sort(
+          (a, b) => _daySequence.indexOf(a).compareTo(_daySequence.indexOf(b)));
+    final recurring = (_learner['availability_recurring'] ??
+            _profile['availability_recurring']) ==
+        true;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          runSpacing: 8,
+          spacing: 8,
+          children: [
+            for (final day in sortedDays)
+              _AvailabilityPill(
+                day: _capitalize(day),
+                slots: availability[day]!.map(_slotLabel).toList(),
+              ),
+          ],
+        ),
+        if (recurring)
+          const Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: Text(
+              'Repeats monthly',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final data = _data;
-    final focusAreas = (data['focusAreas'] as List).cast<String>();
-    final recentLessons = (data['recentLessons'] as List).cast<Map<String, String>>();
-    final testPrep = (data['testPrep'] as Map<String, String>);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Learner profile'),
         backgroundColor: Colors.white,
-        foregroundColor: AppColors.primaryBlue,
+        foregroundColor: AppColors.ocean,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.message_outlined),
-            onPressed: () {
-              // TODO: message learner
-            },
-          ),
-        ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _LearnerHeader(name: data['name'] as String, level: data['level'] as String),
-          const SizedBox(height: 20),
-          _SectionCard(
-            title: 'Contact details',
-            children: [
-              _InfoLine(icon: Icons.email_outlined, text: data['email'] as String),
-              _InfoLine(icon: Icons.phone_outlined, text: data['phone'] as String),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _SectionCard(
-            title: 'Lesson progress',
-            children: [
-              Text(
-                data['progress'] as String,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                data['upcoming'] as String,
-                style: const TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: focusAreas
-                    .map(
-                      (item) => Chip(
-                        label: Text(item),
-                        backgroundColor: AppColors.primaryBlue.withOpacity(0.12),
-                        labelStyle: const TextStyle(color: AppColors.primaryBlue),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                _buildHeader(context),
+                const SizedBox(height: 16),
+                _isActiveLearner
+                    ? _buildContactRow(context)
+                    : _buildInfoCard(
+                        title: 'Contact',
+                        child: Text(
+                          'Contact details become available after you accept this learner.',
+                          style: TextStyle(color: Colors.grey[700]),
+                        ),
                       ),
-                    )
-                    .toList(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _SectionCard(
-            title: 'Recent lessons',
-            children: recentLessons
-                .map(
-                  (lesson) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _RecentLessonTile(lesson: lesson),
+                const SizedBox(height: 16),
+                _buildLearnerSummaryCard(),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  title: 'About',
+                  child: Text(
+                    (_learner['notes'] as String?) ??
+                        'No additional notes provided.',
+                    style: const TextStyle(height: 1.5),
                   ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 20),
-          _SectionCard(
-            title: 'Test preparation',
-            children: [
-              _InfoLine(icon: Icons.calendar_month_outlined, text: 'Target date: ${testPrep['targetDate']}'),
-              _InfoLine(icon: Icons.location_on_outlined, text: 'Test centre: ${testPrep['testCentre']}'),
-              _InfoLine(icon: Icons.check_circle_outline, text: 'Readiness: ${testPrep['readiness']}'),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _SectionCard(
-            title: 'Instructor notes',
-            children: [
-              Text(
-                data['notes'] as String,
-                style: const TextStyle(height: 1.5),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: add progress note
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue),
-                icon: const Icon(Icons.note_add_outlined),
-                label: const Text('Add progress note'),
-              ),
-            ],
-          ),
-        ],
-      ),
+                ),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  title: 'Progress & focus areas',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text((_learner['progress'] as String?) ??
+                          'Progress not tracked yet.'),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: ((_learner['focusAreas'] as List?) ??
+                                (_learner['focus_areas'] as List?) ??
+                                [])
+                            .whereType<String>()
+                            .map((f) => Chip(label: Text(f)))
+                            .toList(),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  title: 'Weekly availability',
+                  child: _buildWeeklyAvailability(),
+                ),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  title: 'Recent lessons',
+                  child: _buildRecentLessons(),
+                ),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  title: 'Test preparation',
+                  child: _buildTestPrep(),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
     );
   }
-}
 
-class _LearnerHeader extends StatelessWidget {
-  final String name;
-  final String level;
+  Widget _buildHeader(BuildContext context) {
+    final upcoming = (_learner['upcoming'] as String?) ??
+        (_learner['upcoming_lesson'] as String?) ??
+        '';
+    final level = (_learner['level'] as String?) ??
+        (_learner['learning_focus'] as String?) ??
+        '';
+    final imageUrl = _profileImageUrl;
+    final isVerified = _isVerifiedLearner;
+    final status = _relationshipStatus;
+    final statusLabel = status != null ? _titleCase(status) : null;
+    final bool showStatusChip = statusLabel != null && !_isActiveLearner;
 
-  const _LearnerHeader({required this.name, required this.level});
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: AppColors.primaryGradient,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 30,
+            radius: 28,
             backgroundColor: Colors.white,
-            child: Text(
-              name[0],
-              style: const TextStyle(
-                color: AppColors.primaryBlue,
-                fontWeight: FontWeight.bold,
-                fontSize: 26,
-              ),
-            ),
+            backgroundImage: imageUrl != null && imageUrl.isNotEmpty
+                ? NetworkImage(imageUrl)
+                : null,
+            child: imageUrl == null || imageUrl.isEmpty
+                ? Text(
+                    _name.isNotEmpty ? _name[0] : '?',
+                    style: const TextStyle(
+                      color: AppColors.ocean,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      _name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (isVerified) const _VerifiedBadge(),
+                  ],
+                ),
+                if (level.isNotEmpty)
+                  Text(
+                    level,
+                    style: TextStyle(color: Colors.white.withOpacity(0.9)),
                   ),
-                ),
-                Text(
-                  level,
-                  style: TextStyle(color: Colors.white.withOpacity(0.85)),
-                ),
+                if (showStatusChip) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Status: $statusLabel',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+                if (upcoming.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      upcoming,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -197,104 +733,329 @@ class _LearnerHeader extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildContactRow(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Phone',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryBlue,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _phone.isNotEmpty ? _phone : 'Phone not set',
+                  style: const TextStyle(color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: _launchPhone,
+            icon: const Icon(Icons.phone_outlined),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLearnerSummaryCard() {
+    final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
+    final city = _asNullableString(
+      profileMap?['city'] ?? _learner['city'] ?? _profile['city'],
+    );
+    final age = _asNullableInt(
+      profileMap?['age'] ?? _learner['age'] ?? _profile['age'],
+    );
+    final gender = _asNullableString(
+      profileMap?['gender'] ?? _learner['gender'] ?? _profile['gender'],
+    );
+    final classesTaken = _asNullableInt(
+      _learner['classes_taken_sofar'] ?? _learner['classes_taken'],
+    );
+    final lastClassDate = _asNullableDate(_learner['last_class_date']);
+    final targetTestDate = _asNullableDate(
+      _learner['target_test_date'] ??
+          _learner['g1_test_date'] ??
+          _learner['test_date'],
+    );
+    final preferredLocations = _preferredLocationSummaries();
+
+    final details = <Widget>[
+      _detailRow('City', city ?? 'Not provided'),
+      _detailRow(
+        'Age',
+        age != null ? '$age years' : 'Not provided',
+      ),
+      _detailRow('Gender', gender ?? 'Not provided'),
+      _detailRow(
+        'Lessons completed',
+        classesTaken != null
+            ? '$classesTaken lesson${classesTaken == 1 ? '' : 's'}'
+            : 'Not provided',
+      ),
+      _detailRow(
+        'Last class',
+        lastClassDate != null
+            ? _formatDate(lastClassDate) ?? 'Not provided'
+            : 'Not provided',
+      ),
+      _detailRow(
+        'Upcoming test',
+        targetTestDate != null
+            ? _formatDate(targetTestDate) ?? 'Not provided'
+            : 'Not provided',
+      ),
+    ];
+
+    final children = <Widget>[
+      ...details,
+      if (_isActiveLearner) ...[
+        const SizedBox(height: 4),
+        Text(
+          'Preferred locations',
+          style: const TextStyle(
+            color: Color(0xFF6B7280),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        preferredLocations.isNotEmpty
+            ? Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: preferredLocations
+                    .map((location) => Chip(label: Text(location)))
+                    .toList(),
+              )
+            : Text(
+                'Not provided',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+      ],
+    ];
+
+    return _buildInfoCard(
+      title: 'Learner details',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({required String title, required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ocean)),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value,
+      {Color labelColor = const Color(0xFF6B7280),
+      Color valueColor = const Color(0xFF1F2933)}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: labelColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: valueColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentLessons() {
+    final recent = (_learner['recentLessons'] as List?) ??
+        (_learner['recent_lessons'] as List?) ??
+        [];
+    if (recent.isEmpty) {
+      return const Text('No recent lessons recorded.');
+    }
+
+    return Column(
+      children: recent.whereType<Map<String, dynamic>>().map((r) {
+        final title =
+            (r['title'] as String?) ?? (r['time'] as String?) ?? 'Lesson';
+        final notes = (r['notes'] as String?) ?? '';
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(title),
+            subtitle: notes.isNotEmpty ? Text(notes) : null,
+            trailing: Text((r['status'] as String?) ?? ''),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildTestPrep() {
+    final prep =
+        (_learner['testPrep'] as Map?) ?? (_learner['test_prep'] as Map?) ?? {};
+    final target = prep['targetDate'] ?? prep['target_date'] ?? 'Not set';
+    final centre = prep['testCentre'] ?? prep['test_centre'] ?? 'Not set';
+    final readiness = prep['readiness'] ?? 'Unknown';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Target date: $target'),
+            Text(readiness,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text('Test centre: $centre'),
+      ],
+    );
+  }
 }
 
-class _SectionCard extends StatelessWidget {
-  final String title;
-  final List<Widget> children;
-
-  const _SectionCard({required this.title, required this.children});
+class _VerifiedBadge extends StatelessWidget {
+  const _VerifiedBadge();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey[200]!),
+        color: AppColors.ocean.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.verified, size: 16, color: Colors.white),
+          SizedBox(width: 4),
+          Text(
+            'Verified',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AvailabilityPill extends StatelessWidget {
+  const _AvailabilityPill({
+    required this.day,
+    required this.slots,
+  });
+
+  final String day;
+  final List<String> slots;
+
+  @override
+  Widget build(BuildContext context) {
+    final chipColor = AppColors.lightSurface.withOpacity(0.9);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: chipColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.grey200),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
+      constraints: const BoxConstraints(minWidth: 140),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
+            day,
             style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.primaryBlue,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...children,
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _InfoLine({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Icon(icon, color: AppColors.primaryBlue),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: Colors.black87),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecentLessonTile extends StatelessWidget {
-  final Map<String, String> lesson;
-
-  const _RecentLessonTile({required this.lesson});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.primaryBlue.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            lesson['date']!,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              color: AppColors.primaryBlue,
+              fontWeight: FontWeight.w700,
+              color: AppColors.ocean,
             ),
           ),
           const SizedBox(height: 6),
-          Text(lesson['summary']!),
-          const SizedBox(height: 6),
-          Text(
-            lesson['feedback']!,
-            style: const TextStyle(color: Colors.black87),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: slots
+                .map(
+                  (slot) => Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppColors.grey200),
+                    ),
+                    child: Text(
+                      slot,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.lightOnSurface,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
           ),
         ],
       ),

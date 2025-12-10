@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 import 'instructor_model.dart';
 
 enum LessonStatus {
@@ -25,22 +27,44 @@ class LessonModel {
   });
 
   factory LessonModel.fromJson(Map<String, dynamic> json) {
+    final durationHours = (() {
+      final rawHours = json['duration_hours'];
+      if (rawHours is num) {
+        return _normalizeDuration(rawHours.toDouble());
+      }
+      final mins = json['duration_minutes'];
+      if (mins is num) {
+        return _normalizeDuration(mins.toDouble() / 60.0);
+      }
+      final dur = json['duration'];
+      if (dur is num) {
+        return _normalizeDuration(dur.toDouble());
+      }
+      return 1.0;
+    })();
+
+    double _parseCost(dynamic value) {
+      if (value is num) return value.toDouble();
+      if (value is String) {
+        final parsed = double.tryParse(value);
+        if (parsed != null) return parsed;
+      }
+      return 0.0;
+    }
+
     return LessonModel(
       id: json['id'] as String,
       learnerId: json['learner_id'] as String,
       instructor:
           InstructorModel.fromJson(json['instructor'] as Map<String, dynamic>),
-      scheduledDate: DateTime.parse(json['scheduled_date'] as String),
+      scheduledDate: DateTime.parse(json['scheduled_at'] as String),
       startTime: json['start_time'] as String,
       endTime: json['end_time'] as String,
-      duration: (json['duration'] as num).toDouble(),
-      cost: (json['cost'] as num).toDouble(),
-      status: LessonStatus.values.firstWhere(
-        (e) => e.name == json['status'],
-        orElse: () => LessonStatus.scheduled,
-      ),
+      duration: durationHours,
+      cost: _parseCost(json['cost']),
+      status: LessonModel.parseStatus(json['status'] as String?),
       notes: json['notes'] as String?,
-      location: json['location'] as String?,
+      location: _parseLocation(json),
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -64,25 +88,34 @@ class LessonModel {
       'id': id,
       'learner_id': learnerId,
       'instructor': instructor.toJson(),
-      'scheduled_date': scheduledDate.toIso8601String(),
+      'scheduled_at': scheduledDate.toIso8601String(),
       'start_time': startTime,
       'end_time': endTime,
-      'duration': duration,
+      'duration_hours': _normalizeDuration(duration),
       'cost': cost,
       'status': status.name,
       'notes': notes,
-      'location': location,
+      'pickup_location': location,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
   }
 
   bool get isUpcoming =>
-      status == LessonStatus.scheduled && scheduledDate.isAfter(DateTime.now());
+      effectiveStatus == LessonStatus.scheduled &&
+      scheduledDate.isAfter(DateTime.now());
 
-  bool get isCompleted => status == LessonStatus.completed;
-  bool get isCancelled => status == LessonStatus.cancelled;
-  bool get isInProgress => status == LessonStatus.inProgress;
+  bool get isCompleted => effectiveStatus == LessonStatus.completed;
+  bool get isCancelled => effectiveStatus == LessonStatus.cancelled;
+  bool get isInProgress => effectiveStatus == LessonStatus.inProgress;
+
+  LessonStatus get effectiveStatus => deriveStatus(
+        scheduledDate: scheduledDate,
+        startTime: startTime,
+        endTime: endTime,
+        durationHours: duration,
+        fallbackStatus: status,
+      );
 
   LessonModel copyWith({
     String? id,
@@ -114,5 +147,102 @@ class LessonModel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  static double _normalizeDuration(double value) {
+    if (value.isNaN || value.isInfinite) return 1.0;
+    return value < 1 ? 1.0 : value;
+  }
+
+  static LessonStatus parseStatus(String? raw) {
+    final normalized = raw?.toLowerCase().trim() ?? '';
+    switch (normalized) {
+      case 'completed':
+        return LessonStatus.completed;
+      case 'cancelled':
+        return LessonStatus.cancelled;
+      case 'in_progress':
+      case 'inprogress':
+      case 'active':
+        return LessonStatus.inProgress;
+      default:
+        return LessonStatus.scheduled;
+    }
+  }
+
+  static LessonStatus deriveStatus({
+    required DateTime scheduledDate,
+    required String startTime,
+    required String endTime,
+    required LessonStatus fallbackStatus,
+    double? durationHours,
+    DateTime? now,
+  }) {
+    final clock = now ?? DateTime.now();
+    if (fallbackStatus == LessonStatus.cancelled) return LessonStatus.cancelled;
+    if (fallbackStatus == LessonStatus.completed) return LessonStatus.completed;
+
+    final localDate = scheduledDate.toLocal();
+    final start = _combineDateAndTime(localDate, startTime);
+    final end = _combineDateAndTime(localDate, endTime) ??
+        (start != null
+            ? start.add(Duration(
+                minutes:
+                    (durationHours != null ? durationHours * 60 : 60).round(),
+              ))
+            : null);
+
+    if (end != null && !end.isAfter(clock)) {
+      return LessonStatus.completed;
+    }
+
+    if (fallbackStatus == LessonStatus.inProgress) {
+      return LessonStatus.inProgress;
+    }
+
+    if (start != null &&
+        start.isBefore(clock) &&
+        (end == null || end.isAfter(clock))) {
+      return LessonStatus.inProgress;
+    }
+
+    return fallbackStatus;
+  }
+
+  static DateTime? _combineDateAndTime(DateTime date, String? rawTime) {
+    if (rawTime == null || rawTime.trim().isEmpty) return null;
+    final formats = <DateFormat>[
+      DateFormat('h:mm a'),
+      DateFormat('hh:mm a'),
+      DateFormat('H:mm'),
+      DateFormat('HH:mm:ss'),
+      DateFormat('HH:mm'),
+    ];
+
+    for (final format in formats) {
+      try {
+        final parsed = format.parse(rawTime.trim());
+        return DateTime(
+          date.year,
+          date.month,
+          date.day,
+          parsed.hour,
+          parsed.minute,
+        );
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  static String? _parseLocation(Map<String, dynamic> json) {
+    final rawLocation =
+        json.containsKey('pickup_location') ? json['pickup_location'] : json['location'];
+    if (rawLocation is String) {
+      final trimmed = rawLocation.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+    return null;
   }
 }

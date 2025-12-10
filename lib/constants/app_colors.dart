@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Primary Colors
-  static const Color primaryBlue = Color(0xFF1E3A8A);
-  static const Color accentYellow = Color(0xFFFACC15);
-  
+  // Core Palette
+  static const Color ocean = Color(0xFF9F6361);
+  static const Color golden = Color(0xFF9DF900);
+  static const Color dreamy = Color(0xFFEAEBED);
+  static const Color primaryBlue = ocean;
+
   // Light Theme Colors
-  static const Color lightBackground = Color(0xFFFAFAFA);
-  static const Color lightSurface = Color(0xFFFFFFFF);
-  static const Color lightOnSurface = Color(0xFF1A1A1A);
-  static const Color lightOnBackground = Color(0xFF1A1A1A);
-  
+  static const Color lightBackground = dreamy;
+  static const Color lightSurface = Color(0xFFF4F5F6);
+  static const Color lightOnSurface = Color(0xFF0F2F38);
+  static const Color lightOnBackground = Color(0xFF0F2F38);
+
   // Dark Theme Colors
-  static const Color darkBackground = Color(0xFF121212);
-  static const Color darkSurface = Color(0xFF1E1E1E);
-  static const Color darkOnSurface = Color(0xFFE1E1E1);
-  static const Color darkOnBackground = Color(0xFFE1E1E1);
-  
+  static const Color darkBackground = Color(0xFF02141A);
+  static const Color darkSurface = Color(0xFF06232B);
+  static const Color darkOnSurface = dreamy;
+  static const Color darkOnBackground = dreamy;
+
   // Neutral Colors
   static const Color grey50 = Color(0xFFF9FAFB);
   static const Color grey100 = Color(0xFFF3F4F6);
@@ -37,13 +39,13 @@ class AppColors {
   
   // Gradient Colors
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [primaryBlue, Color(0xFF3B82F6)],
+    colors: [ocean, Color(0xFF004F68)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
   
   static const LinearGradient accentGradient = LinearGradient(
-    colors: [accentYellow, Color(0xFFFDE047)],
+    colors: [golden, Color(0xFF9CF7B5)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );

@@ -107,8 +107,8 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                         height: 80,
                         decoration: BoxDecoration(
                           color: widget.role == 'learner'
-                              ? AppColors.primaryBlue
-                              : AppColors.accentYellow,
+                              ? AppColors.ocean
+                              : AppColors.golden,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Icon(
@@ -117,7 +117,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                               : Icons.person,
                           color: widget.role == 'learner'
                               ? Colors.white
-                              : AppColors.primaryBlue,
+                              : AppColors.ocean,
                           size: 40,
                         ),
                       ),
@@ -127,7 +127,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.primaryBlue,
+                          color: AppColors.ocean,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -233,7 +233,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _handleSignUp,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryBlue,
+                      backgroundColor: AppColors.ocean,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -270,7 +270,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                     child: const Text(
                       'Already have an account? Sign In',
                       style: TextStyle(
-                        color: AppColors.primaryBlue,
+                        color: AppColors.ocean,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -314,7 +314,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+          borderSide: const BorderSide(color: AppColors.ocean, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -326,3 +326,4 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
     );
   }
 }
+

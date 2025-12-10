@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/glass_panel.dart';
 
 enum _AuthStage { choice, signUp, signIn }
 
@@ -55,13 +57,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   }
 
   Color get _primaryRoleColor =>
-      widget.role == 'learner' ? AppColors.primaryBlue : AppColors.accentYellow;
+      widget.role == 'learner' ? AppColors.ocean : AppColors.golden;
 
   String get _roleLabel => widget.role == 'learner' ? 'Learner' : 'Instructor';
 
   void _goToStage(_AuthStage stage) {
     FocusScope.of(context).unfocus();
     setState(() => _stage = stage);
+  }
+
+  void _returnToRoleSelection() {
+    FocusScope.of(context).unfocus();
+    context.go(AppRoutes.roleSelection);
   }
 
   Future<void> _handleSignUp() async {
@@ -76,9 +83,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         firstName: _signUpFirstNameController.text.trim(),
         lastName: _signUpLastNameController.text.trim(),
         role: widget.role,
-        phone: _signUpPhoneController.text.trim().isNotEmpty
-            ? _signUpPhoneController.text.trim()
-            : null,
+        phone: _signUpPhoneController.text.trim(),
       );
 
       if (!mounted) return;
@@ -158,6 +163,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
       appBar: _stage == _AuthStage.choice
           ? null
           : AppBar(
@@ -173,20 +180,25 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
                     : '$_roleLabel Sign In',
               ),
             ),
-      body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
-          child: () {
-            switch (_stage) {
-              case _AuthStage.choice:
-                return _buildChoiceView(key: const ValueKey('choice'));
-              case _AuthStage.signUp:
-                return _buildSignUpForm(key: const ValueKey('signUp'));
-              case _AuthStage.signIn:
-                return _buildSignInForm(key: const ValueKey('signIn'));
-            }
-          }(),
-        ),
+      body: Stack(
+        children: [
+          const _AuthBackground(),
+          SafeArea(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: () {
+                switch (_stage) {
+                  case _AuthStage.choice:
+                    return _buildChoiceView(key: const ValueKey('choice'));
+                  case _AuthStage.signUp:
+                    return _buildSignUpForm(key: const ValueKey('signUp'));
+                  case _AuthStage.signIn:
+                    return _buildSignInForm(key: const ValueKey('signIn'));
+                }
+              }(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -194,14 +206,26 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   Widget _buildChoiceView({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      padding: const EdgeInsets.all(24.0),
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 40),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 40),
-          _AuthHeader(
-            role: widget.role,
-            title: 'Hi $_roleLabel!',
-            subtitle: 'How would you like to continue?',
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              color: Colors.black87,
+              tooltip: 'Back to role selection',
+              onPressed: _returnToRoleSelection,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: _AuthHeader(
+              role: widget.role,
+              title: 'Hi $_roleLabel!',
+              subtitle: 'How would you like to continue?',
+            ),
           ),
           const SizedBox(height: 40),
           _ChoiceCard(
@@ -209,16 +233,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
             subtitle: _roleLabel == 'Learner'
                 ? 'New to Drive T? Start your journey as a learner.'
                 : 'Join Drive T as an instructor and connect with learners.',
-            icon: Icons.person_add_alt,
-            color: _primaryRoleColor,
+            iconAsset: 'assets/icons/signup.svg',
             onTap: () => _goToStage(_AuthStage.signUp),
           ),
           const SizedBox(height: 20),
           _ChoiceCard(
             title: 'Sign In',
             subtitle: 'Already have an account? Pick up where you left off.',
-            icon: Icons.login,
-            color: AppColors.grey500,
+            iconAsset: 'assets/icons/signin.svg',
             onTap: () => _goToStage(_AuthStage.signIn),
           ),
         ],
@@ -285,9 +307,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
             const SizedBox(height: 16),
             _buildTextField(
               controller: _signUpPhoneController,
-              label: 'Phone Number (Optional)',
+              label: 'Phone Number',
               icon: Icons.phone_outlined,
               keyboardType: TextInputType.phone,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter your phone number';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 16),
             _buildTextField(
@@ -473,7 +501,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+          borderSide: const BorderSide(color: AppColors.ocean, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -500,39 +528,43 @@ class _AuthHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLearner = role == 'learner';
-    final Color accentColor =
-        isLearner ? AppColors.primaryBlue : AppColors.accentYellow;
+    final Color accentColor = isLearner ? AppColors.ocean : AppColors.golden;
+    final Color titleColor =
+        isLearner ? const Color(0xFF162660) : const Color(0xFFF0C845);
+    final String iconAsset =
+        isLearner ? 'assets/icons/learner.svg' : 'assets/icons/instructor.svg';
 
     return Column(
       children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: accentColor,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(
-            isLearner ? Icons.school : Icons.person,
-            color: isLearner ? Colors.white : AppColors.primaryBlue,
-            size: 40,
+        GlassPanel(
+          borderRadius: BorderRadius.circular(28),
+          opacity: 0.14,
+          padding: const EdgeInsets.all(22),
+          child: SizedBox(
+            width: 110,
+            height: 110,
+            child: SvgPicture.asset(
+              iconAsset,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         Text(
           title,
           style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primaryBlue,
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: titleColor,
           ),
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
           subtitle,
           style: TextStyle(
             fontSize: 16,
-            color: Colors.grey[600],
+            color: Colors.black.withOpacity(0.6),
           ),
           textAlign: TextAlign.center,
         ),
@@ -544,76 +576,138 @@ class _AuthHeader extends StatelessWidget {
 class _ChoiceCard extends StatelessWidget {
   final String title;
   final String subtitle;
-  final IconData icon;
-  final Color color;
+  final String iconAsset;
   final VoidCallback onTap;
 
   const _ChoiceCard({
     required this.title,
     required this.subtitle,
-    required this.icon,
-    required this.color,
+    required this.iconAsset,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey[200]!),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: color.withAlpha((0.15 * 255).round()),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(24),
+      opacity: 0.12,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 70,
+                  height: 70,
+                  child: SvgPicture.asset(
+                    iconAsset,
+                    fit: BoxFit.contain,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.black.withOpacity(0.55),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                Icon(Icons.arrow_forward_ios,
+                    size: 18, color: Colors.black.withOpacity(0.3)),
+              ],
             ),
-            const Icon(Icons.arrow_forward_ios, size: 18),
-          ],
+          ),
         ),
       ),
     );
   }
 }
+
+class _AuthBackground extends StatelessWidget {
+  const _AuthBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFF5FAFF),
+                Color(0xFFEBF8FF),
+                Color(0xFFF4F5FF),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          top: -140,
+          left: -100,
+          child: _AuthBlurOrb(
+            diameter: 280,
+            color: const Color(0xFFBEE2FF).withOpacity(0.7),
+          ),
+        ),
+        Positioned(
+          bottom: -160,
+          right: -60,
+          child: _AuthBlurOrb(
+            diameter: 320,
+            color: const Color(0xFFD7F8ED).withOpacity(0.65),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AuthBlurOrb extends StatelessWidget {
+  const _AuthBlurOrb({required this.diameter, required this.color});
+
+  final double diameter;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: diameter,
+      height: diameter,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.5),
+            blurRadius: 120,
+            spreadRadius: 20,
+          ),
+        ],
+      ),
+    );
+  }
+}
+

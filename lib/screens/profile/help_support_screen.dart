@@ -19,7 +19,7 @@ class HelpSupportScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
-              color: AppColors.primaryBlue,
+              color: AppColors.ocean,
             ),
           ),
           const SizedBox(height: 12),
@@ -114,7 +114,7 @@ class _SupportTile extends StatelessWidget {
     return ListTile(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       tileColor: Colors.white,
-      leading: Icon(icon, color: AppColors.primaryBlue),
+      leading: Icon(icon, color: AppColors.ocean),
       title: Text(
         title,
         style: const TextStyle(fontWeight: FontWeight.w600),
@@ -125,3 +125,4 @@ class _SupportTile extends StatelessWidget {
     );
   }
 }
+

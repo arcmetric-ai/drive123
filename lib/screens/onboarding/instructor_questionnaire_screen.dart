@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
@@ -42,13 +45,19 @@ class _InstructorQuestionnaireScreenState
     'Other',
   ];
   String? _selectedVehicleType;
+  final List<String> _transmissionOptions = const [
+    'Automatic',
+    'Manual',
+  ];
+  String? _selectedTransmission;
   final _vehicleYearController = TextEditingController();
   final _vehicleMakeController = TextEditingController();
   final _vehicleModelController = TextEditingController();
   final _vehiclePlateController = TextEditingController();
 
   final List<_VehicleEntry> _vehicles = [];
-  final List<_AreaOption> _areas = [];
+  String? _pendingVehicleImagePath;
+  final ImagePicker _imagePicker = ImagePicker();
 
   final List<_OfferingOption> _offeringOptions = const [
     _OfferingOption(code: 'G2', label: 'G2 Road Test'),
@@ -61,6 +70,7 @@ class _InstructorQuestionnaireScreenState
   final _officeAddressController = TextEditingController();
   final _otherLabelController = TextEditingController();
   final _otherAddressController = TextEditingController();
+  bool _pickupPreference = true;
   bool _homeSelected = false;
   bool _officeSelected = false;
   bool _otherSelected = false;
@@ -117,12 +127,79 @@ class _InstructorQuestionnaireScreenState
     _vehiclePlateController.clear();
   }
 
+  Future<void> _pickVehicleImage() async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        setState(() => _pendingVehicleImagePath = picked.path);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to pick image: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Widget _buildVehiclePhotoChip(_VehicleEntry vehicle) {
+    const double size = 56;
+    Widget? imageWidget;
+    if (vehicle.localImagePath != null &&
+        vehicle.localImagePath!.trim().isNotEmpty) {
+      final file = File(vehicle.localImagePath!);
+      if (file.existsSync()) {
+        imageWidget = Image.file(
+          file,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+        );
+      }
+    } else if (vehicle.photoUrl != null &&
+        vehicle.photoUrl!.trim().isNotEmpty) {
+      imageWidget = Image.network(
+        vehicle.photoUrl!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.directions_car),
+      );
+    }
+
+    if (imageWidget == null) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(
+          Icons.directions_car,
+          color: AppColors.primaryBlue,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: imageWidget,
+    );
+  }
+
   void _handleAddVehicle() {
     final type = _selectedVehicleType;
     final year = _vehicleYearController.text.trim();
     final make = _vehicleMakeController.text.trim();
     final model = _vehicleModelController.text.trim();
     final numberPlate = _vehiclePlateController.text.trim().toUpperCase();
+    final transmission = _selectedTransmission;
 
     if (type == null || type.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -148,6 +225,16 @@ class _InstructorQuestionnaireScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please add both vehicle make and model.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (transmission == null || transmission.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select the vehicle transmission.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -184,66 +271,18 @@ class _InstructorQuestionnaireScreenState
       make: make,
       model: model,
       numberPlate: numberPlate,
+      transmission: transmission,
+      localImagePath: _pendingVehicleImagePath,
     );
 
     setState(() {
       _vehicles.add(entry);
+      _pendingVehicleImagePath = null;
     });
     _resetVehicleInputs();
-  }
-
-  Future<void> _showAddAreaDialog() async {
-    final cityController = TextEditingController();
-    final radiusController = TextEditingController();
-
-    final result = await showDialog<_AreaOption>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add Service Area'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: cityController,
-                decoration: const InputDecoration(labelText: 'City'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: radiusController,
-                decoration: const InputDecoration(
-                  labelText: 'Radius (km)',
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final city = cityController.text.trim();
-                final radius = double.tryParse(radiusController.text.trim());
-                if (city.isEmpty || radius == null || radius <= 0) {
-                  return;
-                }
-                Navigator.of(context)
-                    .pop(_AreaOption(city: city, radiusKm: radius));
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (result != null && mounted) {
-      setState(() => _areas.add(result));
-    }
+    setState(() {
+      _selectedTransmission = null;
+    });
   }
 
   void _handleContinue() {
@@ -266,16 +305,10 @@ class _InstructorQuestionnaireScreenState
       );
       return;
     }
-    if (_areas.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add at least one area you operate in.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-    if (!_homeSelected && !_officeSelected && !_otherSelected) {
+    if (!_pickupPreference &&
+        !_homeSelected &&
+        !_officeSelected &&
+        !_otherSelected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Select at least one preferred lesson location.'),
@@ -314,83 +347,113 @@ class _InstructorQuestionnaireScreenState
       rates[entry.key] = parsed;
     }
 
-    final locations = <Map<String, String>>[];
-    if (_homeSelected) {
-      final address = _homeAddressController.text.trim();
-      if (address.isEmpty) {
+    List<Map<String, String>>? preferredLocations;
+    if (!_pickupPreference) {
+      final collected = <Map<String, String>>[];
+      if (_homeSelected) {
+        final address = _homeAddressController.text.trim();
+        if (address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enter your Home address.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        collected.add({'type': 'Home', 'label': 'Home', 'address': address});
+      }
+      if (_officeSelected) {
+        final address = _officeAddressController.text.trim();
+        if (address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enter your Office address.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        collected
+            .add({'type': 'Office', 'label': 'Office', 'address': address});
+      }
+      if (_otherSelected) {
+        final label = _otherLabelController.text.trim();
+        final address = _otherAddressController.text.trim();
+        if (label.isEmpty || address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Provide both a label and address for the other location.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        collected.add({'type': 'Other', 'label': label, 'address': address});
+      }
+
+      if (collected.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Enter your Home address.'),
+            content: Text('Select at least one preferred lesson location.'),
             backgroundColor: AppColors.error,
           ),
         );
         return;
       }
-      locations.add({'type': 'Home', 'label': 'Home', 'address': address});
-    }
-    if (_officeSelected) {
-      final address = _officeAddressController.text.trim();
-      if (address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Enter your Office address.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
-      }
-      locations.add({'type': 'Office', 'label': 'Office', 'address': address});
-    }
-    if (_otherSelected) {
-      final label = _otherLabelController.text.trim();
-      final address = _otherAddressController.text.trim();
-      if (label.isEmpty || address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Provide both a label and address for the other location.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
-      }
-      locations.add({'type': 'Other', 'label': label, 'address': address});
+      preferredLocations = collected;
     }
 
-    if (locations.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add at least one preferred lesson location.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
+    final ageValue = int.tryParse(_ageController.text.trim());
+    final profileData = <String, dynamic>{};
+    if (ageValue != null) {
+      profileData['age'] = ageValue;
+    }
+    if (_gender != null && _gender!.trim().isNotEmpty) {
+      profileData['gender'] = _gender!.trim();
     }
 
-    final questionnaireData = <String, dynamic>{
+    final locationPayload = preferredLocations
+        ?.map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+    final instructorProfileData = <String, dynamic>{
       'vehicles': _vehicles
-          .map((vehicle) => {
-                'type': vehicle.type,
-                'year': vehicle.year,
-                'make': vehicle.make,
-                'model': vehicle.model,
-                'numberPlate': vehicle.numberPlate,
-              })
+          .map((vehicle) {
+            final map = {
+              'type': vehicle.type,
+              'year': vehicle.year,
+              'make': vehicle.make,
+              'model': vehicle.model,
+              'numberPlate': vehicle.numberPlate,
+              'transmission': vehicle.transmission,
+            };
+            if (vehicle.photoUrl != null && vehicle.photoUrl!.isNotEmpty) {
+              map['photoUrl'] = vehicle.photoUrl!;
+            }
+            if (vehicle.localImagePath != null &&
+                vehicle.localImagePath!.isNotEmpty) {
+              map['localImagePath'] = vehicle.localImagePath!;
+            }
+            return map;
+          })
           .toList(),
-      'areas': _areas
-          .map((area) => {
-                'city': area.city,
-                'radiusKm': area.radiusKm,
-              })
-          .toList(),
-      'age': int.tryParse(_ageController.text.trim()),
-      'gender': _gender,
       'offerings': _selectedOfferings.entries
           .where((entry) => entry.value)
           .map((entry) => entry.key)
           .toList(),
-      'offeringRates': rates,
-      'locations': locations,
+      'offering_rates': rates,
+      'pickup_preference': _pickupPreference,
+    };
+    if (locationPayload != null) {
+      instructorProfileData['preferred_locations'] = locationPayload;
+    }
+    if (rates.isNotEmpty) {
+      instructorProfileData['default_rate'] = rates.values.first;
+    }
+    final questionnaireData = <String, dynamic>{
+      'profile': profileData,
+      'instructorProfile': instructorProfileData,
     };
 
     context.go(
@@ -424,7 +487,7 @@ class _InstructorQuestionnaireScreenState
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.accentYellow.withOpacity(0.12),
+                    color: AppColors.golden.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Text(
@@ -482,7 +545,7 @@ class _InstructorQuestionnaireScreenState
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _selectedVehicleType,
+                  initialValue: _selectedVehicleType,
                   decoration: const InputDecoration(
                     labelText: 'Vehicle Type',
                     border: OutlineInputBorder(),
@@ -497,6 +560,25 @@ class _InstructorQuestionnaireScreenState
                       .toList(),
                   onChanged: (value) => setState(() {
                     _selectedVehicleType = value;
+                  }),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedTransmission,
+                  decoration: const InputDecoration(
+                    labelText: 'Transmission',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _transmissionOptions
+                      .map(
+                        (option) => DropdownMenuItem(
+                          value: option,
+                          child: Text(option),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() {
+                    _selectedTransmission = value;
                   }),
                 ),
                 const SizedBox(height: 12),
@@ -544,6 +626,43 @@ class _InstructorQuestionnaireScreenState
                   textCapitalization: TextCapitalization.characters,
                 ),
                 const SizedBox(height: 12),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _pickVehicleImage,
+                      icon: const Icon(Icons.photo_camera_back_outlined),
+                      label: Text(
+                        _pendingVehicleImagePath == null
+                            ? 'Add vehicle photo'
+                            : 'Change vehicle photo',
+                      ),
+                    ),
+                    if (_pendingVehicleImagePath != null) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Remove selected photo',
+                        onPressed: () =>
+                            setState(() => _pendingVehicleImagePath = null),
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ],
+                  ],
+                ),
+                if (_pendingVehicleImagePath != null) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 160,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(_pendingVehicleImagePath!),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: OutlinedButton.icon(
@@ -568,13 +687,16 @@ class _InstructorQuestionnaireScreenState
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              _buildVehiclePhotoChip(vehicle),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      '${vehicle.type} • ${vehicle.year} ${vehicle.make} ${vehicle.model}',
+                                      '${vehicle.type} - ${vehicle.year} ${vehicle.make} ${vehicle.model}',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -586,6 +708,21 @@ class _InstructorQuestionnaireScreenState
                                         color: Colors.grey[600],
                                       ),
                                     ),
+                                    if (vehicle.transmission.isNotEmpty)
+                                      Text(
+                                        'Transmission: ${vehicle.transmission}',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    if (vehicle.hasPhoto)
+                                      Text(
+                                        'Photo attached',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontSize: 12,
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -606,144 +743,129 @@ class _InstructorQuestionnaireScreenState
                 ],
                 const SizedBox(height: 24),
                 const Text(
-                  'Areas of Operation',
+                  'Pickup Preference',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     color: AppColors.primaryBlue,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_areas.isEmpty)
-                      const Text(
-                        'No service areas added yet.',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    for (final area in _areas)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('${area.city} • ${area.radiusKm} km radius'),
-                            IconButton(
-                              icon: const Icon(Icons.close),
-                              tooltip: 'Remove',
-                              onPressed: () {
-                                setState(() => _areas.remove(area));
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    TextButton.icon(
-                      onPressed: _showAddAreaDialog,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add service area'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Preferred Lesson Locations',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryBlue,
+                const SizedBox(height: 8),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Would you prefer to pick up the learner from their location?',
                   ),
-                ),
-                const SizedBox(height: 12),
-                CheckboxListTile(
-                  title: const Text('Home'),
-                  value: _homeSelected,
+                  subtitle: Text(_pickupPreference ? 'Yes' : 'No'),
+                  value: _pickupPreference,
+                  activeColor: AppColors.primaryBlue,
                   onChanged: (value) {
                     setState(() {
-                      _homeSelected = value ?? false;
-                      if (!_homeSelected) {
+                      _pickupPreference = value;
+                      if (value) {
+                        _homeSelected = false;
+                        _officeSelected = false;
+                        _otherSelected = false;
                         _homeAddressController.clear();
-                      }
-                    });
-                  },
-                ),
-                if (_homeSelected)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 12),
-                    child: TextField(
-                      controller: _homeAddressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Home Address',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                CheckboxListTile(
-                  title: const Text('Office'),
-                  value: _officeSelected,
-                  onChanged: (value) {
-                    setState(() {
-                      _officeSelected = value ?? false;
-                      if (!_officeSelected) {
                         _officeAddressController.clear();
-                      }
-                    });
-                  },
-                ),
-                if (_officeSelected)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 12),
-                    child: TextField(
-                      controller: _officeAddressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Office Address',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                CheckboxListTile(
-                  title: const Text('Other'),
-                  value: _otherSelected,
-                  onChanged: (value) {
-                    setState(() {
-                      _otherSelected = value ?? false;
-                      if (!_otherSelected) {
                         _otherLabelController.clear();
                         _otherAddressController.clear();
                       }
                     });
                   },
                 ),
-                if (_otherSelected) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 12),
-                    child: TextField(
-                      controller: _otherLabelController,
-                      decoration: const InputDecoration(
-                        labelText: 'Location Label',
-                        border: OutlineInputBorder(),
-                      ),
+                if (!_pickupPreference) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Preferred Lesson Locations',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryBlue,
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 12),
-                    child: TextField(
-                      controller: _otherAddressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Location Address',
-                        border: OutlineInputBorder(),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    title: const Text('Home'),
+                    value: _homeSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        _homeSelected = value ?? false;
+                        if (!_homeSelected) {
+                          _homeAddressController.clear();
+                        }
+                      });
+                    },
+                  ),
+                  if (_homeSelected)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, bottom: 12),
+                      child: TextField(
+                        controller: _homeAddressController,
+                        decoration: const InputDecoration(
+                          labelText: 'Home Address',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                     ),
+                  CheckboxListTile(
+                    title: const Text('Office'),
+                    value: _officeSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        _officeSelected = value ?? false;
+                        if (!_officeSelected) {
+                          _officeAddressController.clear();
+                        }
+                      });
+                    },
                   ),
+                  if (_officeSelected)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, bottom: 12),
+                      child: TextField(
+                        controller: _officeAddressController,
+                        decoration: const InputDecoration(
+                          labelText: 'Office Address',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  CheckboxListTile(
+                    title: const Text('Other'),
+                    value: _otherSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        _otherSelected = value ?? false;
+                        if (!_otherSelected) {
+                          _otherLabelController.clear();
+                          _otherAddressController.clear();
+                        }
+                      });
+                    },
+                  ),
+                  if (_otherSelected) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, bottom: 12),
+                      child: TextField(
+                        controller: _otherLabelController,
+                        decoration: const InputDecoration(
+                          labelText: 'Location Label',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, bottom: 12),
+                      child: TextField(
+                        controller: _otherAddressController,
+                        decoration: const InputDecoration(
+                          labelText: 'Location Address',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 24),
                 const Text(
@@ -775,7 +897,7 @@ class _InstructorQuestionnaireScreenState
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _gender,
+                  initialValue: _gender,
                   decoration: const InputDecoration(
                     labelText: 'Gender',
                     border: OutlineInputBorder(),
@@ -869,7 +991,7 @@ class _InstructorQuestionnaireScreenState
                   child: ElevatedButton(
                     onPressed: _handleContinue,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accentYellow,
+                      backgroundColor: AppColors.golden,
                       foregroundColor: AppColors.primaryBlue,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
@@ -897,6 +1019,13 @@ class _VehicleEntry {
   final String make;
   final String model;
   final String numberPlate;
+  final String transmission;
+  final String? photoUrl;
+  final String? localImagePath;
+
+  bool get hasPhoto =>
+      (photoUrl != null && photoUrl!.trim().isNotEmpty) ||
+      (localImagePath != null && localImagePath!.trim().isNotEmpty);
 
   const _VehicleEntry({
     required this.type,
@@ -904,16 +1033,9 @@ class _VehicleEntry {
     required this.make,
     required this.model,
     required this.numberPlate,
-  });
-}
-
-class _AreaOption {
-  final String city;
-  final double radiusKm;
-
-  const _AreaOption({
-    required this.city,
-    required this.radiusKm,
+    required this.transmission,
+    this.photoUrl,
+    this.localImagePath,
   });
 }
 
