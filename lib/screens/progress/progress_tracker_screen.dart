@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../../constants/app_colors.dart';
+import '../../models/learner_progress.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/progress_journey_timeline.dart';
 import 'progress_chart_screen.dart';
@@ -14,21 +15,24 @@ class ProgressTrackerScreen extends StatefulWidget {
 }
 
 class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
-  late List<DrivingSkill> _skills;
+  late List<LearnerProgressSkill> _skills;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _skills = _buildDefaultSkills();
+    _skills = defaultLearnerProgressSkills();
     _loadProgress();
   }
 
   @override
   Widget build(BuildContext context) {
-    final completedSkills = _skills.where((skill) => skill.isCompleted).length;
+    final testReadySkills =
+        _skills.where((skill) => skill.status.isTestReady).length;
     final totalSkills = _skills.length;
-    final progressPercentage = completedSkills / totalSkills;
+    final progressPercentage =
+        _skills.fold<double>(0, (sum, skill) => sum + skill.status.score) /
+            totalSkills;
 
     return Scaffold(
       appBar: AppBar(
@@ -44,35 +48,42 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AnimationLimiter(
-                    child: Column(
-                      children: AnimationConfiguration.toStaggeredList(
-                        duration: const Duration(milliseconds: 600),
-                        childAnimationBuilder: (widget) => SlideAnimation(
-                          verticalOffset: 50.0,
-                          child: FadeInAnimation(child: widget),
-                        ),
-                        children: [
-                          _buildProgressOverviewCard(
-                              progressPercentage, completedSkills, totalSkills),
-                          const SizedBox(height: 24),
-                          _buildAchievementsCard(),
-                          const SizedBox(height: 24),
-                          _buildSkillsList(),
-                        ],
-                      ),
+              child: AnimationLimiter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: AnimationConfiguration.toStaggeredList(
+                    duration: const Duration(milliseconds: 600),
+                    childAnimationBuilder: (widget) => SlideAnimation(
+                      verticalOffset: 50.0,
+                      child: FadeInAnimation(child: widget),
                     ),
+                    children: [
+                      _buildProgressOverviewCard(
+                        progressPercentage,
+                        testReadySkills,
+                        totalSkills,
+                      ),
+                      const SizedBox(height: 24),
+                      _buildAchievementsCard(),
+                      const SizedBox(height: 24),
+                      _buildSkillsList(),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
     );
   }
 
-  Widget _buildProgressOverviewCard(double progress, int completed, int total) {
+  Widget _buildProgressOverviewCard(double progress, int ready, int total) {
+    LearnerProgressSkill? nextSkill;
+    for (final skill in _skills) {
+      if (!skill.status.isTestReady) {
+        nextSkill = skill;
+        break;
+      }
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -91,7 +102,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                   ),
                 ),
                 Text(
-                  '$completed/$total',
+                  '$ready/$total ready',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -102,7 +113,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
             ),
             const SizedBox(height: 16),
             LinearProgressIndicator(
-              value: progress,
+              value: progress.clamp(0, 1),
               backgroundColor: Colors.grey[200],
               valueColor: const AlwaysStoppedAnimation<Color>(AppColors.ocean),
               minHeight: 8,
@@ -117,7 +128,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            if (completed < total) ...[
+            if (nextSkill != null) ...[
               const Text(
                 'Next Skill to Master:',
                 style: TextStyle(
@@ -128,7 +139,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                _skills.firstWhere((skill) => !skill.isCompleted).name,
+                nextSkill.name,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -148,7 +159,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Congratulations! You’ve completed all skills! 🎉',
+                        'All skills are test ready.',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -159,6 +170,11 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                   ],
                 ),
               ),
+            const SizedBox(height: 12),
+            Text(
+              'Your instructor updates this progress after lessons.',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
           ],
         ),
       ),
@@ -166,10 +182,11 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
   }
 
   Widget _buildAchievementsCard() {
-    final hasCompletedAny = _skills.any((skill) => skill.isCompleted);
-    final parkingComplete = _isSkillCompleted('parking');
-    final cityComplete = _isSkillCompleted('city_driving');
-    final highwayComplete = _isSkillCompleted('highway_driving');
+    final hasProgress =
+        _skills.any((skill) => skill.status != LearnerSkillStatus.notStarted);
+    final parkingReady = _isSkillTestReady('parking');
+    final cityReady = _isSkillTestReady('city_driving');
+    final highwayReady = _isSkillTestReady('highway_driving');
 
     return Card(
       child: Padding(
@@ -190,16 +207,16 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               children: [
                 _buildAchievement(
                   icon: Icons.school,
-                  title: 'First Lesson',
-                  description: 'Completed your first driving lesson',
-                  isUnlocked: hasCompletedAny,
+                  title: 'Started',
+                  description: 'Progress has been reviewed',
+                  isUnlocked: hasProgress,
                 ),
                 const SizedBox(width: 16),
                 _buildAchievement(
                   icon: Icons.local_parking,
-                  title: 'Parking Pro',
-                  description: 'Mastered parallel parking',
-                  isUnlocked: parkingComplete,
+                  title: 'Parking Ready',
+                  description: 'Parking skills are test ready',
+                  isUnlocked: parkingReady,
                 ),
               ],
             ),
@@ -208,16 +225,16 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               children: [
                 _buildAchievement(
                   icon: Icons.directions_car,
-                  title: 'City Driver',
-                  description: 'Completed city driving skills',
-                  isUnlocked: cityComplete,
+                  title: 'City Ready',
+                  description: 'City driving is test ready',
+                  isUnlocked: cityReady,
                 ),
                 const SizedBox(width: 16),
                 _buildAchievement(
                   icon: Icons.speed,
-                  title: 'Highway Hero',
-                  description: 'Master highway driving',
-                  isUnlocked: highwayComplete,
+                  title: 'Highway Ready',
+                  description: 'Highway driving is test ready',
+                  isUnlocked: highwayReady,
                 ),
               ],
             ),
@@ -280,35 +297,13 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
   }
 
   Widget _buildSkillsList() {
-    final currentIndex = _skills.indexWhere((skill) => !skill.isCompleted);
-    final journeySteps = _skills.asMap().entries.map((entry) {
-      final index = entry.key;
-      final skill = entry.value;
-
-      final state = skill.isCompleted
-          ? ProgressJourneyStepState.completed
-          : currentIndex == -1
-              ? ProgressJourneyStepState.locked
-              : index == currentIndex
-                  ? ProgressJourneyStepState.current
-                  : ProgressJourneyStepState.locked;
-
-      final subtitle = switch (state) {
-        ProgressJourneyStepState.completed => skill.completedDate != null
-            ? 'Completed ${_formatDate(skill.completedDate!)}'
-            : 'Completed',
-        ProgressJourneyStepState.current => '',
-        ProgressJourneyStepState.locked => skill.description,
-      };
-
+    final journeySteps = _skills.map((skill) {
       return ProgressJourneyStepData(
         title: skill.name,
-        subtitle: subtitle,
+        subtitle: _skillSubtitle(skill),
         icon: skill.icon,
-        state: state,
-        onTap: state == ProgressJourneyStepState.locked
-            ? null
-            : () => _toggleSkillCompletion(skill),
+        state: _timelineState(skill.status),
+        onTap: null,
       );
     }).toList();
 
@@ -329,107 +324,35 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
     );
   }
 
+  String _skillSubtitle(LearnerProgressSkill skill) {
+    final date = skill.completedAt ?? skill.updatedAt;
+    final dateText = date != null ? ' - ${_formatDate(date)}' : '';
+    return '${skill.status.label}$dateText';
+  }
+
+  ProgressJourneyStepState _timelineState(LearnerSkillStatus status) {
+    switch (status) {
+      case LearnerSkillStatus.notStarted:
+        return ProgressJourneyStepState.locked;
+      case LearnerSkillStatus.practicing:
+      case LearnerSkillStatus.confident:
+        return ProgressJourneyStepState.current;
+      case LearnerSkillStatus.testReady:
+        return ProgressJourneyStepState.completed;
+    }
+  }
+
   String _formatDate(DateTime date) {
     return '${date.month}/${date.day}/${date.year}';
   }
 
-  bool _isSkillCompleted(String id) {
-    return _skills.any((skill) => skill.id == id && skill.isCompleted);
-  }
-
-  Future<void> _toggleSkillCompletion(DrivingSkill skill) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        final isCompleting = !skill.isCompleted;
-        final title = isCompleting ? 'Mark Skill Complete' : 'Undo Completion';
-        final actionLabel =
-            isCompleting ? 'Mark Complete' : 'Set to In Progress';
-        final message = isCompleting
-            ? 'Are you sure you want to mark "${skill.name}" as complete?'
-            : 'Set "${skill.name}" back to in progress?';
-        return AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(actionLabel),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-    await _persistSkillCompletion(skill, complete: !skill.isCompleted);
-  }
-
-  Future<void> _persistSkillCompletion(DrivingSkill skill,
-      {required bool complete}) async {
-    final userId = SupabaseService.currentUser?.id;
-    if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please sign in again to update progress.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
-    final previousCompleted = skill.isCompleted;
-    final previousDate = skill.completedDate;
-    final timestamp = complete ? DateTime.now() : null;
-
-    setState(() {
-      skill.isCompleted = complete;
-      skill.completedDate = timestamp;
-    });
-
-    try {
-      await SupabaseService.upsertLearnerSkillProgress(
-        userId: userId,
-        skillId: skill.id,
-        isCompleted: complete,
-        completedAt: timestamp,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            complete
-                ? '${skill.name} marked as complete!'
-                : '${skill.name} set back to in progress.',
-          ),
-          backgroundColor: complete ? AppColors.success : AppColors.info,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        skill.isCompleted = previousCompleted;
-        skill.completedDate = previousDate;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to save progress: $e'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    }
+  bool _isSkillTestReady(String id) {
+    return _skills.any((skill) => skill.id == id && skill.status.isTestReady);
   }
 
   Future<void> _loadProgress() async {
     final userId = SupabaseService.currentUser?.id;
-    if (userId == null) {
-      return;
-    }
+    if (userId == null) return;
 
     setState(() => _isLoading = true);
 
@@ -437,30 +360,8 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
       final rows = await SupabaseService.getLearnerSkillProgress(userId);
       if (!mounted) return;
 
-      final progressById = <String, Map<String, dynamic>>{};
-      for (final row in rows) {
-        final skillId = row['skill_id'] as String?;
-        if (skillId != null) {
-          progressById[skillId] = row;
-        }
-      }
-
       setState(() {
-        for (final skill in _skills) {
-          final data = progressById[skill.id];
-          if (data != null) {
-            final isCompleted = data['is_completed'] as bool? ?? false;
-            final completedAt = data['completed_at'];
-            DateTime? parsedDate;
-            if (completedAt is String && completedAt.isNotEmpty) {
-              parsedDate = DateTime.tryParse(completedAt);
-            } else if (completedAt is DateTime) {
-              parsedDate = completedAt;
-            }
-            skill.isCompleted = isCompleted;
-            skill.completedDate = parsedDate;
-          }
-        }
+        _skills = learnerProgressSkillsFromRows(rows);
         _isLoading = false;
       });
     } catch (e) {
@@ -477,12 +378,12 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
 
   void _showProgressAnalytics() {
     final milestones = _skills
-        .where((skill) => skill.isCompleted && skill.completedDate != null)
+        .where((skill) => skill.status.isTestReady && skill.completedAt != null)
         .map(
           (skill) => ProgressMilestone(
             title: skill.name,
             description: skill.description,
-            completedAt: skill.completedDate!,
+            completedAt: skill.completedAt!,
           ),
         )
         .toList();
@@ -490,7 +391,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
     if (milestones.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Complete a skill to unlock analytics.'),
+          content: Text('Your test-ready milestones will appear here.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -506,83 +407,4 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
       ),
     );
   }
-}
-
-class DrivingSkill {
-  DrivingSkill({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.icon,
-    required this.isCompleted,
-    this.completedDate,
-  });
-
-  final String id;
-  final String name;
-  final String description;
-  final IconData icon;
-  bool isCompleted;
-  DateTime? completedDate;
-}
-
-List<DrivingSkill> _buildDefaultSkills() {
-  return [
-    DrivingSkill(
-      id: 'basic_vehicle_control',
-      name: 'Basic Vehicle Control',
-      description: 'Steering, acceleration, and braking',
-      icon: Icons.sync_alt_rounded,
-      isCompleted: false,
-    ),
-    DrivingSkill(
-      id: 'parking',
-      name: 'Parking',
-      description: 'Parallel parking and angle parking',
-      icon: Icons.local_parking_rounded,
-      isCompleted: false,
-    ),
-    DrivingSkill(
-      id: 'city_driving',
-      name: 'City Driving',
-      description: 'Traffic lights, signs, and intersections',
-      icon: Icons.location_city_rounded,
-      isCompleted: false,
-    ),
-    DrivingSkill(
-      id: 'highway_driving',
-      name: 'Highway Driving',
-      description: 'Merging, lane changes, and speed control',
-      icon: Icons.route_rounded,
-      isCompleted: false,
-    ),
-    DrivingSkill(
-      id: 'night_driving',
-      name: 'Night Driving',
-      description: 'Driving in low light conditions',
-      icon: Icons.nights_stay_rounded,
-      isCompleted: false,
-    ),
-    DrivingSkill(
-      id: 'weather_driving',
-      name: 'Weather Driving',
-      description: 'Driving in rain, snow, and other conditions',
-      icon: Icons.cloud_rounded,
-      isCompleted: false,
-    ),
-    DrivingSkill(
-      id: 'emergency_situations',
-      name: 'Emergency Situations',
-      description: 'Handling unexpected situations',
-      icon: Icons.warning_amber_rounded,
-      isCompleted: false,
-    ),
-    DrivingSkill(
-      id: 'defensive_driving',
-      name: 'Defensive Driving',
-      description: 'Advanced safety techniques',
-      icon: Icons.shield_outlined,
-      isCompleted: false,
-    ),
-  ];
 }

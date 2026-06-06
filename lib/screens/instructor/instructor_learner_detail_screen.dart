@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/app_colors.dart';
+import '../../models/learner_progress.dart';
 import '../../services/supabase_service.dart';
 
 class InstructorLearnerDetailScreen extends StatefulWidget {
@@ -22,6 +23,8 @@ class _InstructorLearnerDetailScreenState
   bool _loading = true;
   Map<String, dynamic> _profile = {};
   Map<String, dynamic> _learner = {};
+  List<LearnerProgressSkill> _progressSkills = defaultLearnerProgressSkills();
+  String? _progressSavingSkillId;
   static const List<String> _daySequence = [
     'monday',
     'tuesday',
@@ -62,6 +65,9 @@ class _InstructorLearnerDetailScreenState
     if (profileId != null) {
       final learnerDetail =
           await SupabaseService.getLearnerProfileDetail(profileId);
+      final progressRows = await SupabaseService.getLearnerSkillProgress(
+        profileId,
+      );
       if (learnerDetail != null) {
         setState(() {
           _learner = {
@@ -69,6 +75,7 @@ class _InstructorLearnerDetailScreenState
             ...passed,
           };
           _profile = _mapOrNull(learnerDetail['profile']) ?? {};
+          _progressSkills = learnerProgressSkillsFromRows(progressRows);
           _normalizeLearnerDetail();
           _loading = false;
         });
@@ -78,6 +85,7 @@ class _InstructorLearnerDetailScreenState
         setState(() {
           _profile = rawProfile ?? {};
           _learner = passed;
+          _progressSkills = learnerProgressSkillsFromRows(progressRows);
           _normalizeLearnerDetail();
           _loading = false;
         });
@@ -430,6 +438,15 @@ class _InstructorLearnerDetailScreenState
     return activeStatuses.contains(status);
   }
 
+  String? get _learnerProfileId {
+    final value = _learner['profile_id'] ??
+        _learner['learner_id'] ??
+        _learner['id'] ??
+        _profile['id'];
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
   bool get _isVerifiedLearner {
     final direct = _asNullableBool(_profile['is_verified']);
     if (direct != null) return direct;
@@ -589,24 +606,7 @@ class _InstructorLearnerDetailScreenState
                 const SizedBox(height: 12),
                 _buildInfoCard(
                   title: 'Progress & focus areas',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text((_learner['progress'] as String?) ??
-                          'Progress not tracked yet.'),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: ((_learner['focusAreas'] as List?) ??
-                                (_learner['focus_areas'] as List?) ??
-                                [])
-                            .whereType<String>()
-                            .map((f) => Chip(label: Text(f)))
-                            .toList(),
-                      ),
-                    ],
-                  ),
+                  child: _buildProgressEditor(),
                 ),
                 const SizedBox(height: 12),
                 _buildInfoCard(
@@ -959,6 +959,226 @@ class _InstructorLearnerDetailScreenState
         const SizedBox(height: 8),
         Text('Test centre: $centre'),
       ],
+    );
+  }
+
+  Widget _buildProgressEditor() {
+    final readyCount =
+        _progressSkills.where((skill) => skill.status.isTestReady).length;
+    final progress = _progressSkills.isEmpty
+        ? 0.0
+        : _progressSkills.fold<double>(
+              0,
+              (sum, skill) => sum + skill.status.score,
+            ) /
+            _progressSkills.length;
+    final focusAreas = ((_learner['focusAreas'] as List?) ??
+            (_learner['focus_areas'] as List?) ??
+            [])
+        .whereType<String>()
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: LinearProgressIndicator(
+                value: progress.clamp(0, 1),
+                minHeight: 8,
+                backgroundColor: AppColors.grey200,
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(AppColors.ocean),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$readyCount/${_progressSkills.length} ready',
+              style: const TextStyle(
+                color: AppColors.ocean,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        if (!_isActiveLearner) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Accept this learner before updating progress.',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+        ],
+        if (focusAreas.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children:
+                focusAreas.map((focus) => Chip(label: Text(focus))).toList(),
+          ),
+        ],
+        const SizedBox(height: 12),
+        for (final skill in _progressSkills) ...[
+          _ProgressSkillEditorTile(
+            skill: skill,
+            enabled: _isActiveLearner && _learnerProfileId != null,
+            isSaving: _progressSavingSkillId == skill.id,
+            onChanged: (status) => _updateSkillProgress(skill, status),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _updateSkillProgress(
+    LearnerProgressSkill skill,
+    LearnerSkillStatus status,
+  ) async {
+    final learnerId = _learnerProfileId;
+    if (learnerId == null || _progressSavingSkillId != null) return;
+
+    final previousSkills = List<LearnerProgressSkill>.from(_progressSkills);
+    final now = DateTime.now().toUtc();
+    setState(() {
+      _progressSavingSkillId = skill.id;
+      _progressSkills = _progressSkills.map((item) {
+        if (item.id != skill.id) return item;
+        return item.copyWith(
+          status: status,
+          completedAt: status.isTestReady ? now : null,
+          updatedAt: now,
+        );
+      }).toList();
+    });
+
+    try {
+      await SupabaseService.upsertLearnerSkillProgress(
+        userId: learnerId,
+        skillId: skill.id,
+        status: status.storageValue,
+        updatedByRole: 'instructor',
+      );
+      if (!mounted) return;
+      setState(() => _progressSavingSkillId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${skill.name} set to ${status.label}.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _progressSkills = previousSkills;
+        _progressSavingSkillId = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to update progress: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+}
+
+class _ProgressSkillEditorTile extends StatelessWidget {
+  const _ProgressSkillEditorTile({
+    required this.skill,
+    required this.enabled,
+    required this.isSaving,
+    required this.onChanged,
+  });
+
+  final LearnerProgressSkill skill;
+  final bool enabled;
+  final bool isSaving;
+  final ValueChanged<LearnerSkillStatus> onChanged;
+
+  Color get _statusColor {
+    switch (skill.status) {
+      case LearnerSkillStatus.notStarted:
+        return Colors.grey;
+      case LearnerSkillStatus.practicing:
+        return AppColors.info;
+      case LearnerSkillStatus.confident:
+        return AppColors.warning;
+      case LearnerSkillStatus.testReady:
+        return AppColors.success;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.grey200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(skill.icon, color: _statusColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      skill.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      skill.description,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSaving)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<LearnerSkillStatus>(
+            initialValue: skill.status,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+            ),
+            items: LearnerSkillStatus.values
+                .map(
+                  (status) => DropdownMenuItem(
+                    value: status,
+                    child: Text(status.label),
+                  ),
+                )
+                .toList(),
+            onChanged: enabled && !isSaving
+                ? (status) {
+                    if (status != null && status != skill.status) {
+                      onChanged(status);
+                    }
+                  }
+                : null,
+          ),
+        ],
+      ),
     );
   }
 }

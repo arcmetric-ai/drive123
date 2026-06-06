@@ -680,7 +680,8 @@ class SupabaseService {
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
-      throw Exception('Please sign in again before requesting account deletion.');
+      throw Exception(
+          'Please sign in again before requesting account deletion.');
     }
 
     String? role;
@@ -998,13 +999,16 @@ class SupabaseService {
     if (learnerIds.isEmpty) return {};
     final response = await _client
         .from('learner_skill_progress')
-        .select('profile_id, is_completed')
+        .select('profile_id, is_completed, status')
         .inFilter('profile_id', learnerIds);
     final counts = <String, int>{};
     for (final row in response) {
       final profileId = row['profile_id']?.toString();
       if (profileId == null || profileId.isEmpty) continue;
-      final isCompleted = row['is_completed'] == true;
+      final status = row['status']?.toString().trim().toLowerCase();
+      final isCompleted = row['is_completed'] == true ||
+          status == 'test_ready' ||
+          status == 'completed';
       if (isCompleted) {
         counts.update(profileId, (value) => value + 1, ifAbsent: () => 1);
       } else {
@@ -1104,14 +1108,22 @@ class SupabaseService {
   static Future<void> upsertLearnerSkillProgress({
     required String userId,
     required String skillId,
-    required bool isCompleted,
-    DateTime? completedAt,
+    required String status,
+    String updatedByRole = 'learner',
   }) async {
+    final normalizedStatus = status.trim().toLowerCase();
+    final isCompleted =
+        normalizedStatus == 'test_ready' || normalizedStatus == 'completed';
+    final now = DateTime.now().toUtc();
     await _client.from('learner_skill_progress').upsert({
       'profile_id': userId,
       'skill_id': skillId,
+      'status': normalizedStatus,
       'is_completed': isCompleted,
-      'completed_at': completedAt?.toIso8601String(),
+      'completed_at': isCompleted ? now.toIso8601String() : null,
+      'updated_by': currentUser?.id,
+      'updated_by_role': updatedByRole,
+      'updated_at': now.toIso8601String(),
     });
   }
 
