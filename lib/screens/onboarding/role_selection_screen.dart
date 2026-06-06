@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
-import '../../widgets/glass_panel.dart';
+import '../../constants/app_spacing.dart';
+import '../../services/supabase_service.dart';
+import '../../widgets/app_primary_button.dart';
+import '../../widgets/selection_option_card.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -13,172 +18,134 @@ class RoleSelectionScreen extends StatefulWidget {
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
-  String? selectedRole;
+  static final Uri _instructorApplicationUrl =
+      Uri.parse('https://www.drivetutor.ca/instructor/apply');
 
-  void _selectRole(String role) {
-    setState(() => selectedRole = role);
-    context.go(AppRoutes.auth, extra: role);
+  String? _selectedRole;
+  bool _isSaving = false;
+
+  Future<void> _handleConfirmSelection() async {
+    final role = _selectedRole;
+    if (role == null || _isSaving) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      if (role == 'instructor') {
+        final launched = await launchUrl(
+          _instructorApplicationUrl,
+          mode: LaunchMode.externalApplication,
+        );
+        if (!launched) {
+          throw Exception('Unable to open the instructor application page.');
+        }
+        return;
+      }
+
+      final user = SupabaseService.currentUser;
+      if (user == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please sign in first to continue account setup.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        context.go(AppRoutes.auth);
+        return;
+      }
+
+      await SupabaseService.assignUserRole(userId: user.id, role: role);
+      if (!mounted) return;
+
+      context.go(AppRoutes.identityVerificationIntro, extra: role);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to save role: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-          child: Column(
-            children: [
-              _buildHero(),
-              const SizedBox(height: 36),
-              _buildRoleCard(
-                title: 'I\'m a Learner',
-                subtitle: 'Looking for Driving Lessons',
-                iconAsset: 'assets/icons/learner.svg',
-                role: 'learner',
-                accentColor: const Color(0xFF4EA8DE),
-              ),
-              const SizedBox(height: 18),
-              _buildRoleCard(
-                title: 'I\'m an Instructor',
-                subtitle: 'Teaching Driving Skills',
-                iconAsset: 'assets/icons/instructor.svg',
-                role: 'instructor',
-                accentColor: const Color(0xFF63E6BE),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHero() {
-    return Column(
-      children: [
-        GlassPanel(
-          borderRadius: BorderRadius.circular(28),
-          opacity: 0.14,
-          padding: const EdgeInsets.all(24),
-          child: SizedBox(
-            width: 160,
-            height: 160,
-            child: SvgPicture.asset(
-              'assets/images/role.svg',
-              fit: BoxFit.contain,
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Choose your role to get started',
-          style: TextStyle(
-            fontFamily: 'MartianMono',
-            fontSize: 16,
-            color: Colors.black.withOpacity(0.7),
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRoleCard({
-    required String title,
-    required String subtitle,
-    required String iconAsset,
-    required String role,
-    required Color accentColor,
-  }) {
-    final isSelected = selectedRole == role;
-
-    return GlassPanel(
-      borderRadius: BorderRadius.circular(24),
-      opacity: 0.12,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () => _selectRole(role),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isSelected
-                    ? accentColor.withOpacity(0.4)
-                    : Colors.black.withOpacity(0.06),
-              ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: accentColor.withOpacity(0.25),
-                        blurRadius: 28,
-                        offset: const Offset(0, 10),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
+                    const Text(
+                      'How will you use\nDrive Tutor?',
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w800,
+                        height: 1.08,
+                        letterSpacing: -0.7,
+                        color: AppColors.foreground,
                       ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 18,
-                        offset: const Offset(0, 6),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    const Text(
+                      'Choose your role to get started.',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        height: 1.45,
+                        color: AppColors.mutedForeground,
                       ),
-                    ],
-            ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 72,
-                    height: 72,
-                    child: SvgPicture.asset(
-                      iconAsset,
-                      fit: BoxFit.contain,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontFamily: 'MartianMono',
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: isSelected ? accentColor : Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontFamily: 'MartianMono',
-                            fontSize: 14,
-                            color: Colors.black.withOpacity(0.6),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 40),
+                    SelectionOptionCard(
+                      title: "I'm a Learner",
+                      subtitle:
+                          'I want to learn to drive and get my Ontario G2 or G license.',
+                      illustrationBackgroundColor: const Color(0xFFFFF9E6),
+                      illustration: SvgPicture.asset(
+                        'assets/icons/learner.svg',
+                      ),
+                      isSelected: _selectedRole == 'learner',
+                      onTap: () => setState(() => _selectedRole = 'learner'),
+                      isEnabled: !_isSaving,
                     ),
-                  ),
-                  AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    opacity: isSelected ? 1 : 0,
-                    child: Icon(
-                      Icons.check_circle,
-                      color: accentColor,
-                      size: 26,
+                    const SizedBox(height: 18),
+                    SelectionOptionCard(
+                      title: "I'm an Instructor",
+                      subtitle:
+                          'I am a certified driving instructor and will apply through the website.',
+                      illustrationBackgroundColor: const Color(0xFFF7F7FB),
+                      illustration: SvgPicture.asset(
+                        'assets/icons/instructor.svg',
+                      ),
+                      isSelected: _selectedRole == 'instructor',
+                      onTap: () => setState(() => _selectedRole = 'instructor'),
+                      isEnabled: !_isSaving,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: AppSpacing.xxl),
+                    AppPrimaryButton(
+                      label: 'Confirm Selection',
+                      isLoading: _isSaving,
+                      onPressed: _selectedRole == null || _isSaving
+                          ? null
+                          : _handleConfirmSelection,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

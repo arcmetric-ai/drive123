@@ -5,9 +5,20 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
+import '../../constants/app_shadows.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/learner_color_utils.dart';
 import '../../utils/lesson_request_utils.dart';
 import '../../widgets/glass_panel.dart';
+
+BoxDecoration _outlinedSurfaceDecoration(double radius, {Color? color}) {
+  return BoxDecoration(
+    color: color ?? Colors.white,
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(color: AppColors.border),
+    boxShadow: AppShadows.subtle,
+  );
+}
 
 class LearnerRosterView extends StatefulWidget {
   final EdgeInsetsGeometry padding;
@@ -60,10 +71,14 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
   }
 
   int get _activeLearnerCount => _learners.length;
+  int get _graduatedCount =>
+      _learners.where((learner) => _isGraduatedLearner(learner)).length;
   int get _g2Count =>
       _learners.where((learner) => _licenseTier(learner) == 'g2').length;
   int get _gCount =>
       _learners.where((learner) => _licenseTier(learner) == 'g').length;
+  int get _refresherCount =>
+      _learners.where((learner) => _isRefresherLearner(learner)).length;
 
   @override
   void initState() {
@@ -362,6 +377,44 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     return null;
   }
 
+  bool _isGraduatedLearner(Map<String, dynamic> learner) {
+    final profile = learner['learner'] as Map?;
+    final candidates = [
+      learner['status'],
+      learner['learning_status'],
+      learner['learner_status'],
+      learner['progress_status'],
+      profile?['status'],
+    ];
+    for (final candidate in candidates) {
+      final value = _stringValue(candidate)?.toLowerCase();
+      if (value == null) continue;
+      if (value.contains('graduated') ||
+          value.contains('completed') ||
+          value.contains('passed')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isRefresherLearner(Map<String, dynamic> learner) {
+    final profile = learner['learner'] as Map?;
+    final candidates = [
+      learner['learning_focus'],
+      learner['requested_learning_focus'],
+      learner['focus'],
+      learner['requested_focus'],
+      profile?['learning_focus'],
+    ];
+    for (final candidate in candidates) {
+      final value = _stringValue(candidate)?.toLowerCase();
+      if (value == null) continue;
+      if (value.contains('refresh')) return true;
+    }
+    return false;
+  }
+
   double? _progressValue(Map<String, dynamic> learner) {
     final completed = _doubleValue(learner['completed_skills']) ??
         _doubleValue(learner['lessons_completed'] ??
@@ -432,6 +485,23 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     return _stringValue((learner['learner'] as Map?)?['phone']) ??
         _stringValue(learner['phone']) ??
         _stringValue(learner['learner_phone']);
+  }
+
+  LearnerColorSet _learnerColors(Map<String, dynamic> learner) {
+    final profile = learner['learner'] as Map?;
+    final key = _stringValue(learner['learner_id']) ??
+        _stringValue(profile?['id']) ??
+        _learnerEmail(learner) ??
+        _learnerName(learner);
+    return learnerColorForKey(key);
+  }
+
+  LearnerColorSet _requestColors(Map<String, dynamic> request) {
+    final key = _stringValue(request['learner_id']) ??
+        _stringValue(request['profile_id']) ??
+        _stringValue(request['requested_email']) ??
+        formatLessonRequestLearnerName(request);
+    return learnerColorForKey(key);
   }
 
   bool _matchesSearch(Map<String, dynamic> learner) {
@@ -679,42 +749,47 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: GlassPanel(
-            borderRadius: BorderRadius.circular(28),
-            opacity: 0.12,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.cloud_off,
-                  size: 48,
-                  color: AppColors.primaryBlue,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Unable to load learners',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+          child: Container(
+            decoration:
+                _outlinedSurfaceDecoration(28, color: Colors.transparent),
+            child: GlassPanel(
+              borderRadius: BorderRadius.circular(28),
+              opacity: 0.12,
+              borderColor: AppColors.border,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.cloud_off,
+                    size: 48,
                     color: AppColors.primaryBlue,
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Please check your connection and try again.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.black54),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _load,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Unable to load learners',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryBlue,
+                    ),
                   ),
-                  child: const Text('Retry'),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Please check your connection and try again.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _load,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryBlue,
+                    ),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -730,129 +805,146 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: widget.padding,
         children: [
-          _buildHeader(),
+          _buildSummaryCards(),
           const SizedBox(height: 16),
           _buildSearchField(),
-          const SizedBox(height: 16),
-          _buildStatsRow(),
           const SizedBox(height: 20),
           if (learners.isEmpty)
             _buildEmptyLearners()
           else
             ...learners.map(_buildLearnerCard),
           const SizedBox(height: 32),
-          _buildPendingSection(),
-          const SizedBox(height: 32),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            AppColors.primaryBlue,
-            Color(0xFF6DB7FF),
+  Widget _buildSummaryCards() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 18.0;
+        final width = constraints.maxWidth;
+        final topCardWidth = (width - spacing) / 2;
+        final bottomCardWidth = (width - (spacing * 2)) / 3;
+
+        return Column(
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: topCardWidth,
+                  child: _LearnerHeroStatCard(
+                    label: 'ACTIVE',
+                    value: _activeLearnerCount.toString(),
+                    icon: Icons.radio_button_checked_rounded,
+                    iconColor: Colors.white,
+                    iconBackground: const Color(0x3DFFFFFF),
+                    backgroundColor: const Color(0xFF1E53D5),
+                    borderColor: const Color(0xFF1E53D5),
+                    valueColor: Colors.white,
+                    labelColor: const Color(0xFFDCE6FF),
+                    iconRingColor: const Color(0xFF79A1FF),
+                  ),
+                ),
+                const SizedBox(width: spacing),
+                SizedBox(
+                  width: topCardWidth,
+                  child: _LearnerHeroStatCard(
+                    label: 'GRADUATED',
+                    value: _graduatedCount.toString(),
+                    icon: Icons.check_rounded,
+                    iconColor: Colors.white,
+                    iconBackground: Colors.black,
+                    backgroundColor: Colors.white,
+                    borderColor: const Color(0xFFDADFE8),
+                    valueColor: const Color(0xFF111827),
+                    labelColor: const Color(0xFF6B7280),
+                    iconRingColor: const Color(0xFFFFF0B8),
+                    shadowColor: const Color(0x140F172A),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: spacing),
+            Row(
+              children: [
+                SizedBox(
+                  width: bottomCardWidth,
+                  child: _LearnerMiniStatCard(
+                    label: 'G2',
+                    value: _g2Count.toString(),
+                    backgroundColor: const Color(0xFFF2F5FF),
+                    borderColor: const Color(0xFFD8E2FF),
+                    labelColor: const Color(0xFF1E53D5),
+                    valueColor: const Color(0xFF1E53D5),
+                  ),
+                ),
+                const SizedBox(width: spacing),
+                SizedBox(
+                  width: bottomCardWidth,
+                  child: _LearnerMiniStatCard(
+                    label: 'G',
+                    value: _gCount.toString(),
+                    backgroundColor: const Color(0xFFFFFBE8),
+                    borderColor: const Color(0xFFF7E6A1),
+                    labelColor: Colors.black,
+                    valueColor: Colors.black,
+                  ),
+                ),
+                const SizedBox(width: spacing),
+                SizedBox(
+                  width: bottomCardWidth,
+                  child: _LearnerMiniStatCard(
+                    label: 'REFRESHER',
+                    value: _refresherCount.toString(),
+                    backgroundColor: Colors.white,
+                    borderColor: const Color(0xFFDADFE8),
+                    labelColor: const Color(0xFF6B7280),
+                    valueColor: const Color(0xFF111827),
+                  ),
+                ),
+              ],
+            ),
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryBlue.withOpacity(0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          Text(
-            'My Learners',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          SizedBox(height: 6),
-          Text(
-            'Manage your active learners and stay on top of upcoming lessons.',
-            style: TextStyle(
-              color: Colors.white70,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      decoration: InputDecoration(
-        hintText: 'Search learners',
-        prefixIcon: const Icon(Icons.search),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide:
-              const BorderSide(color: AppColors.primaryBlue, width: 1.6),
+    return Container(
+      decoration: _outlinedSurfaceDecoration(18),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'Search learners',
+          prefixIcon: const Icon(Icons.search),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding:
+              const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide:
+                const BorderSide(color: AppColors.primaryBlue, width: 1.6),
+          ),
         ),
       ),
-    );
-  }
-
-  Widget _buildStatsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _StatTile(
-            label: 'Active',
-            value: _activeLearnerCount.toString(),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatTile(
-            label: 'G2',
-            value: _g2Count.toString(),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatTile(
-            label: 'G',
-            value: _gCount.toString(),
-          ),
-        ),
-      ],
     );
   }
 
   Widget _buildEmptyLearners() {
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
+      decoration: _outlinedSurfaceDecoration(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: const [
@@ -876,56 +968,8 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     );
   }
 
-  Widget _buildPendingSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Pending Learner Requests',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AppColors.primaryBlue,
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_requests.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.mail_outline,
-                    size: 32, color: AppColors.primaryBlue),
-                SizedBox(height: 12),
-                Text(
-                  'No requests right now',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryBlue,
-                  ),
-                ),
-                SizedBox(height: 6),
-                Text(
-                  'When a learner reaches out, you can review and accept them from here.',
-                  style: TextStyle(color: Colors.black54),
-                ),
-              ],
-            ),
-          )
-        else
-          ..._requests.map(_buildRequestCard),
-      ],
-    );
-  }
-
   Widget _buildLearnerCard(Map<String, dynamic> learner) {
+    final colors = _learnerColors(learner);
     final name = _learnerName(learner);
     final phone = _learnerPhone(learner);
     final age = _deriveAge(learner);
@@ -941,181 +985,213 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     final progressLabel =
         progress != null ? '${(progress * 100).round()}%' : 'Tracking soon';
     final lessonsLabel = progressSummary ?? 'No stats yet';
-    final nextLessonLabel = nextLesson != null ? 'Next: $nextLesson' : 'Next: TBD';
+    final nextLessonLabel =
+        nextLesson != null ? 'Next: $nextLesson' : 'Next: TBD';
     final learnerId = _learnerId(learner);
     final focusLabel = _learningFocusLabel(learner);
     final isRemoving =
         learnerId != null && _removingLearnerIds.contains(learnerId);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: AppColors.primaryBlue.withOpacity(0.12),
-                backgroundImage:
-                    avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                child: avatarUrl == null
-                    ? Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : '?',
-                        style: const TextStyle(
-                          color: AppColors.primaryBlue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (focusLabel != null) ...[
-                      const SizedBox(height: 6),
-                      _FocusBadge(label: focusLabel),
-                    ],
-                    if (demographics.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+    return Opacity(
+      opacity: isRemoving ? 0.6 : 1,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: colors.border),
+          boxShadow: AppShadows.subtle,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: colors.surfaceStrong,
+                  backgroundImage:
+                      avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                  child: avatarUrl == null
+                      ? Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : '?',
+                          style: TextStyle(
+                            color: colors.accentText,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        demographics,
-                        style: const TextStyle(color: Colors.black54),
+                        name,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: colors.accentText,
+                        ),
                       ),
+                      if (focusLabel != null) ...[
+                        const SizedBox(height: 4),
+                        _FocusBadge(
+                          label: focusLabel,
+                          backgroundColor: colors.pillBackground,
+                          foregroundColor: colors.accent,
+                        ),
+                      ],
+                      if (demographics.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          demographics,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: colors.accentText.withOpacity(0.7),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              IconButton(
-                onPressed: () => _openLearnerOverview(learner),
-                icon: const Icon(Icons.chevron_right),
-                color: Colors.black45,
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              const Icon(Icons.trending_up,
-                  size: 18, color: AppColors.primaryBlue),
-              const SizedBox(width: 8),
-              const Text(
-                'Progress',
-                style: TextStyle(
-                  color: Colors.black54,
-                  fontWeight: FontWeight.w600,
+                IconButton(
+                  onPressed:
+                      isRemoving ? null : () => _openLearnerOverview(learner),
+                  icon: isRemoving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(colors.accent),
+                          ),
+                        )
+                      : const Icon(Icons.chevron_right),
+                  color: colors.accent,
                 ),
-              ),
-              const Spacer(),
-              Text(
-                progressLabel,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primaryBlue,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: progress ?? 0,
-              minHeight: 6,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: const AlwaysStoppedAnimation(AppColors.primaryBlue),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _InlineInfo(
-                  icon: Icons.menu_book_outlined,
-                  value: lessonsLabel,
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.trending_up, size: 18, color: colors.accent),
+                const SizedBox(width: 8),
+                const Text(
+                  'Progress',
+                  style: TextStyle(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _InlineInfo(
-                  icon: Icons.calendar_today_outlined,
-                  value: nextLessonLabel,
+                const Spacer(),
+                Text(
+                  progressLabel,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: colors.accent,
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: progress ?? 0,
+                minHeight: 5,
+                backgroundColor: colors.surfaceStrong,
+                valueColor: AlwaysStoppedAnimation(colors.accent),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Divider(height: 32),
-          const SizedBox(height: 12),
-          _InfoLine(
-            icon: Icons.phone_outlined,
-            value: phone ?? 'Phone not set',
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: phone == null ? null : () => _callLearner(learner),
-                  icon: const Icon(Icons.phone),
-                  label: const Text('Contact'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primaryBlue,
-                    side: BorderSide(
-                      color: AppColors.primaryBlue.withOpacity(0.35),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _InlineInfo(
+                    icon: Icons.menu_book_outlined,
+                    value: lessonsLabel,
+                    color: colors.accent,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _InlineInfo(
+                    icon: Icons.calendar_today_outlined,
+                    value: nextLessonLabel,
+                    color: colors.accent,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Divider(height: 20, color: colors.border),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: isRemoving || phone == null
+                        ? null
+                        : () => _callLearner(learner),
+                    icon: const Icon(Icons.phone),
+                    label: Text(
+                      phone == null || phone.isEmpty
+                          ? 'Contact'
+                          : 'Contact • $phone',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colors.accent,
+                      side: BorderSide(
+                        color: colors.border,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _openLearnerOverview(learner),
-                  icon: const Icon(Icons.person_search_outlined),
-                  label: const Text('View Details'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primaryBlue,
-                    side: BorderSide(
-                      color: AppColors.primaryBlue.withOpacity(0.35),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        isRemoving ? null : () => _openLearnerOverview(learner),
+                    icon: const Icon(Icons.person_search_outlined),
+                    label: const Text('View Details'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colors.accent,
+                      side: BorderSide(
+                        color: colors.border,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1125,111 +1201,163 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     if (status == null) return false;
     return status.toLowerCase().contains('recurring');
   }
+}
 
-  Widget _buildRequestCard(Map<String, dynamic> request) {
-    final name = formatLessonRequestLearnerName(request);
-    final focus = (request['focus'] ?? request['message'] ?? '').toString();
-    final createdAtRaw = request['created_at'];
-    DateTime? createdAt;
-    if (createdAtRaw is String) {
-      createdAt = DateTime.tryParse(createdAtRaw);
-    } else if (createdAtRaw is DateTime) {
-      createdAt = createdAtRaw;
-    }
+class _LearnerHeroStatCard extends StatelessWidget {
+  const _LearnerHeroStatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.iconColor,
+    required this.iconBackground,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.valueColor,
+    required this.labelColor,
+    required this.iconRingColor,
+    this.shadowColor = const Color(0x180F172A),
+  });
 
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBackground;
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color valueColor;
+  final Color labelColor;
+  final Color iconRingColor;
+  final Color shadowColor;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(18),
+      height: 228,
+      padding: const EdgeInsets.fromLTRB(28, 30, 28, 28),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(34),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => _openRequest(request),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: AppColors.primaryBlue.withOpacity(0.12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: iconRingColor,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: iconBackground,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 18, color: iconColor),
+              ),
+            ),
+          ),
+          const Spacer(),
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
               child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primaryBlue,
+                label,
+                style: TextStyle(
+                  color: labelColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2.2,
                 ),
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  if (focus.isNotEmpty)
-                    Text(
-                      focus,
-                      style: const TextStyle(color: Colors.black54),
-                    ),
-                  if (createdAt != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Requested on ${DateFormat('MMM d, yyyy - h:mm a').format(createdAt.toLocal())}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 42,
+              fontWeight: FontWeight.w800,
+              height: 1,
             ),
-            const Icon(Icons.chevron_right, color: Colors.black45),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _StatTile extends StatelessWidget {
+class _LearnerMiniStatCard extends StatelessWidget {
+  const _LearnerMiniStatCard({
+    required this.label,
+    required this.value,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.labelColor,
+    required this.valueColor,
+  });
+
   final String label;
   final String value;
-
-  const _StatTile({required this.label, required this.value});
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color labelColor;
+  final Color valueColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      height: 106,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                style: TextStyle(
+                  color: labelColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 10),
           Text(
-            label,
-            style: const TextStyle(color: Colors.black54),
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
           ),
         ],
       ),
@@ -1239,21 +1367,27 @@ class _StatTile extends StatelessWidget {
 
 class _FocusBadge extends StatelessWidget {
   final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
 
-  const _FocusBadge({required this.label});
+  const _FocusBadge({
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.primaryBlue.withOpacity(0.12),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: AppColors.primaryBlue,
+        style: TextStyle(
+          color: foregroundColor,
           fontWeight: FontWeight.w600,
           fontSize: 12,
         ),
@@ -1265,10 +1399,12 @@ class _FocusBadge extends StatelessWidget {
 class _InlineInfo extends StatelessWidget {
   final IconData icon;
   final String value;
+  final Color color;
 
   const _InlineInfo({
     required this.icon,
     required this.value,
+    required this.color,
   });
 
   @override
@@ -1276,13 +1412,13 @@ class _InlineInfo extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 18, color: AppColors.primaryBlue),
+        Icon(icon, size: 18, color: color),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              color: Colors.black87,
+            style: TextStyle(
+              color: color,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1295,15 +1431,20 @@ class _InlineInfo extends StatelessWidget {
 class _InfoLine extends StatelessWidget {
   final IconData icon;
   final String value;
+  final Color color;
 
-  const _InfoLine({required this.icon, required this.value});
+  const _InfoLine({
+    required this.icon,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: AppColors.primaryBlue),
+        Icon(icon, color: color),
         const SizedBox(width: 12),
         Expanded(
           child: Text(

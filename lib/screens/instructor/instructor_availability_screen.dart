@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
 import '../../services/app_notifier.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/learner_color_utils.dart';
 
 class InstructorAvailabilityScreen extends StatefulWidget {
   const InstructorAvailabilityScreen({super.key});
@@ -222,6 +223,7 @@ class _InstructorAvailabilityScreenState
     final result = await showModalBottomSheet<_SlotDraftResult>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (context) {
         return _SlotEditorSheet(
           slotStart: slotStart,
@@ -245,6 +247,7 @@ class _InstructorAvailabilityScreenState
             durationMinutes: result.durationMinutes ?? 60,
             learnerId: learner.id,
             learnerName: learner.displayName,
+            learnerColors: learner.colors,
             isDraft: true,
             notes: result.notes,
           ),
@@ -361,11 +364,9 @@ class _InstructorAvailabilityScreenState
   }
 
   List<_LearnerOption> _availableLearnersForSlot(DateTime slotStart) {
-    final window = _availabilityWindowForTime(slotStart);
-    if (window == null) return const [];
     final dayKey = DateFormat('EEEE').format(slotStart).toLowerCase();
     return _learnerOptions.values
-        .where((option) => option.isAvailable(dayKey, window))
+        .where((option) => option.isAvailableForSlot(dayKey, slotStart, 15))
         .where((option) =>
             !_learnerHasSlot(option.id, slotStart, includeDrafts: true))
         .toList()
@@ -408,21 +409,21 @@ class _InstructorAvailabilityScreenState
         final pickup = _resolvePickupForLearner(draft.learnerId);
         final cost = _deriveRate(instructorProfile, focus) * durationHours;
         final lessonDate = DateTime(start.year, start.month, start.day);
-      final result = await SupabaseService.createLesson(
-        learnerId: draft.learnerId,
-        instructorId: instructorId,
-        scheduledDate: start,
-        startTime: DateFormat('HH:mm').format(start),
-        endTime: DateFormat('HH:mm').format(end),
-        duration: durationHours,
-        cost: cost,
-        notes: (draft.notes?.isNotEmpty ?? false)
-            ? draft.notes
-            : 'Scheduled via weekly planner',
-        location: pickup,
-        focus: focus,
-        lessonDate: lessonDate,
-      );
+        final result = await SupabaseService.createLesson(
+          learnerId: draft.learnerId,
+          instructorId: instructorId,
+          scheduledDate: start,
+          startTime: DateFormat('HH:mm').format(start),
+          endTime: DateFormat('HH:mm').format(end),
+          duration: durationHours,
+          cost: cost,
+          notes: (draft.notes?.isNotEmpty ?? false)
+              ? draft.notes
+              : 'Scheduled via weekly planner',
+          location: pickup,
+          focus: focus,
+          lessonDate: lessonDate,
+        );
         if (result != null) {
           _committedSlots.add(
             draft.copyWith(
@@ -478,8 +479,12 @@ class _InstructorAvailabilityScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Schedule'),
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.primaryBlue,
+        elevation: 0,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -644,24 +649,44 @@ class _InstructorAvailabilityScreenState
     final label = DateFormat('h:mm a').format(slotStart);
     Color background;
     Color borderColor;
+    Color titleColor;
+    Color subtitleColor;
+    Color? badgeColor;
+    String? badgeLabel;
     String? subtitle;
 
     switch (snapshot.state) {
       case _SlotState.draft:
-        background = _draftBaseColor.withOpacity(0.3);
-        borderColor = _draftBaseColor;
+        final colors = snapshot.slot!.learnerColors;
+        background =
+            Color.alphaBlend(_draftBaseColor.withOpacity(0.10), colors.surface);
+        borderColor =
+            Color.alphaBlend(_draftBaseColor.withOpacity(0.22), colors.border);
+        titleColor = colors.accentText;
+        subtitleColor = colors.accent;
+        badgeColor = _draftBaseColor;
+        badgeLabel = 'Draft';
         subtitle =
             '${snapshot.slot!.learnerName} \u2022 ${snapshot.slot!.durationMinutes}m';
         break;
       case _SlotState.committed:
-        background = _scheduledBaseColor.withOpacity(0.24);
-        borderColor = _scheduledBaseColor;
+        final colors = snapshot.slot!.learnerColors;
+        background = Color.alphaBlend(
+            _scheduledBaseColor.withOpacity(0.08), colors.surfaceStrong);
+        borderColor = Color.alphaBlend(
+            _scheduledBaseColor.withOpacity(0.18), colors.border);
+        titleColor = colors.accentText;
+        subtitleColor = colors.accent;
+        badgeColor = _scheduledBaseColor;
+        badgeLabel = 'Booked';
         subtitle =
             '${snapshot.slot!.learnerName} \u2022 ${snapshot.slot!.durationMinutes}m';
         break;
       case _SlotState.empty:
         background = _availableBaseColor.withOpacity(0.16);
         borderColor = _availableBaseColor.withOpacity(0.5);
+        titleColor = Colors.black87;
+        subtitleColor = Colors.grey[600]!;
         break;
     }
 
@@ -678,11 +703,35 @@ class _InstructorAvailabilityScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: titleColor,
+                    ),
+                  ),
+                ),
+                if (badgeColor != null && badgeLabel != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      badgeLabel,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             if (subtitle != null) ...[
               const SizedBox(height: 4),
@@ -690,9 +739,10 @@ class _InstructorAvailabilityScreenState
                 subtitle,
                 style: TextStyle(
                   fontSize: 12,
-                  color: snapshot.state == _SlotState.empty
-                      ? Colors.grey[600]
-                      : Colors.grey[800],
+                  color: subtitleColor,
+                  fontWeight: snapshot.state == _SlotState.empty
+                      ? FontWeight.w500
+                      : FontWeight.w600,
                 ),
               ),
             ] else ...[
@@ -701,7 +751,7 @@ class _InstructorAvailabilityScreenState
                 _availabilityWindowForTime(slotStart)?.toUpperCase() ?? '',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.grey[600],
+                  color: subtitleColor,
                 ),
               ),
             ],
@@ -737,9 +787,8 @@ class _InstructorAvailabilityScreenState
     if (preferred is List && preferred.isNotEmpty) {
       for (final entry in preferred) {
         if (entry is Map) {
-          final label = (entry['label'] ?? entry['type'] ?? '')
-              .toString()
-              .trim();
+          final label =
+              (entry['label'] ?? entry['type'] ?? '').toString().trim();
           final address = (entry['address'] ?? '').toString().trim();
           if (label.isNotEmpty && address.isNotEmpty) {
             return '$label - $address';
@@ -794,6 +843,8 @@ class _LearnerOption {
     required this.displayName,
     required this.weeklyAvailability,
     required this.recurring,
+    required this.colors,
+    this.avatarUrl,
     this.learningFocus,
     this.preferredLocations,
   });
@@ -802,15 +853,33 @@ class _LearnerOption {
   final String displayName;
   final Map<String, List<String>> weeklyAvailability;
   final bool recurring;
+  final LearnerColorSet colors;
+  final String? avatarUrl;
   final String? learningFocus;
   final List<dynamic>? preferredLocations;
 
   factory _LearnerOption.fromMap(Map<String, dynamic> map) {
+    String? clean(dynamic value) {
+      final text = value?.toString().trim();
+      if (text == null || text.isEmpty || text == 'null') return null;
+      return text;
+    }
+
     final profile = map['learner'] as Map<String, dynamic>? ?? const {};
     final first = (profile['first_name'] as String?)?.trim() ?? '';
     final last = (profile['last_name'] as String?)?.trim() ?? '';
     final displayName =
         [first, last].where((v) => v.isNotEmpty).join(' ').trim();
+    final learnerId = clean(map['learner_id']) ??
+        clean(profile['id']) ??
+        clean(map['profile_id']);
+
+    final learnerProfile = map['learner_profile'] as Map<String, dynamic>?;
+    final nestedProfile = learnerProfile?['profile'] as Map<String, dynamic>?;
+    final avatarUrl = clean(profile['profile_image_url']) ??
+        clean(learnerProfile?['profile_image_url']) ??
+        clean(nestedProfile?['profile_image_url']) ??
+        clean(map['requested_profile_url']);
 
     final availabilityRaw = map['weekly_availability'];
     final availability = <String, List<String>>{};
@@ -842,12 +911,12 @@ class _LearnerOption {
     }
 
     return _LearnerOption(
-      id: (map['learner_id'] ?? profile['id'] ?? map['profile_id']).toString(),
+      id: learnerId ?? 'learner',
       displayName: (() {
         if (displayName.isNotEmpty) {
           return displayName;
         }
-        final email = (profile['email'] as String?)?.trim();
+        final email = clean(profile['email']);
         if (email != null && email.isNotEmpty) {
           return email;
         }
@@ -855,18 +924,57 @@ class _LearnerOption {
       })(),
       weeklyAvailability: availability,
       recurring: map['availability_recurring'] == true,
-      learningFocus: (map['learning_focus'] ??
-              map['learner_profile']?['learning_focus'])
-          ?.toString(),
+      colors: learnerColorForKey(
+        learnerId ?? clean(profile['email']) ?? displayName,
+      ),
+      avatarUrl: avatarUrl,
+      learningFocus:
+          (map['learning_focus'] ?? map['learner_profile']?['learning_focus'])
+              ?.toString(),
       preferredLocations: (map['preferred_locations'] ??
-              map['learner_profile']?['preferred_locations']) as List<dynamic>?,
+          map['learner_profile']?['preferred_locations']) as List<dynamic>?,
     );
   }
 
-  bool isAvailable(String dayKey, String window) {
+  static int? _minutesFromTime(String value) {
+    final parts = value.split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    return (hour * 60) + minute;
+  }
+
+  bool isAvailableForSlot(String dayKey, DateTime slotStart, int durationMinutes) {
     final slots = weeklyAvailability[dayKey];
     if (slots == null || slots.isEmpty) return false;
-    return slots.contains(window.toLowerCase());
+    final startMinutes = (slotStart.hour * 60) + slotStart.minute;
+    final endMinutes = startMinutes + durationMinutes;
+
+    for (final slot in slots) {
+      final normalized = slot.trim().toLowerCase();
+      if (normalized.isEmpty) continue;
+
+      if (normalized.contains('-')) {
+        final parts = normalized.split('-');
+        if (parts.length != 2) continue;
+        final slotStartMinutes = _minutesFromTime(parts[0].trim());
+        final slotEndMinutes = _minutesFromTime(parts[1].trim());
+        if (slotStartMinutes == null || slotEndMinutes == null) continue;
+        if (startMinutes >= slotStartMinutes && endMinutes <= slotEndMinutes) {
+          return true;
+        }
+        continue;
+      }
+
+      final window = _InstructorAvailabilityScreenState._availabilityWindowForTime(
+        slotStart,
+      );
+      if (window != null && normalized == window) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -888,6 +996,7 @@ class _ScheduledSlot {
     required this.durationMinutes,
     required this.learnerId,
     required this.learnerName,
+    required this.learnerColors,
     this.lessonId,
     this.isDraft = false,
     this.notes,
@@ -897,6 +1006,7 @@ class _ScheduledSlot {
   final int durationMinutes;
   final String learnerId;
   final String learnerName;
+  final LearnerColorSet learnerColors;
   final String? lessonId;
   final bool isDraft;
   final String? notes;
@@ -906,6 +1016,7 @@ class _ScheduledSlot {
     int? durationMinutes,
     String? learnerId,
     String? learnerName,
+    LearnerColorSet? learnerColors,
     String? lessonId,
     bool? isDraft,
     String? notes,
@@ -915,6 +1026,7 @@ class _ScheduledSlot {
       durationMinutes: durationMinutes ?? this.durationMinutes,
       learnerId: learnerId ?? this.learnerId,
       learnerName: learnerName ?? this.learnerName,
+      learnerColors: learnerColors ?? this.learnerColors,
       lessonId: lessonId ?? this.lessonId,
       isDraft: isDraft ?? this.isDraft,
       notes: notes ?? this.notes,
@@ -922,6 +1034,12 @@ class _ScheduledSlot {
   }
 
   static _ScheduledSlot? fromLessonRow(Map<String, dynamic> row) {
+    String? clean(dynamic value) {
+      final text = value?.toString().trim();
+      if (text == null || text.isEmpty || text == 'null') return null;
+      return text;
+    }
+
     final scheduledAtRaw = row['scheduled_at']?.toString();
     if (scheduledAtRaw == null) return null;
     final scheduledAt = DateTime.tryParse(scheduledAtRaw)?.toLocal();
@@ -937,21 +1055,25 @@ class _ScheduledSlot {
     final last = (learner['last_name'] as String?)?.trim() ?? '';
     final displayName =
         [first, last].where((value) => value.isNotEmpty).join(' ').trim();
+    final learnerId = clean(row['learner_id']) ?? clean(learner['id']);
 
     return _ScheduledSlot(
       start: start,
       durationMinutes: durationMinutes,
-      learnerId: (row['learner_id'] ?? learner['id']).toString(),
+      learnerId: learnerId ?? 'learner',
       learnerName: (() {
         if (displayName.isNotEmpty) {
           return displayName;
         }
-        final email = (learner['email'] as String?)?.trim();
+        final email = clean(learner['email']);
         if (email != null && email.isNotEmpty) {
           return email;
         }
         return 'Learner';
       })(),
+      learnerColors: learnerColorForKey(
+        learnerId ?? clean(learner['email']) ?? displayName,
+      ),
       lessonId: row['id']?.toString(),
       isDraft: false,
       notes: (row['notes'] ?? '').toString(),
@@ -988,30 +1110,83 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
   late String? _selectedLearnerId;
   late int _selectedDuration;
   late TextEditingController _notesController;
+  late TextEditingController _learnerSearchController;
+  String _learnerSearchQuery = '';
+
+  List<_LearnerOption> get _availableLearnersForDuration {
+    final dayKey = DateFormat('EEEE').format(widget.slotStart).toLowerCase();
+    return widget.learnerOptions
+        .where(
+          (option) =>
+              option.isAvailableForSlot(dayKey, widget.slotStart, _selectedDuration),
+        )
+        .toList()
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+  }
+
+  List<_LearnerOption> get _filteredLearners {
+    final query = _learnerSearchQuery.trim().toLowerCase();
+    final options = _availableLearnersForDuration;
+    if (query.isEmpty) {
+      return options;
+    }
+    final matches = options
+        .where(
+          (option) => option.displayName.toLowerCase().contains(query),
+        )
+        .toList();
+    if (_selectedLearnerId != null &&
+        !matches.any((option) => option.id == _selectedLearnerId)) {
+      final selected = options.where((option) => option.id == _selectedLearnerId);
+      matches.insertAll(0, selected);
+    }
+    return matches;
+  }
+
+  _LearnerOption? get _selectedLearner {
+    final learnerId = _selectedLearnerId;
+    if (learnerId == null) return null;
+    for (final option in _availableLearnersForDuration) {
+      if (option.id == learnerId) return option;
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
-    _selectedLearnerId = widget.existing?.learnerId ??
-        (widget.learnerOptions.isNotEmpty
-            ? widget.learnerOptions.first.id
-            : null);
     _selectedDuration = widget.existing?.durationMinutes ?? 60;
+    final availableForInitialDuration = _availableLearnersForDuration;
+    _selectedLearnerId = widget.existing?.learnerId;
+    if (_selectedLearnerId == null ||
+        !availableForInitialDuration.any(
+          (option) => option.id == _selectedLearnerId,
+        )) {
+      _selectedLearnerId = availableForInitialDuration.isNotEmpty
+          ? availableForInitialDuration.first.id
+          : null;
+    }
+    _learnerSearchController = TextEditingController();
     _notesController =
         TextEditingController(text: widget.existing?.notes ?? '');
   }
 
   @override
   void dispose() {
+    _learnerSearchController.dispose();
     _notesController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final availableLearners = _filteredLearners;
+    final selectedLearner = _selectedLearner;
     return Padding(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom +
+            12,
         left: 16,
         right: 16,
         top: 20,
@@ -1028,22 +1203,79 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
             ),
           ),
           const SizedBox(height: 16),
+          TextField(
+            controller: _learnerSearchController,
+            onChanged: (value) {
+              setState(() => _learnerSearchQuery = value);
+            },
+            decoration: const InputDecoration(
+              hintText: 'Search learners',
+              prefixIcon: Icon(Icons.search_rounded),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             decoration: const InputDecoration(
               labelText: 'Learner',
               border: OutlineInputBorder(),
             ),
             value: _selectedLearnerId,
-            items: widget.learnerOptions
+            items: availableLearners
                 .map(
                   (option) => DropdownMenuItem<String>(
                     value: option.id,
-                    child: Text(option.displayName),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundImage: option.avatarUrl != null &&
+                                  option.avatarUrl!.trim().isNotEmpty
+                              ? NetworkImage(option.avatarUrl!)
+                              : null,
+                          backgroundColor: option.colors.surfaceStrong,
+                          child: option.avatarUrl == null ||
+                                  option.avatarUrl!.trim().isEmpty
+                              ? Text(
+                                  option.displayName.isNotEmpty
+                                      ? option.displayName[0].toUpperCase()
+                                      : '?',
+                                  style: TextStyle(
+                                    color: option.colors.accentText,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 180,
+                          child: Text(
+                            option.displayName,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
                 .toList(),
             onChanged: (value) => setState(() => _selectedLearnerId = value),
+            hint: const Text('Select learner'),
           ),
+          if (availableLearners.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'No learners are available for the selected duration at this time.',
+                style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: 12,
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
           DropdownButtonFormField<int>(
             decoration: const InputDecoration(
@@ -1059,8 +1291,19 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
                   ),
                 )
                 .toList(),
-            onChanged: (value) =>
-                setState(() => _selectedDuration = value ?? 60),
+            onChanged: (value) {
+              setState(() {
+                _selectedDuration = value ?? 60;
+                final availableForDuration = _availableLearnersForDuration;
+                if (!availableForDuration.any(
+                  (option) => option.id == _selectedLearnerId,
+                )) {
+                  _selectedLearnerId = availableForDuration.isNotEmpty
+                      ? availableForDuration.first.id
+                      : null;
+                }
+              });
+            },
           ),
           const SizedBox(height: 16),
           TextField(
@@ -1094,15 +1337,17 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
               ),
               const SizedBox(width: 8),
               ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop(
-                    _SlotDraftResult(
-                      learnerId: _selectedLearnerId,
-                      durationMinutes: _selectedDuration,
-                      notes: _notesController.text.trim(),
-                    ),
-                  );
-                },
+                onPressed: _selectedLearnerId == null
+                    ? null
+                    : () {
+                        Navigator.of(context).pop(
+                          _SlotDraftResult(
+                            learnerId: _selectedLearnerId,
+                            durationMinutes: _selectedDuration,
+                            notes: _notesController.text.trim(),
+                          ),
+                        );
+                      },
                 child: const Text('Save'),
               ),
             ],
@@ -1139,17 +1384,28 @@ class _CommittedSlotSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = slot.learnerColors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Lesson with ${slot.learnerName}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: colors.border),
+            ),
+            child: Text(
+              'Lesson with ${slot.learnerName}',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: colors.accentText,
+              ),
             ),
           ),
           const SizedBox(height: 12),

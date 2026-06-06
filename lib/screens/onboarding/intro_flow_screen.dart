@@ -29,7 +29,7 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
       imageAsset: 'assets/images/lesson.svg',
     ),
     _IntroPageData(
-      title: 'Welcome to Drive T',
+      title: 'Welcome to Drive Tutor',
       subtitle:
           'Get started and follow an end-to-end journey that builds confidence behind the wheel.',
       imageAsset: 'assets/images/cart.svg',
@@ -47,7 +47,7 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
   Future<void> _completeIntro() async {
     await LaunchPreferences.markIntroSeen();
     if (!mounted) return;
-    context.go(AppRoutes.roleSelection);
+    context.go(AppRoutes.auth);
   }
 
   void _handleNext() {

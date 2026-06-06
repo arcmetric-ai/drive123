@@ -25,6 +25,8 @@ class _LearnerInstructorDetailScreenState
   bool _isSuppressed = false;
   DateTime? _cancelledAt;
   final TextEditingController _messageController = TextEditingController();
+  String? _selectedVehicleLabel;
+  String? _selectedVehicleType;
 
   @override
   void initState() {
@@ -52,6 +54,7 @@ class _LearnerInstructorDetailScreenState
     if (suppressedFlag) {
       _isSuppressed = true;
     }
+    _syncSelectedVehicle();
     _hydrateInstructorProfile();
     _loadExistingRequest();
   }
@@ -93,8 +96,20 @@ class _LearnerInstructorDetailScreenState
         _requestStatus = existing?['status'] as String?;
         _requestId = existing?['id'] as String?;
         final existingMessage = existing?['message'] as String?;
+        final existingVehicleLabel =
+            existing?['requested_vehicle_label'] as String?;
+        final existingVehicleType =
+            existing?['requested_vehicle_type'] as String?;
         if (existingMessage != null && existingMessage.trim().isNotEmpty) {
           _messageController.text = existingMessage.trim();
+        }
+        if (existingVehicleLabel != null &&
+            existingVehicleLabel.trim().isNotEmpty) {
+          _selectedVehicleLabel = existingVehicleLabel.trim();
+        }
+        if (existingVehicleType != null &&
+            existingVehicleType.trim().isNotEmpty) {
+          _selectedVehicleType = existingVehicleType.trim();
         }
         if (_requestStatus != 'pending') {
           _isSuppressed = false;
@@ -162,6 +177,7 @@ class _LearnerInstructorDetailScreenState
                 languages.whereType<String>().map((e) => e.trim()).toList();
           }
         }
+        _syncSelectedVehicle();
       });
     } catch (error) {
       debugPrint('Error loading instructor profile: $error');
@@ -215,6 +231,8 @@ class _LearnerInstructorDetailScreenState
           learnerId: learnerId,
           focus: focus?.isNotEmpty == true ? focus : null,
           message: messageText.isNotEmpty ? messageText : null,
+          requestedVehicleLabel: _selectedVehicleLabel,
+          requestedVehicleType: _selectedVehicleType,
         );
         if (!mounted) return;
         setState(() {
@@ -493,9 +511,84 @@ class _LearnerInstructorDetailScreenState
     return sanitized;
   }
 
+  List<_VehicleRequestOption> _vehicleRequestOptions(
+      {required bool concealPlate}) {
+    final rawVehicles = _profile['vehicles'];
+    final options = <_VehicleRequestOption>[];
+    if (rawVehicles is List) {
+      for (final entry in rawVehicles) {
+        if (entry is Map) {
+          final type = _asNullableString(entry['type']);
+          final year = _asNullableString(entry['year']);
+          final make = _asNullableString(entry['make']);
+          final model = _asNullableString(entry['model']);
+          final plate = _asNullableString(entry['numberPlate']);
+          final makeModel = [
+            if (year != null) year,
+            if (make != null) make,
+            if (model != null) model,
+          ].join(' ').trim();
+          var label = [
+            if (type != null) type,
+            if (makeModel.isNotEmpty) makeModel,
+            if (plate != null) 'Plate: $plate',
+          ].where((value) => value.isNotEmpty).join(' - ').trim();
+          if (concealPlate) {
+            label = _concealPlate(label);
+          }
+          if (label.isNotEmpty) {
+            options.add(_VehicleRequestOption(label: label, type: type ?? ''));
+          }
+        } else if (entry is String) {
+          final value =
+              concealPlate ? _concealPlate(entry.trim()) : entry.trim();
+          if (value.isNotEmpty) {
+            options.add(_VehicleRequestOption(label: value, type: ''));
+          }
+        }
+      }
+    }
+    return options;
+  }
+
+  void _syncSelectedVehicle() {
+    final options = _vehicleRequestOptions(concealPlate: true);
+    if (options.isEmpty) {
+      _selectedVehicleLabel = null;
+      _selectedVehicleType = null;
+      return;
+    }
+    final matchedType = (_requestContext?['matchedVehicleType'] as String?)
+        ?.trim()
+        .toLowerCase();
+    final currentIndex = options.indexWhere(
+      (option) => option.label == _selectedVehicleLabel,
+    );
+    if (currentIndex != -1) {
+      _selectedVehicleType = options[currentIndex].type;
+      return;
+    }
+    if (matchedType != null && matchedType.isNotEmpty) {
+      for (final option in options) {
+        if (option.type.trim().toLowerCase() == matchedType) {
+          _selectedVehicleLabel = option.label;
+          _selectedVehicleType = option.type;
+          return;
+        }
+      }
+    }
+    if (options.length == 1) {
+      _selectedVehicleLabel = options.first.label;
+      _selectedVehicleType = options.first.type;
+    } else {
+      _selectedVehicleLabel = options.first.label;
+      _selectedVehicleType = options.first.type;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final name = _readString('name', fallback: 'Drive T Instructor');
+    final name = _readString('name', fallback: 'Drive Tutor Instructor');
     final age = _readString('age', fallback: 'Age not provided');
     final gender = _readString('gender', fallback: 'Gender not provided');
     final profileImageUrl = _readString('profileImageUrl');
@@ -517,6 +610,8 @@ class _LearnerInstructorDetailScreenState
     final offeringRates = _asStringMap('offeringRates');
     final ratesFallback =
         _readString('rates', fallback: 'Rates not provided yet.');
+    final vehicleOptions =
+        _vehicleRequestOptions(concealPlate: !_hasActiveRelationship);
     final preferredLocations =
         List<String>.from(_asStringList('preferredLocations'));
     if (preferredLocations.isEmpty) {
@@ -819,6 +914,59 @@ class _LearnerInstructorDetailScreenState
                       ),
               ),
               const SizedBox(height: 16),
+              if (canRequest && vehicleOptions.isNotEmpty) ...[
+                _DetailSection(
+                  title: 'Preferred Vehicle',
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: vehicleOptions.any(
+                      (option) => option.label == _selectedVehicleLabel,
+                    )
+                        ? _selectedVehicleLabel
+                        : null,
+                    decoration: const InputDecoration(
+                      hintText: 'Choose the vehicle you want to learn in',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: vehicleOptions
+                        .map(
+                          (option) => DropdownMenuItem<String>(
+                            value: option.label,
+                            child: Text(
+                              option.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _processing
+                        ? null
+                        : (value) {
+                            if (value == null) return;
+                            final selected = vehicleOptions.firstWhere(
+                              (option) => option.label == value,
+                            );
+                            setState(() {
+                              _selectedVehicleLabel = selected.label;
+                              _selectedVehicleType = selected.type;
+                            });
+                          },
+                    selectedItemBuilder: (context) => vehicleOptions
+                        .map(
+                          (option) => Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              option.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               _DetailSection(
                 title: 'Message to Instructor',
                 child: TextField(
@@ -1102,6 +1250,16 @@ class _DetailSection extends StatelessWidget {
       ),
     );
   }
+}
+
+class _VehicleRequestOption {
+  const _VehicleRequestOption({
+    required this.label,
+    required this.type,
+  });
+
+  final String label;
+  final String type;
 }
 
 class _DetailRow extends StatelessWidget {

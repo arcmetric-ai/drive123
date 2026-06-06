@@ -7,6 +7,8 @@ class GlassPanel extends StatelessWidget {
   final double blurSigma;
   final double opacity;
   final Color tintColor;
+  final Color? borderColor;
+  final double borderWidth;
   final BorderRadius borderRadius;
   final EdgeInsetsGeometry? padding;
 
@@ -16,6 +18,8 @@ class GlassPanel extends StatelessWidget {
     this.blurSigma = 14,
     this.opacity = 0.18,
     this.tintColor = Colors.white,
+    this.borderColor,
+    this.borderWidth = 1.2,
     this.borderRadius = const BorderRadius.all(Radius.circular(18)),
     this.padding,
   });
@@ -39,8 +43,8 @@ class GlassPanel extends StatelessWidget {
               ],
             ),
             border: Border.all(
-              color: Colors.white.withOpacity(0.2),
-              width: 1.2,
+              color: borderColor ?? Colors.white.withOpacity(0.2),
+              width: borderWidth,
             ),
           ),
           child: child,

@@ -4,15 +4,17 @@ import 'package:go_router/go_router.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../constants/ontario_locations.dart';
-import '../../services/supabase_service.dart';
+import '../../models/learner_onboarding_draft.dart';
+import '../../widgets/app_circle_icon_button.dart';
+import '../../widgets/app_primary_button.dart';
 
 class LearnerQuestionnaireScreen extends StatefulWidget {
-  final String role;
-
   const LearnerQuestionnaireScreen({
     super.key,
-    required this.role,
+    this.initialDraft = const LearnerOnboardingDraft(),
   });
+
+  final LearnerOnboardingDraft initialDraft;
 
   @override
   State<LearnerQuestionnaireScreen> createState() =>
@@ -23,402 +25,250 @@ class _LearnerQuestionnaireScreenState
     extends State<LearnerQuestionnaireScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final _g1NumberController = TextEditingController();
-  final _ageController = TextEditingController();
-  final _classesTakenController = TextEditingController();
-  final _g1ExpiryDateController = TextEditingController();
-  final _lastClassDateController = TextEditingController();
+  late final TextEditingController _firstNameController;
+  late final TextEditingController _lastNameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _g1NumberController;
+  late final TextEditingController _g1ExpiryController;
+  late final TextEditingController _ageController;
+  late final TextEditingController _classesTakenController;
+  late final TextEditingController _lastClassController;
 
-  String? _selectedCity;
   DateTime? _g1ExpiryDate;
   DateTime? _lastClassDate;
-  String? _gender;
-  final _homeAddressController = TextEditingController();
-  final _officeAddressController = TextEditingController();
-  final _otherLabelController = TextEditingController();
-  final _otherAddressController = TextEditingController();
-  bool _homeSelected = false;
-  bool _officeSelected = false;
-  bool _otherSelected = false;
-  static const List<String> _weekDays = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
-  ];
-  static const List<Map<String, String>> _timeSlotDefinitions = [
-    {'key': 'early', 'label': 'Early (7am-9am)'},
-    {'key': 'morning', 'label': 'Morning (9am-12pm)'},
-    {'key': 'afternoon', 'label': 'Afternoon (12pm-4pm)'},
-    {'key': 'evening', 'label': 'Evening (4pm-8pm)'},
-  ];
-  static const Map<String, int> _slotOrder = {
-    'early': 0,
-    'morning': 1,
-    'afternoon': 2,
-    'evening': 3,
-  };
-  final Map<String, Set<String>> _weeklyAvailability = {
-    for (final day in _weekDays) day.toLowerCase(): <String>{},
-  };
-  bool _availabilityRecurring = false;
+  String? _selectedCity;
+  String? _selectedGender;
+
+  @override
+  void initState() {
+    super.initState();
+    final draft = widget.initialDraft;
+    _firstNameController = TextEditingController(text: draft.firstName ?? '');
+    _lastNameController = TextEditingController(text: draft.lastName ?? '');
+    _phoneController = TextEditingController(text: draft.phone ?? '');
+    _g1NumberController =
+        TextEditingController(text: draft.g1LicenceNumber ?? '');
+    _g1ExpiryDate = draft.g1ExpiryDate;
+    _g1ExpiryController = TextEditingController(
+      text: draft.g1ExpiryDate == null ? '' : _formatDate(draft.g1ExpiryDate!),
+    );
+    _ageController = TextEditingController(text: draft.age?.toString() ?? '');
+    _classesTakenController = TextEditingController(
+      text: draft.classesTakenSoFar?.toString() ?? '',
+    );
+    _lastClassDate = draft.lastClassDate;
+    _lastClassController = TextEditingController(
+      text:
+          draft.lastClassDate == null ? '' : _formatDate(draft.lastClassDate!),
+    );
+    _selectedCity = draft.city;
+    _selectedGender = draft.gender;
+  }
 
   @override
   void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _phoneController.dispose();
     _g1NumberController.dispose();
+    _g1ExpiryController.dispose();
     _ageController.dispose();
     _classesTakenController.dispose();
-    _g1ExpiryDateController.dispose();
-    _lastClassDateController.dispose();
-    _homeAddressController.dispose();
-    _officeAddressController.dispose();
-    _otherLabelController.dispose();
-    _otherAddressController.dispose();
+    _lastClassController.dispose();
     super.dispose();
   }
 
-  void _toggleAvailability(String dayKey, String slotKey, bool isSelected) {
-    final slots = _weeklyAvailability[dayKey];
-    if (slots == null) return;
-    setState(() {
-      if (isSelected) {
-        slots.add(slotKey);
-      } else {
-        slots.remove(slotKey);
-      }
-    });
-  }
-
-  void _clearAvailabilityForDay(String dayKey) {
-    final slots = _weeklyAvailability[dayKey];
-    if (slots == null || slots.isEmpty) return;
-    setState(() {
-      slots.clear();
-    });
-  }
-
   Future<void> _pickDate({
-    required BuildContext context,
     required TextEditingController controller,
     required DateTime? currentValue,
+    required DateTime firstDate,
+    required DateTime lastDate,
     required ValueChanged<DateTime> onSelected,
   }) async {
+    final fallbackDate = currentValue != null &&
+            !currentValue.isBefore(firstDate) &&
+            !currentValue.isAfter(lastDate)
+        ? currentValue
+        : lastDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: currentValue ?? DateTime.now(),
-      firstDate: DateTime(1970),
-      lastDate: DateTime(2100),
+      initialDate: fallbackDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
     );
 
-    if (picked != null) {
-      onSelected(picked);
-      controller.text = _formatDate(picked);
-    }
+    if (picked == null) return;
+    onSelected(picked);
+    controller.text = _formatDate(picked);
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  String _formatDate(DateTime value) {
+    return '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  }
+
+  String? _validatePhone(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return 'Enter your phone number';
+    }
+    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < 10) {
+      return 'Enter a valid phone number';
+    }
+    return null;
   }
 
   Future<void> _handleContinue() async {
     if (!_formKey.currentState!.validate()) return;
+
     if (_g1ExpiryDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select your G1 expiry date.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      _showError('Please select your licence expiry date.');
       return;
     }
 
-    final classesTaken = int.tryParse(_classesTakenController.text.trim());
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    final normalizedExpiry = DateTime(
+      _g1ExpiryDate!.year,
+      _g1ExpiryDate!.month,
+      _g1ExpiryDate!.day,
+    );
+    if (normalizedExpiry.isBefore(normalizedToday)) {
+      _showError('Your licence expiry date must be today or later.');
+      return;
+    }
+
+    if (_selectedCity == null || _selectedCity!.trim().isEmpty) {
+      _showError('Please select your city.');
+      return;
+    }
+
+    if (_selectedGender == null || _selectedGender!.trim().isEmpty) {
+      _showError('Please select your gender.');
+      return;
+    }
+
     final age = int.tryParse(_ageController.text.trim());
-
-    final locations = <Map<String, String>>[];
-    if (_homeSelected) {
-      final address = _homeAddressController.text.trim();
-      if (address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Enter your Home address.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
-      }
-      locations.add({'type': 'Home', 'label': 'Home', 'address': address});
-    }
-    if (_officeSelected) {
-      final address = _officeAddressController.text.trim();
-      if (address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Enter your Office address.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
-      }
-      locations.add({'type': 'Office', 'label': 'Office', 'address': address});
-    }
-    if (_otherSelected) {
-      final label = _otherLabelController.text.trim();
-      final address = _otherAddressController.text.trim();
-      if (label.isEmpty || address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Provide both a label and address for the other location.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
-      }
-      locations.add({'type': 'Other', 'label': label, 'address': address});
-    }
-
-    if (locations.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add at least one preferred lesson location.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+    if (age == null) {
+      _showError('Enter a valid age.');
       return;
     }
 
-    if (_selectedCity == null || _selectedCity!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select your city.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+    final classesTakenText = _classesTakenController.text.trim();
+    final classesTaken =
+        classesTakenText.isEmpty ? null : int.tryParse(classesTakenText);
+    if (classesTakenText.isNotEmpty && classesTaken == null) {
+      _showError('Enter a valid number of completed lessons.');
       return;
     }
 
-    final availabilityPayload = _weeklyAvailability.entries
-        .map((entry) {
-          final slots = List<String>.from(entry.value);
-          slots.sort(
-              (a, b) => (_slotOrder[a] ?? 0).compareTo(_slotOrder[b] ?? 0));
-          return {
-            'day': entry.key,
-            'slots': slots,
-          };
-        })
-        .where((entry) => (entry['slots'] as List).isNotEmpty)
-        .toList();
-
-    if (availabilityPayload.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Select at least one availability slot for the week.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
-    final profileData = <String, dynamic>{};
-    if (_selectedCity != null && _selectedCity!.trim().isNotEmpty) {
-      profileData['city'] = _selectedCity!.trim();
-    }
-    if (age != null) {
-      profileData['age'] = age;
-    }
-    if (_gender != null && _gender!.trim().isNotEmpty) {
-      profileData['gender'] = _gender!.trim();
-    }
-
-    final learnerProfileData = <String, dynamic>{
-      'preferred_locations':
-          locations.map((entry) => Map<String, dynamic>.from(entry)).toList(),
-      'weekly_availability': availabilityPayload,
-      'availability_recurring': _availabilityRecurring,
-    };
-    if (classesTaken != null) {
-      learnerProfileData['classes_taken_sofar'] = classesTaken;
-    }
-    if (_lastClassDate != null) {
-      learnerProfileData['last_class_date'] = _lastClassDate!.toIso8601String();
-    }
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+    final draft = widget.initialDraft.copyWith(
+      role: widget.initialDraft.role,
+      firstName: _firstNameController.text.trim(),
+      lastName: _lastNameController.text.trim(),
+      phone: _phoneController.text.trim(),
+      g1LicenceNumber: _g1NumberController.text.trim().toUpperCase(),
+      g1ExpiryDate: _g1ExpiryDate,
+      city: _selectedCity!.trim(),
+      age: age,
+      gender: _selectedGender!.trim(),
+      classesTakenSoFar: classesTaken,
+      lastClassDate: _lastClassDate,
     );
 
-    try {
-      await _persistLearnerQuestionnaire(
-        profileData: profileData,
-        learnerProfileData: learnerProfileData,
-        licenceNumber: _g1NumberController.text.trim(),
-        licenceExpiry: _g1ExpiryDate,
-      );
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      context.go(AppRoutes.home);
-    } catch (error) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to save your details: $error'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    }
+    context.go(AppRoutes.learnerPickupAddress, extra: draft);
   }
 
-  Future<void> _persistLearnerQuestionnaire({
-    required Map<String, dynamic> profileData,
-    required Map<String, dynamic> learnerProfileData,
-    required String licenceNumber,
-    required DateTime? licenceExpiry,
-  }) async {
-    final userId = SupabaseService.currentUser?.id;
-    if (userId == null) {
-      throw Exception('Please sign in again to continue.');
-    }
-
-    final updates = Map<String, dynamic>.from(profileData);
-    final normalizedLicence = licenceNumber.trim().toUpperCase();
-    if (normalizedLicence.isNotEmpty) {
-      updates['licence_number'] = normalizedLicence;
-    }
-    if (licenceExpiry != null) {
-      updates['licence_expiry'] = _formatDate(licenceExpiry);
-    }
-
-    await SupabaseService.updateProfileFields(userId, updates);
-
-    List<Map<String, dynamic>>? _mapList(dynamic value) {
-      if (value is List) {
-        return value
-            .whereType<Map>()
-            .map((entry) => Map<String, dynamic>.from(entry as Map))
-            .toList();
-      }
-      return null;
-    }
-
-    int? _intOrNull(dynamic value) {
-      if (value is int) return value;
-      if (value is String) return int.tryParse(value);
-      return null;
-    }
-
-    bool? _boolOrNull(dynamic value) {
-      if (value is bool) return value;
-      if (value is String) {
-        final lowered = value.toLowerCase();
-        if (lowered == 'true') return true;
-        if (lowered == 'false') return false;
-      }
-      return null;
-    }
-
-    DateTime? _dateOrNull(dynamic value) {
-      if (value is DateTime) return value;
-      if (value is String && value.isNotEmpty) {
-        return DateTime.tryParse(value);
-      }
-      return null;
-    }
-
-    final learnerData = Map<String, dynamic>.from(learnerProfileData);
-
-    await SupabaseService.upsertLearnerProfile(
-      userId: userId,
-      learningFocus: (learnerData['learning_focus'] as String?)?.trim(),
-      targetTestDate: _dateOrNull(learnerData['target_test_date']),
-      targetTestCentre: (learnerData['target_test_centre'] as String?)?.trim(),
-      notes: (learnerData['notes'] as String?)?.trim(),
-      classesTakenSoFar: _intOrNull(learnerData['classes_taken_sofar']),
-      lastClassDate: _dateOrNull(learnerData['last_class_date']),
-      preferredLocations: _mapList(learnerData['preferred_locations']),
-      preferredLocationNotes:
-          (learnerData['preferred_location_notes'] as String?)?.trim(),
-      weeklyAvailability: _mapList(learnerData['weekly_availability']),
-      availabilityRecurring: _boolOrNull(learnerData['availability_recurring']),
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.error,
+      ),
     );
   }
 
-  Widget _buildAvailabilitySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Weekly Availability',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.ocean,
+  InputDecoration _fieldDecoration({
+    required String label,
+    Widget? suffixIcon,
+  }) {
+    const border = OutlineInputBorder(
+      borderRadius: BorderRadius.all(Radius.circular(18)),
+      borderSide: BorderSide(color: AppColors.border),
+    );
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(
+        color: AppColors.mutedForeground,
+        fontSize: 15,
+      ),
+      filled: true,
+      fillColor: AppColors.card,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      border: border,
+      enabledBorder: border,
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(18)),
+        borderSide: BorderSide(color: AppColors.primary, width: 1.4),
+      ),
+      errorBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(18)),
+        borderSide: BorderSide(color: AppColors.error),
+      ),
+      focusedErrorBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(18)),
+        borderSide: BorderSide(color: AppColors.error, width: 1.4),
+      ),
+      suffixIcon: suffixIcon,
+    );
+  }
+
+  Widget _sectionCard({
+    required String title,
+    String? subtitle,
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A111827),
+            blurRadius: 16,
+            offset: Offset(0, 8),
           ),
-        ),
-        const SizedBox(height: 12),
-        ..._weekDays.map((day) {
-          final dayKey = day.toLowerCase();
-          final selected = _weeklyAvailability[dayKey]!;
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[200]!),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: AppColors.foreground,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      day,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (selected.isNotEmpty)
-                      TextButton(
-                        onPressed: () => _clearAvailabilityForDay(dayKey),
-                        child: const Text('Clear'),
-                      ),
-                  ],
-                ),
-                ..._timeSlotDefinitions.map((slot) {
-                  final slotKey = slot['key']!;
-                  final slotLabel = slot['label']!;
-                  final isSelected = selected.contains(slotKey);
-                  return CheckboxListTile(
-                    value: isSelected,
-                    onChanged: (value) =>
-                        _toggleAvailability(dayKey, slotKey, value ?? false),
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: Text(slotLabel),
-                  );
-                }),
-              ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontSize: 15,
+                height: 1.4,
+                color: AppColors.mutedForeground,
+              ),
             ),
-          );
-        }),
-        CheckboxListTile(
-          value: _availabilityRecurring,
-          onChanged: (value) =>
-              setState(() => _availabilityRecurring = value ?? false),
-          title: const Text('Make this availability recurring for the month'),
-          contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
-        ),
-      ],
+          ],
+          const SizedBox(height: 18),
+          ...children,
+        ],
+      ),
     );
   }
 
@@ -432,327 +282,261 @@ class _LearnerQuestionnaireScreenState
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Learner Questionnaire'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      backgroundColor: const Color(0xFFF5F7FB),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16.0),
-                  decoration: BoxDecoration(
-                    color: AppColors.ocean.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'Please ensure all details match your G1 licence card.',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ocean,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'G1 Licence Details',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ocean,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _g1NumberController,
-                  decoration: const InputDecoration(
-                    labelText: 'G1 Licence Number',
-                    border: OutlineInputBorder(),
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'G1 licence number is required';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _g1ExpiryDateController,
-                  readOnly: true,
-                  decoration: const InputDecoration(
-                    labelText: 'G1 Expiry Date',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.calendar_today),
-                  ),
-                  onTap: () => _pickDate(
-                    context: context,
-                    controller: _g1ExpiryDateController,
-                    currentValue: _g1ExpiryDate,
-                    onSelected: (value) => setState(() {
-                      _g1ExpiryDate = value;
-                    }),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Personal Details',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ocean,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _selectedCity,
-                  decoration: const InputDecoration(
-                    labelText: 'City',
-                    border: OutlineInputBorder(),
-                  ),
-                  isExpanded: true,
-                  items: cityOptions
-                      .map(
-                        (city) => DropdownMenuItem(
-                          value: city,
-                          child: Text(
-                            OntarioLocations.areaForCity(city) != null
-                                ? '$city (${OntarioLocations.areaForCity(city)})'
-                                : city,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          AppCircleIconButton(
+                            icon: Icons.arrow_back_rounded,
+                            size: 56,
+                            onPressed: () =>
+                                context.go(AppRoutes.learnerApprovalSuccess),
                           ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Container(
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: AppColors.secondary,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  widthFactor: 1 / 3,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+                      const Text(
+                        'Tell us about you',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.foreground,
                         ),
-                      )
-                      .toList(),
-                  onChanged: (value) => setState(() => _selectedCity = value),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'City is required';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _ageController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Age',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Age is required';
-                    }
-                    final parsed = int.tryParse(value.trim());
-                    if (parsed == null || parsed <= 0) {
-                      return 'Enter a valid age';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: _gender,
-                  decoration: const InputDecoration(
-                    labelText: 'Gender',
-                    border: OutlineInputBorder(),
-                  ),
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'Female',
-                      child: Text('Female'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'Male',
-                      child: Text('Male'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'Non-binary',
-                      child: Text('Non-binary'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'Prefer not to say',
-                      child: Text('Prefer not to say'),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => _gender = value),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please select a gender option';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Where do you prefer to start lessons?',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ocean,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                CheckboxListTile(
-                  title: const Text('Home'),
-                  value: _homeSelected,
-                  onChanged: (value) {
-                    setState(() {
-                      _homeSelected = value ?? false;
-                      if (!_homeSelected) {
-                        _homeAddressController.clear();
-                      }
-                    });
-                  },
-                ),
-                if (_homeSelected)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 12),
-                    child: TextField(
-                      controller: _homeAddressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Home Address',
-                        border: OutlineInputBorder(),
                       ),
-                    ),
-                  ),
-                CheckboxListTile(
-                  title: const Text('Office'),
-                  value: _officeSelected,
-                  onChanged: (value) {
-                    setState(() {
-                      _officeSelected = value ?? false;
-                      if (!_officeSelected) {
-                        _officeAddressController.clear();
-                      }
-                    });
-                  },
-                ),
-                if (_officeSelected)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 12),
-                    child: TextField(
-                      controller: _officeAddressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Office Address',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'We need a few learner details before we set your pickup and weekly schedule.',
+                        style: TextStyle(
+                          fontSize: 18,
+                          height: 1.45,
+                          color: AppColors.mutedForeground,
+                        ),
                       ),
-                    ),
-                  ),
-                CheckboxListTile(
-                  title: const Text('Other'),
-                  value: _otherSelected,
-                  onChanged: (value) {
-                    setState(() {
-                      _otherSelected = value ?? false;
-                      if (!_otherSelected) {
-                        _otherLabelController.clear();
-                        _otherAddressController.clear();
-                      }
-                    });
-                  },
-                ),
-                if (_otherSelected) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 12),
-                    child: TextField(
-                      controller: _otherLabelController,
-                      decoration: const InputDecoration(
-                        labelText: 'Location Label',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 24),
+                      _sectionCard(
+                        title: 'Personal information',
+                        subtitle:
+                            'These details are required before you can continue.',
+                        children: [
+                          TextFormField(
+                            controller: _firstNameController,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: _fieldDecoration(label: 'First name'),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter your first name';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _lastNameController,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: _fieldDecoration(label: 'Last name'),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter your last name';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _phoneController,
+                            keyboardType: TextInputType.phone,
+                            decoration: _fieldDecoration(label: 'Phone number'),
+                            validator: _validatePhone,
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 12),
-                    child: TextField(
-                      controller: _otherAddressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Location Address',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 20),
+                      _sectionCard(
+                        title: 'G1/G2/G Licence',
+                        subtitle:
+                            'Enter the learner licence details you will use for lessons.',
+                        children: [
+                          TextFormField(
+                            controller: _g1NumberController,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: _fieldDecoration(
+                              label: 'G1/G2/G licence number',
+                            ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter your G1 licence number';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _g1ExpiryController,
+                            readOnly: true,
+                            decoration: _fieldDecoration(
+                              label: 'G1/G2/G expiry date',
+                              suffixIcon: IconButton(
+                                onPressed: () => _pickDate(
+                                  controller: _g1ExpiryController,
+                                  currentValue: _g1ExpiryDate,
+                                  firstDate: DateTime.now(),
+                                  lastDate: DateTime(DateTime.now().year + 10),
+                                  onSelected: (value) =>
+                                      setState(() => _g1ExpiryDate = value),
+                                ),
+                                icon: const Icon(Icons.calendar_today_rounded),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                _buildAvailabilitySection(),
-                const SizedBox(height: 24),
-                const Text(
-                  'Lesson History',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ocean,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _classesTakenController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Number of classes taken so far',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please share how many classes you have taken';
-                    }
-                    final parsed = int.tryParse(value.trim());
-                    if (parsed == null || parsed < 0) {
-                      return 'Enter a valid number';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _lastClassDateController,
-                  readOnly: true,
-                  decoration: const InputDecoration(
-                    labelText: 'When was your most recent class?',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.calendar_today),
-                  ),
-                  onTap: () => _pickDate(
-                    context: context,
-                    controller: _lastClassDateController,
-                    currentValue: _lastClassDate,
-                    onSelected: (value) => setState(() {
-                      _lastClassDate = value;
-                    }),
-                  ),
-                ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _handleContinue,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.ocean,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: const Text(
-                      'Continue',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                      const SizedBox(height: 20),
+                      _sectionCard(
+                        title: 'Basic details',
+                        subtitle:
+                            'This helps match you with the right instructors and lesson options.',
+                        children: [
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedCity,
+                            decoration: _fieldDecoration(label: 'City'),
+                            items: cityOptions
+                                .map(
+                                  (city) => DropdownMenuItem<String>(
+                                    value: city,
+                                    child: Text(city),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) =>
+                                setState(() => _selectedCity = value),
+                            validator: (value) => value == null || value.isEmpty
+                                ? 'Select your city'
+                                : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _ageController,
+                            keyboardType: TextInputType.number,
+                            decoration: _fieldDecoration(label: 'Age'),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter your age';
+                              }
+                              if (int.tryParse(value.trim()) == null) {
+                                return 'Enter a valid age';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedGender,
+                            decoration: _fieldDecoration(label: 'Gender'),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Male',
+                                child: Text('Male'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Female',
+                                child: Text('Female'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Non-binary',
+                                child: Text('Non-binary'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Prefer not to say',
+                                child: Text('Prefer not to say'),
+                              ),
+                            ],
+                            onChanged: (value) =>
+                                setState(() => _selectedGender = value),
+                            validator: (value) => value == null || value.isEmpty
+                                ? 'Select your gender'
+                                : null,
+                          ),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 20),
+                      _sectionCard(
+                        title: 'Lesson history',
+                        subtitle:
+                            'Keep this accurate so the app can reflect your current progress.',
+                        children: [
+                          TextFormField(
+                            controller: _classesTakenController,
+                            keyboardType: TextInputType.number,
+                            decoration: _fieldDecoration(
+                              label: 'Lessons completed so far',
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _lastClassController,
+                            readOnly: true,
+                            decoration: _fieldDecoration(
+                              label: 'Last class date',
+                              suffixIcon: IconButton(
+                                onPressed: () => _pickDate(
+                                  controller: _lastClassController,
+                                  currentValue: _lastClassDate,
+                                  firstDate: DateTime(1970),
+                                  lastDate: DateTime.now(),
+                                  onSelected: (value) =>
+                                      setState(() => _lastClassDate = value),
+                                ),
+                                icon: const Icon(Icons.calendar_today_rounded),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: AppPrimaryButton(
+                  label: 'Continue',
+                  onPressed: _handleContinue,
+                  height: 64,
+                ),
+              ),
+            ],
           ),
         ),
       ),

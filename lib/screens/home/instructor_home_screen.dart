@@ -1,26 +1,35 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
+import '../../constants/app_shadows.dart';
 import '../../models/lesson_model.dart';
 import '../../services/app_notifier.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/learner_color_utils.dart';
+import '../../utils/lesson_request_utils.dart';
 import '../../widgets/glass_panel.dart';
+import '../instructor/instructor_pending_requests_screen.dart';
 import '../instructor/instructor_requests_screen.dart';
 import '../home/instructor_notifications_sheet.dart';
 import '../profile/profile_screen.dart';
 
 LessonStatus _deriveLessonStatus(Map<String, dynamic> lesson) {
-  final baseStatus = LessonModel.parseStatus((lesson['status'] ?? '').toString());
+  final baseStatus =
+      LessonModel.parseStatus((lesson['status'] ?? '').toString());
   final scheduledStr = lesson['scheduled_at']?.toString();
-  final scheduled = scheduledStr != null ? DateTime.tryParse(scheduledStr) : null;
+  final scheduled =
+      scheduledStr != null ? DateTime.tryParse(scheduledStr) : null;
   if (scheduled == null) return baseStatus;
 
   double? durationHours;
@@ -46,6 +55,15 @@ Map<String, dynamic> _withDerivedLessonStatus(Map<String, dynamic> lesson) {
   return {...lesson, 'status': derived.name};
 }
 
+BoxDecoration _outlinedSurfaceDecoration(double radius, {Color? color}) {
+  return BoxDecoration(
+    color: color ?? AppColors.card,
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(color: AppColors.border),
+    boxShadow: AppShadows.subtle,
+  );
+}
+
 class InstructorHomeScreen extends StatefulWidget {
   const InstructorHomeScreen({super.key});
 
@@ -54,10 +72,17 @@ class InstructorHomeScreen extends StatefulWidget {
 }
 
 class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
+  static final Uri _activationUrl =
+      Uri.parse('https://www.drivetutor.ca/instructor/activate');
+
   int _selectedIndex = 0;
   bool _reduceMotion = false;
+  bool _billingLoading = true;
+  bool _hasActiveBilling = false;
+  bool _isOpeningActivation = false;
 
-  static const _notificationsViewedKey = 'drive_t_instructor_notifications_viewed_v1';
+  static const _notificationsViewedKey =
+      'drive_t_instructor_notifications_viewed_v1';
   static const _reduceMotionKey = 'drive_t_instructor_reduce_motion';
 
   void _onTabTap(int index) {
@@ -72,11 +97,7 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
     if (first != null && first.isNotEmpty) {
       return last != null && last.isNotEmpty ? '$first $last' : first;
     }
-    final email = user?.email;
-    if (email != null && email.contains('@')) {
-      return email.split('@').first;
-    }
-    return 'there';
+    return 'Instructor';
   }
 
   @override
@@ -86,28 +107,34 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
         name: _instructorName,
         reduceMotion: _reduceMotion,
         onToggleMotion: _toggleMotion,
-        onOpenBookings: () => _onTabTap(2),
+        onOpenBookings: () => _onTabTap(3),
+        onOpenRequests: () => _onTabTap(1),
       ),
-      _ScheduleTab(
-        reduceMotion: _reduceMotion,
-        onToggleMotion: _toggleMotion,
-      ),
-      _BookingsTab(
-        reduceMotion: _reduceMotion,
-        onToggleMotion: _toggleMotion,
-      ),
-      _StudentsTab(
-        reduceMotion: _reduceMotion,
-        onToggleMotion: _toggleMotion,
-      ),
+      const InstructorPendingRequestsScreen(),
+      const _ScheduleTab(),
+      const _BookingsTab(),
+      const _StudentsTab(),
       const ProfileScreen(),
     ];
 
-    return Scaffold(
-      body: pages[_selectedIndex],
-      bottomNavigationBar: _GlassBottomNavBar(
-        currentIndex: _selectedIndex,
-        onTap: _onTabTap,
+    return _InstructorBillingLifecycle(
+      onResume: _refreshBillingGate,
+      child: Stack(
+        children: [
+          Scaffold(
+            body: pages[_selectedIndex],
+            bottomNavigationBar: _GlassBottomNavBar(
+              currentIndex: _selectedIndex,
+              onTap: _onTabTap,
+            ),
+          ),
+          if (!_billingLoading && !_hasActiveBilling)
+            _ActivationRequiredOverlay(
+              isOpening: _isOpeningActivation,
+              onActivate: _openActivationWebsite,
+              onRefresh: _refreshBillingGate,
+            ),
+        ],
       ),
     );
   }
@@ -116,6 +143,7 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
   void initState() {
     super.initState();
     _loadMotionPreference();
+    unawaited(_refreshBillingGate());
   }
 
   Future<void> _loadMotionPreference() async {
@@ -131,6 +159,182 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_reduceMotionKey, next);
   }
+
+  Future<void> _refreshBillingGate() async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final hasBilling = await SupabaseService.hasActiveInstructorBilling(userId);
+      if (!mounted) return;
+      setState(() {
+        _hasActiveBilling = hasBilling;
+        _billingLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _hasActiveBilling = false;
+        _billingLoading = false;
+      });
+    }
+  }
+
+  Future<void> _openActivationWebsite() async {
+    if (_isOpeningActivation) return;
+    setState(() => _isOpeningActivation = true);
+    try {
+      final launched = await launchUrl(
+        _activationUrl,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        throw Exception('Unable to open the activation page.');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to open activation: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isOpeningActivation = false);
+    }
+  }
+}
+
+class _InstructorBillingLifecycle extends StatefulWidget {
+  const _InstructorBillingLifecycle({
+    required this.child,
+    required this.onResume,
+  });
+
+  final Widget child;
+  final Future<void> Function() onResume;
+
+  @override
+  State<_InstructorBillingLifecycle> createState() =>
+      _InstructorBillingLifecycleState();
+}
+
+class _InstructorBillingLifecycleState
+    extends State<_InstructorBillingLifecycle> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.onResume());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+class _ActivationRequiredOverlay extends StatelessWidget {
+  const _ActivationRequiredOverlay({
+    required this.isOpening,
+    required this.onActivate,
+    required this.onRefresh,
+  });
+
+  final bool isOpening;
+  final VoidCallback onActivate;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Material(
+        color: AppColors.foreground.withValues(alpha: 0.18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: SafeArea(
+            child: Center(
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.all(24),
+                padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: AppShadows.subtle,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Icon(
+                      Icons.lock_open_rounded,
+                      color: AppColors.primary,
+                      size: 42,
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Activate your account',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.foreground,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        height: 1.08,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Your instructor profile is approved. Choose a pass on DriveTutor.ca, then return here. We will unlock the dashboard automatically once payment is confirmed.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.mutedForeground,
+                        fontSize: 15,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: isOpening ? null : onActivate,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(54),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Text(
+                        isOpening
+                            ? 'Opening...'
+                            : 'Activate your account',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: onRefresh,
+                      child: const Text('I have already activated'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DashboardTab extends StatefulWidget {
@@ -138,12 +342,14 @@ class _DashboardTab extends StatefulWidget {
   final bool reduceMotion;
   final VoidCallback onToggleMotion;
   final VoidCallback onOpenBookings;
+  final VoidCallback onOpenRequests;
 
   const _DashboardTab({
     required this.name,
     required this.reduceMotion,
     required this.onToggleMotion,
     required this.onOpenBookings,
+    required this.onOpenRequests,
   });
 
   @override
@@ -156,7 +362,9 @@ class _DashboardTabState extends State<_DashboardTab> {
   List<Map<String, dynamic>> _requests = [];
   int _monthlyClasses = 0;
   int _totalClasses = 0;
+  double _totalHours = 0;
   String? _profileImageUrl;
+  String? _displayName;
   List<InstructorNotification> _notifications = [];
   String? _notificationsError;
   bool _notificationsLoading = false;
@@ -193,7 +401,9 @@ class _DashboardTabState extends State<_DashboardTab> {
         _loading = false;
         _monthlyClasses = 0;
         _totalClasses = 0;
+        _totalHours = 0;
         _profileImageUrl = null;
+        _displayName = null;
         _notifications = [];
         _notificationsError = 'Instructor not found.';
         _notificationsLoading = false;
@@ -211,7 +421,7 @@ class _DashboardTabState extends State<_DashboardTab> {
         SupabaseService.getUpcomingLessonsForInstructor(userId),
         SupabaseService.getLessonRequestsForInstructor(userId),
         SupabaseService.getInstructorEarningsSummary(userId),
-        SupabaseService.getRawProfile(userId),
+        SupabaseService.getInstructorProfileDetail(userId),
         SupabaseService.getInstructorLessonsForRange(
           userId: userId,
           start: notificationsRangeStart,
@@ -225,7 +435,10 @@ class _DashboardTabState extends State<_DashboardTab> {
           .toList();
       final requests = List<Map<String, dynamic>>.from(results[1] as List);
       final summary = Map<String, dynamic>.from(results[2] as Map);
-      final profile = results[3] as Map<String, dynamic>?;
+      final instructorDetail = results[3] as Map<String, dynamic>?;
+      final profile = instructorDetail?['profile'] is Map
+          ? Map<String, dynamic>.from(instructorDetail!['profile'] as Map)
+          : null;
       final lessonsForNotifications = (results[4] as List)
           .map((row) => Map<String, dynamic>.from(row as Map))
           .map(_withDerivedLessonStatus)
@@ -235,6 +448,24 @@ class _DashboardTabState extends State<_DashboardTab> {
           .where((request) =>
               ((request['status'] as String?) ?? '').toLowerCase() == 'pending')
           .toList();
+      final derivedName = () {
+        final first = (profile?['first_name'] as String?)?.trim();
+        final last = (profile?['last_name'] as String?)?.trim();
+        final parts = [first, last]
+            .whereType<String>()
+            .where((value) => value.isNotEmpty)
+            .toList();
+        if (parts.isNotEmpty) return parts.join(' ');
+        final metadata = SupabaseService.currentUser?.userMetadata;
+        final fallbackFirst = (metadata?['first_name'] as String?)?.trim();
+        final fallbackLast = (metadata?['last_name'] as String?)?.trim();
+        final fallbackParts = [fallbackFirst, fallbackLast]
+            .whereType<String>()
+            .where((value) => value.isNotEmpty)
+            .toList();
+        if (fallbackParts.isNotEmpty) return fallbackParts.join(' ');
+        return null;
+      }();
       final metadataImage = SupabaseService
           .currentUser?.userMetadata?['profile_image_url'] as String?;
       final derivedProfileImage = () {
@@ -263,8 +494,12 @@ class _DashboardTabState extends State<_DashboardTab> {
         _totalClasses = summary['totalClasses'] is int
             ? summary['totalClasses'] as int
             : (summary['totalClasses'] as num?)?.toInt() ?? 0;
+        _totalHours = summary['totalHours'] is num
+            ? (summary['totalHours'] as num).toDouble()
+            : 0.0;
         _profileImageUrl =
             derivedProfileImage.isNotEmpty ? derivedProfileImage : null;
+        _displayName = derivedName;
         _notifications = notifications;
         _notificationsError = null;
         _notificationsLoading = false;
@@ -276,7 +511,9 @@ class _DashboardTabState extends State<_DashboardTab> {
         _loading = false;
         _monthlyClasses = 0;
         _totalClasses = 0;
+        _totalHours = 0;
         _profileImageUrl = null;
+        _displayName = null;
         _notifications = [];
         _notificationsError =
             'Unable to load notifications right now. Please try again soon.';
@@ -286,8 +523,8 @@ class _DashboardTabState extends State<_DashboardTab> {
   }
 
   String get _profileInitials {
-    final name = widget.name.trim();
-    if (name.isEmpty) return 'I';
+    final name = (_displayName ?? widget.name).trim();
+    if (name.isEmpty || _looksLikeHandle(name)) return 'I';
     final parts =
         name.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
     final initials = parts.take(2).map((segment) => segment[0].toUpperCase());
@@ -295,8 +532,19 @@ class _DashboardTabState extends State<_DashboardTab> {
     return joined.isNotEmpty ? joined : 'I';
   }
 
+  bool _looksLikeHandle(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    if (trimmed.contains('@')) return true;
+    final parts =
+        trimmed.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
+    if (parts.length > 1) return false;
+    return RegExp(r'[0-9._]').hasMatch(trimmed);
+  }
+
   bool get _hasNotificationBadge {
-    return _notifications.any((notification) => _isNotificationUnread(notification));
+    return _notifications
+        .any((notification) => _isNotificationUnread(notification));
   }
 
   Future<void> _refreshNotifications() async {
@@ -655,203 +903,107 @@ class _DashboardTabState extends State<_DashboardTab> {
     return total;
   }
 
+  String _formatHours(double hours) {
+    if (hours == hours.roundToDouble()) {
+      return hours.toInt().toString();
+    }
+    return hours.toStringAsFixed(1);
+  }
+
   @override
   Widget build(BuildContext context) {
     final todayLessons = _lessonsForToday();
-    final scheduleSummary = todayLessons.isEmpty
-        ? 'No lessons scheduled today'
-        : '${todayLessons.length} lesson${todayLessons.length == 1 ? '' : 's'} • ${_totalHoursForLessons(todayLessons).toStringAsFixed(1)} hrs';
+    final topInset = MediaQuery.of(context).padding.top;
     final activeLearners = _upcomingLessons
         .map((lesson) => lesson['learner']?['id'] ?? lesson['learner_id'])
         .where((id) => id != null)
         .toSet()
         .length;
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leadingWidth: 68,
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.primaryBlue,
-        elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 16),
-          child: GestureDetector(
-            onTap: _openProfile,
-            child: CircleAvatar(
-              radius: 22,
-              backgroundColor: AppColors.ocean.withOpacity(0.12),
-              backgroundImage: _profileImageUrl != null
-                  ? NetworkImage(_profileImageUrl!)
-                  : null,
-              child: _profileImageUrl != null
-                  ? null
-                  : Text(
-                      _profileInitials,
-                      style: const TextStyle(
-                        color: AppColors.ocean,
-                        fontWeight: FontWeight.w600,
+      backgroundColor: Colors.white,
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      _InstructorOverviewHeader(
+                        name: _displayName ?? widget.name,
+                        profileImageUrl: _profileImageUrl,
+                        profileInitials: _profileInitials,
+                        hasNotificationBadge: _hasNotificationBadge,
+                        onProfileTap: _openProfile,
+                        onNotificationsTap: _handleOpenNotifications,
+                        topPadding: topInset,
                       ),
-                    ),
-            ),
-          ),
-        ),
-        titleSpacing: 0,
-        title: Text(
-          'Drive - T Instructor',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Notifications',
-            onPressed: _handleOpenNotifications,
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications_outlined),
-                if (_hasNotificationBadge)
-                  Positioned(
-                    right: -2,
-                    top: -2,
-                    child: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle,
+                      Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          borderRadius:
+                              BorderRadius.vertical(top: Radius.circular(32)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _InstructorOverviewStats(
+                                metrics: [
+                                  _OverviewMetric(
+                                    label: 'ACTIVE LEARNERS',
+                                    value: activeLearners.toString(),
+                                  ),
+                                  _OverviewMetric(
+                                    label: 'TOTAL LESSONS',
+                                    value: _totalClasses.toString(),
+                                  ),
+                                  _OverviewMetric(
+                                    label: 'TOTAL\nHOURS',
+                                    value: _formatHours(_totalHours),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 22),
+                              _RequestsCard(
+                                requests: _requests,
+                                onTap: widget.onOpenRequests,
+                              ),
+                              const SizedBox(height: 28),
+                              _InstructorSectionHeader(
+                                title: "Today's Itinerary",
+                              ),
+                              const SizedBox(height: 16),
+                              _UpcomingLessonsCard(
+                                lessons: todayLessons,
+                                onViewAll: widget.onOpenBookings,
+                                onLessonSelected: (lesson) {
+                                  GoRouter.of(context).push(
+                                    AppRoutes.instructorLessonDetail,
+                                    extra: lesson,
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: widget.reduceMotion
-                ? 'Enable animated background'
-                : 'Reduce motion (static background)',
-            onPressed: widget.onToggleMotion,
-            icon: Icon(
-              widget.reduceMotion
-                  ? Icons.visibility
-                  : Icons.visibility_off_outlined,
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Stack(
-        children: [
-          widget.reduceMotion
-              ? Container(color: Colors.white)
-              : AnimatedContainer(
-                  duration: const Duration(milliseconds: 1200),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFE0F2FF),
-                        Color(0xFFF6F3FF),
-                        Color(0xFFE7F2FF),
-                      ],
-                    ),
                 ),
-          ),
-          if (!widget.reduceMotion) ...[
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 1800),
-              top: _bgShift ? 50 : 140,
-              left: _bgShift ? -60 : 20,
-              child: const _BlurCircle(
-                diameter: 220,
-                color: Color(0xFFBCE7FF),
-              ),
-            ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 1800),
-              bottom: _bgShift ? 80 : 20,
-              right: _bgShift ? -50 : 10,
-              child: const _BlurCircle(
-                diameter: 260,
-                color: Color(0xFFCEC4FF),
-              ),
-            ),
-          ],
-          Positioned.fill(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 120, 20, 20),
-                      children: [
-                        _WelcomeCard(
-                          name: widget.name,
-                          scheduleSummary: scheduleSummary,
-                          totalClasses: _totalClasses,
-                        ),
-                        const SizedBox(height: 12),
-                        _StatsRow(
-                          metrics: [
-                            _StatMetric(
-                              icon: Icons.calendar_today_outlined,
-                              label: "Today's Lessons",
-                              value: todayLessons.length.toString(),
-                              color: AppColors.primaryBlue,
-                            ),
-                            _StatMetric(
-                              icon: Icons.group_outlined,
-                              label: 'Active Learners',
-                              value: activeLearners.toString(),
-                              color: const Color(0xFF23C16B),
-                            ),
-                            _StatMetric(
-                              icon: Icons.event_available_outlined,
-                              label: 'Monthly Lessons',
-                              value: _monthlyClasses.toString(),
-                              color: const Color(0xFF6B5AE0),
-                            ),
-                            _StatMetric(
-                              icon: Icons.insights_outlined,
-                              label: 'Total Lessons',
-                              value: _totalClasses.toString(),
-                              color: const Color(0xFFFF8A65),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        _RequestsCard(
-                          requests: _requests,
-                        ),
-                        const SizedBox(height: 20),
-                        _UpcomingLessonsCard(
-                          lessons: todayLessons,
-                          onLessonSelected: (lesson) {
-                            GoRouter.of(context).push(
-                                AppRoutes.instructorLessonDetail,
-                                extra: lesson);
-                          },
-                          onViewAll: widget.onOpenBookings,
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _ScheduleTab extends StatefulWidget {
-  const _ScheduleTab({
-    required this.reduceMotion,
-    required this.onToggleMotion,
-  });
-
-  final bool reduceMotion;
-  final VoidCallback onToggleMotion;
+  const _ScheduleTab();
 
   @override
   State<_ScheduleTab> createState() => _ScheduleTabState();
@@ -1002,274 +1154,231 @@ class _ScheduleTabState extends State<_ScheduleTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Schedule'),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.primaryBlue,
-        elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: widget.reduceMotion
-                ? 'Enable animated background'
-                : 'Reduce motion (static background)',
-            onPressed: widget.onToggleMotion,
-            icon: Icon(
-              widget.reduceMotion
-                  ? Icons.visibility
-                  : Icons.visibility_off_outlined,
-            ),
+        title: const Text(
+          'Schedule',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
           ),
-          const SizedBox(width: 8),
-        ],
+        ),
+        centerTitle: false,
+        backgroundColor: AppColors.primaryBlue,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
       ),
-      body: Stack(
-        children: [
-          widget.reduceMotion
-              ? Container(color: Colors.white)
-              : AnimatedContainer(
-                  duration: const Duration(milliseconds: 1200),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFE0F2FF),
-                        Color(0xFFF6F3FF),
-                        Color(0xFFE7F2FF),
-                      ],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error
+              ? _ScheduleErrorView(
+                  onRetry: () => _loadLessonsForMonth(_focusedDay),
+                )
+              : SafeArea(
+                  child: RefreshIndicator(
+                    color: AppColors.primaryBlue,
+                    onRefresh: _refresh,
+                    child: ValueListenableBuilder<List<_LessonEvent>>(
+                      valueListenable: _selectedEvents,
+                      builder: (context, events, _) {
+                        final summaryText = events.isEmpty
+                            ? 'No lessons scheduled'
+                            : '${events.length} ${events.length == 1 ? 'lesson' : 'lessons'} scheduled';
+                        return SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(0, 0, 0, 40),
+                          child: Column(
+                            children: [
+                              _buildCalendarCard(),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                                child: Container(
+                                  decoration: _outlinedSurfaceDecoration(
+                                    24,
+                                    color: Colors.transparent,
+                                  ),
+                                  child: GlassPanel(
+                                    borderRadius: BorderRadius.circular(24),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 18,
+                                      vertical: 14,
+                                    ),
+                                    opacity: 0.42,
+                                    borderColor: AppColors.border,
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                DateFormat.yMMMMEEEEd()
+                                                    .format(_selectedDay),
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: AppColors.primaryBlue,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                summaryText,
+                                                style: const TextStyle(
+                                                  color: Colors.black54,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        FilledButton.icon(
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor:
+                                                AppColors.primaryBlue,
+                                            foregroundColor: Colors.white,
+                                            shape: const StadiumBorder(),
+                                          ),
+                                          onPressed: () {
+                                            GoRouter.of(context).push(AppRoutes
+                                                .instructorAvailability);
+                                          },
+                                          icon: const Icon(
+                                              Icons.calendar_view_week),
+                                          label: const Text('Weekly planner'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              if (events.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20),
+                                  child: Container(
+                                    decoration: _outlinedSurfaceDecoration(
+                                      26,
+                                      color: Colors.transparent,
+                                    ),
+                                    child: GlassPanel(
+                                      borderRadius: BorderRadius.circular(26),
+                                      opacity: 0.42,
+                                      borderColor: AppColors.border,
+                                      padding: const EdgeInsets.all(24),
+                                      child: _EmptyState(
+                                        icon: Icons.event_available_outlined,
+                                        title: 'No lessons scheduled',
+                                        description:
+                                            'Use the weekly planner to add lessons for this day.',
+                                        primaryActionText:
+                                            'Open weekly planner',
+                                        onPrimaryAction: () {
+                                          GoRouter.of(context).push(
+                                              AppRoutes.instructorAvailability);
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20),
+                                  child: Column(
+                                    children: [
+                                      for (int i = 0;
+                                          i < events.length;
+                                          i++) ...[
+                                        if (i > 0) const SizedBox(height: 14),
+                                        _ScheduleEventTile(event: events[i]),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
-          if (!widget.reduceMotion) ...[
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 1800),
-              top: _bgShift ? 60 : 140,
-              left: _bgShift ? -40 : 30,
-              child: const _BlurCircle(
-                diameter: 200,
-                color: Color(0xFFBCE7FF),
-              ),
-            ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 1800),
-              bottom: _bgShift ? 40 : 100,
-              right: _bgShift ? -30 : 20,
-              child: const _BlurCircle(
-                diameter: 240,
-                color: Color(0xFFCEC4FF),
-              ),
-            ),
-          ],
-          Positioned.fill(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error
-                    ? _ScheduleErrorView(
-                        onRetry: () => _loadLessonsForMonth(_focusedDay),
-                      )
-                    : SafeArea(
-                        child: RefreshIndicator(
-                          color: AppColors.primaryBlue,
-                          onRefresh: _refresh,
-                          child: ValueListenableBuilder<List<_LessonEvent>>(
-                            valueListenable: _selectedEvents,
-                            builder: (context, events, _) {
-                              final summaryText = events.isEmpty
-                                  ? 'No lessons scheduled'
-                                  : '${events.length} ${events.length == 1 ? 'lesson' : 'lessons'} scheduled';
-                              return SingleChildScrollView(
-                                physics:
-                                    const AlwaysScrollableScrollPhysics(),
-                                padding:
-                                    const EdgeInsets.fromLTRB(0, 0, 0, 40),
-                                child: Column(
-                                  children: [
-                                    _buildCalendarCard(),
-                                    Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                          20, 12, 20, 4),
-                                      child: GlassPanel(
-                                        borderRadius:
-                                            BorderRadius.circular(24),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 18,
-                                          vertical: 14,
-                                        ),
-                                        opacity: 0.42,
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    DateFormat.yMMMMEEEEd()
-                                                        .format(_selectedDay),
-                                                    style: const TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                      color:
-                                                          AppColors.primaryBlue,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    summaryText,
-                                                    style: const TextStyle(
-                                                      color: Colors.black54,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 16),
-                                            FilledButton.icon(
-                                              style: FilledButton.styleFrom(
-                                                backgroundColor:
-                                                    AppColors.primaryBlue,
-                                                foregroundColor: Colors.white,
-                                                shape:
-                                                    const StadiumBorder(),
-                                              ),
-                                              onPressed: () {
-                                                GoRouter.of(context).push(
-                                                    AppRoutes
-                                                        .instructorAvailability);
-                                              },
-                                              icon: const Icon(
-                                                  Icons.calendar_view_week),
-                                              label:
-                                                  const Text('Weekly planner'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    if (events.isEmpty)
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 20),
-                                        child: GlassPanel(
-                                          borderRadius:
-                                              BorderRadius.circular(26),
-                                          opacity: 0.42,
-                                          padding: const EdgeInsets.all(24),
-                                          child: _EmptyState(
-                                            icon: Icons
-                                                .event_available_outlined,
-                                            title: 'No lessons scheduled',
-                                            description:
-                                                'Use the weekly planner to add lessons for this day.',
-                                            primaryActionText:
-                                                'Open weekly planner',
-                                            onPrimaryAction: () {
-                                              GoRouter.of(context).push(
-                                                  AppRoutes
-                                                      .instructorAvailability);
-                                            },
-                                          ),
-                                        ),
-                                      )
-                                    else
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 20),
-                                        child: Column(
-                                          children: [
-                                            for (int i = 0;
-                                                i < events.length;
-                                                i++) ...[
-                                              if (i > 0)
-                                                const SizedBox(height: 14),
-                                              _ScheduleEventTile(
-                                                  event: events[i]),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-          ),
-        ],
-      ),
     );
   }
 
   Widget _buildCalendarCard() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: GlassPanel(
-        borderRadius: BorderRadius.circular(28),
-        opacity: 0.64,
-        tintColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        child: TableCalendar<_LessonEvent>(
-          firstDay: DateTime(_focusedDay.year - 1, 1, 1),
-          lastDay: DateTime(_focusedDay.year + 1, 12, 31),
-          focusedDay: _focusedDay,
-          calendarFormat: _calendarFormat,
-          startingDayOfWeek: StartingDayOfWeek.monday,
-          selectedDayPredicate: (day) => isSameDay(day, _selectedDay),
-          eventLoader: _eventsForDay,
-          onDaySelected: _onDaySelected,
-          onFormatChanged: _onFormatChanged,
-          onPageChanged: _onCalendarPageChanged,
-          calendarStyle: CalendarStyle(
-            outsideDaysVisible: false,
-            isTodayHighlighted: true,
-            todayDecoration: BoxDecoration(
-              color: AppColors.primaryBlue.withOpacity(0.15),
-              shape: BoxShape.circle,
+      child: Container(
+        decoration: _outlinedSurfaceDecoration(28, color: Colors.transparent),
+        child: GlassPanel(
+          borderRadius: BorderRadius.circular(28),
+          opacity: 0.64,
+          tintColor: Colors.white,
+          borderColor: AppColors.border,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: TableCalendar<_LessonEvent>(
+            firstDay: DateTime(_focusedDay.year - 1, 1, 1),
+            lastDay: DateTime(_focusedDay.year + 1, 12, 31),
+            focusedDay: _focusedDay,
+            calendarFormat: _calendarFormat,
+            startingDayOfWeek: StartingDayOfWeek.monday,
+            selectedDayPredicate: (day) => isSameDay(day, _selectedDay),
+            eventLoader: _eventsForDay,
+            onDaySelected: _onDaySelected,
+            onFormatChanged: _onFormatChanged,
+            onPageChanged: _onCalendarPageChanged,
+            calendarStyle: CalendarStyle(
+              outsideDaysVisible: false,
+              isTodayHighlighted: true,
+              todayDecoration: BoxDecoration(
+                color: AppColors.primaryBlue.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              selectedDecoration: const BoxDecoration(
+                color: AppColors.primaryBlue,
+                shape: BoxShape.circle,
+              ),
+              selectedTextStyle: const TextStyle(color: Colors.white),
+              weekendTextStyle: const TextStyle(fontWeight: FontWeight.w600),
+              markersAlignment: Alignment.bottomCenter,
+              markerDecoration: BoxDecoration(
+                color: AppColors.primaryBlue,
+                borderRadius: BorderRadius.circular(4),
+              ),
             ),
-            selectedDecoration: const BoxDecoration(
-              color: AppColors.primaryBlue,
-              shape: BoxShape.circle,
+            headerStyle: HeaderStyle(
+              formatButtonVisible: true,
+              titleCentered: true,
+              formatButtonShowsNext: false,
+              titleTextStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryBlue,
+              ),
+              formatButtonDecoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              formatButtonTextStyle: const TextStyle(
+                color: AppColors.primaryBlue,
+                fontWeight: FontWeight.w600,
+              ),
+              leftChevronIcon:
+                  const Icon(Icons.chevron_left, color: AppColors.primaryBlue),
+              rightChevronIcon:
+                  const Icon(Icons.chevron_right, color: AppColors.primaryBlue),
             ),
-            selectedTextStyle: const TextStyle(color: Colors.white),
-            weekendTextStyle: const TextStyle(fontWeight: FontWeight.w600),
-            markersAlignment: Alignment.bottomCenter,
-            markerDecoration: BoxDecoration(
-              color: AppColors.primaryBlue,
-              borderRadius: BorderRadius.circular(4),
-            ),
+            availableCalendarFormats: const {
+              CalendarFormat.month: 'Month',
+              CalendarFormat.week: 'Week',
+            },
           ),
-          headerStyle: HeaderStyle(
-            formatButtonVisible: true,
-            titleCentered: true,
-            formatButtonShowsNext: false,
-            titleTextStyle: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primaryBlue,
-            ),
-            formatButtonDecoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            formatButtonTextStyle: const TextStyle(
-              color: AppColors.primaryBlue,
-              fontWeight: FontWeight.w600,
-            ),
-            leftChevronIcon:
-                const Icon(Icons.chevron_left, color: AppColors.primaryBlue),
-            rightChevronIcon:
-                const Icon(Icons.chevron_right, color: AppColors.primaryBlue),
-          ),
-          availableCalendarFormats: const {
-            CalendarFormat.month: 'Month',
-            CalendarFormat.week: 'Week',
-          },
         ),
       ),
     );
@@ -1300,17 +1409,7 @@ class _ScheduleEventTile extends StatelessWidget {
             .push(AppRoutes.instructorLessonDetail, extra: event.raw),
         child: Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
+          decoration: _outlinedSurfaceDecoration(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1396,8 +1495,7 @@ class _ScheduleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmedName = learner.trim();
-    final initial =
-        trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : '?';
+    final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : '?';
 
     return Material(
       color: Colors.transparent,
@@ -1461,8 +1559,7 @@ class _ScheduleCard extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.access_time,
-                      size: 18, color: Colors.grey[600]),
+                  Icon(Icons.access_time, size: 18, color: Colors.grey[600]),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1589,7 +1686,8 @@ class _LessonEvent {
 
     final focus = (data['focus'] ?? '').toString();
     final location = (data['pickup_location'] ?? '').toString();
-    final baseStatus = LessonModel.parseStatus((data['status'] ?? '').toString());
+    final baseStatus =
+        LessonModel.parseStatus((data['status'] ?? '').toString());
     final derivedStatus = LessonModel.deriveStatus(
       scheduledDate: scheduledAt.toLocal(),
       startTime: (data['start_time'] ?? '').toString(),
@@ -1708,14 +1806,7 @@ class _BookingsErrorView extends StatelessWidget {
 }
 
 class _BookingsTab extends StatefulWidget {
-  const _BookingsTab({
-    super.key,
-    required this.reduceMotion,
-    required this.onToggleMotion,
-  });
-
-  final bool reduceMotion;
-  final VoidCallback onToggleMotion;
+  const _BookingsTab({super.key});
 
   @override
   State<_BookingsTab> createState() => _BookingsTabState();
@@ -1784,6 +1875,49 @@ String _readLearnerName(Map<String, dynamic> data) {
       'Learner';
 }
 
+String _readLearnerColorKey(Map<String, dynamic> data) {
+  String? _clean(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  Map<String, dynamic>? learnerMap;
+  if (data['learner'] is Map) {
+    learnerMap = (data['learner'] as Map)
+        .map((key, value) => MapEntry(key.toString(), value));
+  }
+
+  Map<String, dynamic>? learnerProfile;
+  if (data['learner_profile'] is Map) {
+    learnerProfile = (data['learner_profile'] as Map)
+        .map((key, value) => MapEntry(key.toString(), value));
+  }
+
+  Map<String, dynamic>? nestedProfile;
+  if (learnerProfile != null && learnerProfile['profile'] is Map) {
+    nestedProfile = (learnerProfile['profile'] as Map)
+        .map((key, value) => MapEntry(key.toString(), value));
+  }
+
+  final requestedName = () {
+    final first = _clean(data['requested_first_name']);
+    final last = _clean(data['requested_last_name']);
+    final combined = [first, last].whereType<String>().join(' ').trim();
+    if (combined.isNotEmpty) return combined;
+    return _clean(data['requested_name']);
+  }();
+
+  return _clean(data['learner_id']) ??
+      _clean(learnerMap?['id']) ??
+      _clean((nestedProfile ?? learnerProfile)?['id']) ??
+      _clean(learnerMap?['email']) ??
+      _clean((nestedProfile ?? learnerProfile)?['email']) ??
+      _clean(data['learner_email']) ??
+      requestedName ??
+      _readLearnerName(data);
+}
+
 class _BookingsTabState extends State<_BookingsTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
@@ -1833,8 +1967,8 @@ class _BookingsTabState extends State<_BookingsTab>
     final baseMonth = DateTime(_currentMonth.year, _currentMonth.month, 1);
     final start = baseMonth.subtract(const Duration(days: 7));
     // include a buffer into the following month to cover the calendar view
-    final end =
-        DateTime(baseMonth.year, baseMonth.month + 1, 1).add(const Duration(days: 7));
+    final end = DateTime(baseMonth.year, baseMonth.month + 1, 1)
+        .add(const Duration(days: 7));
 
     try {
       final lessons = await SupabaseService.getInstructorLessonsForRange(
@@ -1885,6 +2019,7 @@ class _BookingsTabState extends State<_BookingsTab>
         }
 
         final learnerName = _readLearnerName(lesson);
+        final learnerColors = learnerColorForKey(_readLearnerColorKey(lesson));
 
         final dayKey = _normalizeDate(localStart);
         map.putIfAbsent(dayKey, () => <_LessonSlot>[]).add(
@@ -1893,6 +2028,7 @@ class _BookingsTabState extends State<_BookingsTab>
                 end: endTime,
                 learner: learnerName,
                 focus: (lesson['focus'] ?? 'Driving lesson').toString(),
+                learnerColors: learnerColors,
               ),
             );
       }
@@ -1943,31 +2079,35 @@ class _BookingsTabState extends State<_BookingsTab>
     required String subtitle,
     IconData icon = Icons.event_busy,
   }) {
-    return GlassPanel(
-      borderRadius: BorderRadius.circular(26),
-      opacity: 0.42,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 36, color: AppColors.primaryBlue),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 17,
-              color: AppColors.primaryBlue,
+    return Container(
+      decoration: _outlinedSurfaceDecoration(26, color: Colors.transparent),
+      child: GlassPanel(
+        borderRadius: BorderRadius.circular(26),
+        opacity: 0.42,
+        borderColor: AppColors.border,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 36, color: AppColors.primaryBlue),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 17,
+                color: AppColors.primaryBlue,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.black54),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.black54),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1985,32 +2125,37 @@ class _BookingsTabState extends State<_BookingsTab>
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
         children: [
-          GlassPanel(
-            borderRadius: BorderRadius.circular(28),
-            opacity: 0.42,
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Today',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryBlue,
+          Container(
+            decoration:
+                _outlinedSurfaceDecoration(28, color: Colors.transparent),
+            child: GlassPanel(
+              borderRadius: BorderRadius.circular(28),
+              opacity: 0.42,
+              borderColor: AppColors.border,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Today',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryBlue,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  DateFormat.yMMMMEEEEd().format(today),
-                  style: const TextStyle(color: Colors.black54),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  summaryText,
-                  style: const TextStyle(color: Colors.black54),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    DateFormat.yMMMMEEEEd().format(today),
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    summaryText,
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -2040,16 +2185,21 @@ class _BookingsTabState extends State<_BookingsTab>
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
         children: [
-          GlassPanel(
-            borderRadius: BorderRadius.circular(28),
-            opacity: 0.42,
-            padding: const EdgeInsets.all(20),
-            child: const Text(
-              'This week',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primaryBlue,
+          Container(
+            decoration:
+                _outlinedSurfaceDecoration(28, color: Colors.transparent),
+            child: GlassPanel(
+              borderRadius: BorderRadius.circular(28),
+              opacity: 0.42,
+              borderColor: AppColors.border,
+              padding: const EdgeInsets.all(20),
+              child: const Text(
+                'This week',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primaryBlue,
+                ),
               ),
             ),
           ),
@@ -2064,29 +2214,34 @@ class _BookingsTabState extends State<_BookingsTab>
                   padding: const EdgeInsets.only(right: 12),
                   child: SizedBox(
                     width: 200,
-                    child: GlassPanel(
-                      borderRadius: BorderRadius.circular(26),
-                      opacity: 0.42,
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            DateFormat.E().add_MMMd().format(day),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primaryBlue,
+                    child: Container(
+                      decoration: _outlinedSurfaceDecoration(26,
+                          color: Colors.transparent),
+                      child: GlassPanel(
+                        borderRadius: BorderRadius.circular(26),
+                        opacity: 0.42,
+                        borderColor: AppColors.border,
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              DateFormat.E().add_MMMd().format(day),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primaryBlue,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          if (slots.isEmpty)
-                            const Text(
-                              'No lessons',
-                              style: TextStyle(color: Colors.black54),
-                            )
-                          else
-                            ...slots.map(_buildLessonChip),
-                        ],
+                            const SizedBox(height: 12),
+                            if (slots.isEmpty)
+                              const Text(
+                                'No lessons',
+                                style: TextStyle(color: Colors.black54),
+                              )
+                            else
+                              ...slots.map(_buildLessonChip),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -2114,18 +2269,15 @@ class _BookingsTabState extends State<_BookingsTab>
         children: [
           Container(
             decoration: BoxDecoration(
+              color: Colors.transparent,
               borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+              border: Border.all(color: AppColors.border),
+              boxShadow: AppShadows.subtle,
             ),
             child: GlassPanel(
               borderRadius: BorderRadius.circular(28),
               opacity: 0.42,
+              borderColor: AppColors.border,
               padding: const EdgeInsets.all(20),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2175,18 +2327,15 @@ class _BookingsTabState extends State<_BookingsTab>
           const SizedBox(height: 16),
           Container(
             decoration: BoxDecoration(
+              color: Colors.transparent,
               borderRadius: BorderRadius.circular(32),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+              border: Border.all(color: AppColors.border),
+              boxShadow: AppShadows.subtle,
             ),
             child: GlassPanel(
               borderRadius: BorderRadius.circular(32),
               opacity: 0.42,
+              borderColor: AppColors.border,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: GridView.builder(
                 shrinkWrap: true,
@@ -2196,7 +2345,7 @@ class _BookingsTabState extends State<_BookingsTab>
                   crossAxisCount: 7,
                   mainAxisSpacing: 8,
                   crossAxisSpacing: 8,
-                  childAspectRatio: 0.65,
+                  childAspectRatio: 0.58,
                 ),
                 itemBuilder: (context, index) {
                   final dayNumber = index - firstWeekday + 1;
@@ -2225,19 +2374,15 @@ class _BookingsTabState extends State<_BookingsTab>
   }
 
   Widget _buildLessonTile(_LessonSlot slot) {
+    final colors = slot.learnerColors;
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: colors.border),
+          boxShadow: AppShadows.subtle,
         ),
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -2248,16 +2393,24 @@ class _BookingsTabState extends State<_BookingsTab>
               children: [
                 Text(
                   slot.timeLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: AppColors.primaryBlue,
+                    color: colors.accentText,
                   ),
                 ),
-                Text(
-                  slot.learner,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: colors.pillBackground,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    slot.learner,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: colors.accent,
+                    ),
                   ),
                 ),
               ],
@@ -2265,7 +2418,7 @@ class _BookingsTabState extends State<_BookingsTab>
             const SizedBox(height: 8),
             Text(
               slot.focus,
-              style: const TextStyle(color: Colors.black54),
+              style: TextStyle(color: colors.accentText.withOpacity(0.8)),
             ),
           ],
         ),
@@ -2274,19 +2427,15 @@ class _BookingsTabState extends State<_BookingsTab>
   }
 
   Widget _buildLessonChip(_LessonSlot slot) {
+    final colors = slot.learnerColors;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.85),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: colors.border),
+        boxShadow: AppShadows.subtle,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2294,16 +2443,20 @@ class _BookingsTabState extends State<_BookingsTab>
         children: [
           Text(
             slot.timeLabel,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppColors.primaryBlue,
+              color: colors.accentText,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             slot.learner,
-            style: const TextStyle(fontSize: 12),
+            style: TextStyle(
+              fontSize: 12,
+              color: colors.accent,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -2312,131 +2465,95 @@ class _BookingsTabState extends State<_BookingsTab>
 
   @override
   Widget build(BuildContext context) {
-    const double tabBarHeight = 64;
+    const double tabBarHeight = 78;
     final mediaPadding = MediaQuery.of(context).padding;
-    final contentTopInset = mediaPadding.top + kToolbarHeight + tabBarHeight;
     final contentBottomInset = mediaPadding.bottom + 16;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Bookings'),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.primaryBlue,
-        elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: widget.reduceMotion
-                ? 'Enable animated background'
-                : 'Reduce motion (static background)',
-            onPressed: widget.onToggleMotion,
-            icon: Icon(
-              widget.reduceMotion
-                  ? Icons.visibility
-                  : Icons.visibility_off_outlined,
-            ),
+        title: const Text(
+          'Bookings',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
           ),
-          const SizedBox(width: 8),
-        ],
+        ),
+        centerTitle: false,
+        backgroundColor: AppColors.primaryBlue,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(tabBarHeight),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: GlassPanel(
-              borderRadius: BorderRadius.circular(999),
-              opacity: 0.48,
-              padding: const EdgeInsets.all(6),
-              child: TabBar(
-                controller: _tabController,
-                indicator: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(999),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 18),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: IntrinsicWidth(
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2F67E6),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    indicator: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                  ],
+                    labelColor: AppColors.primaryBlue,
+                    unselectedLabelColor: Colors.white,
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    labelStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.45,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.45,
+                    ),
+                    tabs: const [
+                      Tab(text: 'DAY'),
+                      Tab(text: 'WEEK'),
+                      Tab(text: 'MONTH'),
+                    ],
+                  ),
                 ),
-                labelColor: AppColors.primaryBlue,
-                unselectedLabelColor: Colors.black54,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-                tabs: const [
-                  Tab(text: 'Today'),
-                  Tab(text: 'This Week'),
-                  Tab(text: 'This Month'),
-                ],
               ),
             ),
           ),
         ),
       ),
-      body: Stack(
-        children: [
-          widget.reduceMotion
-              ? Container(color: Colors.white)
-              : AnimatedContainer(
-                  duration: const Duration(milliseconds: 1200),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFE0F2FF),
-                        Color(0xFFF6F3FF),
-                        Color(0xFFE7F2FF),
-                      ],
-                    ),
+      body: Padding(
+        padding: EdgeInsets.fromLTRB(
+          0,
+          12,
+          0,
+          contentBottomInset,
+        ),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error
+                ? _BookingsErrorView(onRetry: _loadLessons)
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildDayView(),
+                      _buildWeekView(),
+                      _buildMonthView(),
+                    ],
                   ),
-                ),
-          if (!widget.reduceMotion) ...[
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 1800),
-              top: _bgShift ? 40 : 120,
-              left: _bgShift ? -30 : 40,
-              child: const _BlurCircle(
-                diameter: 200,
-                color: Color(0xFFBCE7FF),
-              ),
-            ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 1800),
-              bottom: _bgShift ? 20 : 120,
-              right: _bgShift ? -50 : 20,
-              child: const _BlurCircle(
-                diameter: 260,
-                color: Color(0xFFCEC4FF),
-              ),
-            ),
-          ],
-          Positioned.fill(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                0,
-                contentTopInset,
-                0,
-                contentBottomInset,
-              ),
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error
-                      ? _BookingsErrorView(onRetry: _loadLessons)
-                      : TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _buildDayView(),
-                            _buildWeekView(),
-                            _buildMonthView(),
-                          ],
-                        ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -2500,37 +2617,12 @@ class _MonthDayCell extends StatelessWidget {
     final bool hasLessons = highlighted && slots.isNotEmpty;
     final Color backgroundColor =
         hasLessons ? Colors.white : Colors.white.withOpacity(0.85);
-    final content = Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          dayNumber.toString(),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: hasLessons ? AppColors.primaryBlue : Colors.black87,
-          ),
-        ),
-        if (hasLessons)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '${slots.length} lesson${slots.length == 1 ? '' : 's'}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.primaryBlue,
-                fontSize: 11,
-                height: 1.1,
-              ),
-            ),
-          ),
-      ],
-    );
-
+    final accentDots = <Color>[];
+    for (final slot in slots) {
+      if (!accentDots.contains(slot.learnerColors.accent)) {
+        accentDots.add(slot.learnerColors.accent);
+      }
+    }
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2540,16 +2632,75 @@ class _MonthDayCell extends StatelessWidget {
           decoration: BoxDecoration(
             color: backgroundColor,
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(hasLessons ? 0.08 : 0.03),
-                blurRadius: hasLessons ? 14 : 8,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(hasLessons ? 0.06 : 0.04),
+                blurRadius: hasLessons ? 14 : 10,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: content,
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxHeight < 92;
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    dayNumber.toString(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: compact ? 15 : 16,
+                      fontWeight: FontWeight.w600,
+                      color: hasLessons ? AppColors.primaryBlue : Colors.black87,
+                    ),
+                  ),
+                  if (hasLessons)
+                    Padding(
+                      padding: EdgeInsets.only(top: compact ? 2 : 4),
+                      child: Text(
+                        compact
+                            ? '${slots.length} ${slots.length == 1 ? 'item' : 'items'}'
+                            : '${slots.length} lesson${slots.length == 1 ? '' : 's'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.primaryBlue,
+                          fontSize: compact ? 10 : 11,
+                          height: 1.05,
+                        ),
+                      ),
+                    ),
+                  if (hasLessons && accentDots.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(top: compact ? 4 : 6),
+                      child: Wrap(
+                        spacing: compact ? 3 : 4,
+                        runSpacing: compact ? 3 : 4,
+                        children: accentDots
+                            .take(compact ? 2 : 3)
+                            .map(
+                              (color) => Container(
+                                width: compact ? 7 : 8,
+                                height: compact ? 7 : 8,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -2562,26 +2713,21 @@ class _LessonSlot {
     required this.end,
     required this.learner,
     required this.focus,
+    required this.learnerColors,
   });
 
   final DateTime start;
   final DateTime end;
   final String learner;
   final String focus;
+  final LearnerColorSet learnerColors;
 
   String get timeLabel =>
       '${DateFormat('h:mm a').format(start)} \u2013 ${DateFormat('h:mm a').format(end)}';
 }
 
 class _StudentsTab extends StatefulWidget {
-  const _StudentsTab({
-    super.key,
-    required this.reduceMotion,
-    required this.onToggleMotion,
-  });
-
-  final bool reduceMotion;
-  final VoidCallback onToggleMotion;
+  const _StudentsTab({super.key});
 
   @override
   State<_StudentsTab> createState() => _StudentsTabState();
@@ -2610,77 +2756,29 @@ class _StudentsTabState extends State<_StudentsTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Learners'),
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.primaryBlue,
+        title: const Text(
+          'Learners',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        backgroundColor: AppColors.primaryBlue,
+        foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: widget.reduceMotion
-                ? 'Enable animated background'
-                : 'Reduce motion (static background)',
-            onPressed: widget.onToggleMotion,
-            icon: Icon(
-              widget.reduceMotion
-                  ? Icons.visibility
-                  : Icons.visibility_off_outlined,
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
       ),
-      body: Stack(
-        children: [
-          widget.reduceMotion
-              ? Container(color: Colors.white)
-              : AnimatedContainer(
-                  duration: const Duration(milliseconds: 1200),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFE0F2FF),
-                        Color(0xFFF6F3FF),
-                        Color(0xFFE7F2FF),
-                      ],
-                    ),
-                  ),
-                ),
-          if (!widget.reduceMotion) ...[
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 1800),
-              top: _bgShift ? 50 : 130,
-              left: _bgShift ? -40 : 30,
-              child: const _BlurCircle(
-                diameter: 220,
-                color: Color(0xFFBCE7FF),
-              ),
-            ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 1800),
-              bottom: _bgShift ? 30 : 110,
-              right: _bgShift ? -30 : 20,
-              child: const _BlurCircle(
-                diameter: 260,
-                color: Color(0xFFCEC4FF),
-              ),
-            ),
-          ],
-          Positioned.fill(
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                child: const LearnerRosterView(
-                  padding: EdgeInsets.fromLTRB(0, 0, 0, 32),
-                ),
-              ),
-            ),
+      body: const SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: LearnerRosterView(
+            padding: EdgeInsets.fromLTRB(0, 0, 0, 32),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -2849,9 +2947,8 @@ class _StatsRow extends StatelessWidget {
         const spacing = 12.0;
         const cardHeight = 110.0;
         final size = MediaQuery.of(context).size;
-        final maxWidth = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : size.width;
+        final maxWidth =
+            constraints.maxWidth.isFinite ? constraints.maxWidth : size.width;
         final availableWidth = math.max(maxWidth, 0.0);
         final totalSpacing = spacing * (columns - 1);
         final cardWidth =
@@ -2987,57 +3084,77 @@ class _BlurCircle extends StatelessWidget {
 
 class _UpcomingLessonsCard extends StatelessWidget {
   final List<Map<String, dynamic>> lessons;
+  final VoidCallback? onViewAll;
   final void Function(Map<String, dynamic> lesson) onLessonSelected;
-
-  final VoidCallback onViewAll;
 
   const _UpcomingLessonsCard({
     required this.lessons,
+    this.onViewAll,
     required this.onLessonSelected,
-    required this.onViewAll,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GlassPanel(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "Today's Lessons",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+    return Container(
+      width: double.infinity,
+      decoration: _outlinedSurfaceDecoration(28, color: Colors.transparent),
+      child: GlassPanel(
+        borderRadius: BorderRadius.circular(28),
+        opacity: 0.42,
+        borderColor: AppColors.border,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    "Today's Lessons",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
-              ),
-              TextButton(
-                onPressed: onViewAll,
-                child: const Text('View All'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (lessons.isEmpty)
-            const Text('No lessons scheduled for today.')
-          else
-              ...lessons.map(
-              (lesson) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _ScheduleCard(
-                  learner: _lessonLearnerName(lesson),
-                  time: _lessonTimeLabel(lesson),
-                  focus: _lessonFocusLabel(lesson),
-                  location: _lessonPickupLabel(lesson),
-                  avatarUrl: _lessonAvatarUrl(lesson),
-                  onTap: () => onLessonSelected(lesson),
-                ),
-              ),
+                if (onViewAll != null)
+                  TextButton(
+                    onPressed: onViewAll,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'View All',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryBlue,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-        ],
+            const SizedBox(height: 16),
+            if (lessons.isEmpty)
+              const Text('No lessons scheduled for today.')
+            else
+              ...lessons.map(
+                (lesson) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _ScheduleCard(
+                    learner: _lessonLearnerName(lesson),
+                    time: _lessonTimeLabel(lesson),
+                    focus: _lessonFocusLabel(lesson),
+                    location: _lessonPickupLabel(lesson),
+                    avatarUrl: _lessonAvatarUrl(lesson),
+                    onTap: () => onLessonSelected(lesson),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -3078,8 +3195,7 @@ class _UpcomingLessonsCard extends StatelessWidget {
       final hour = int.tryParse(parts[0]);
       final minute = int.tryParse(parts[1]);
       if (hour == null || minute == null) return null;
-      return DateTime(date.year, date.month, date.day, hour, minute)
-          .toLocal();
+      return DateTime(date.year, date.month, date.day, hour, minute).toLocal();
     }
 
     DateTime? start = baseDate;
@@ -3138,12 +3254,14 @@ class _UpcomingLessonsCard extends StatelessWidget {
         final profile = Map<String, dynamic>.from(
           lesson['learner_profile'] as Map,
         );
-        final profileFocus = (profile['learning_focus'] ?? '').toString().trim();
+        final profileFocus =
+            (profile['learning_focus'] ?? '').toString().trim();
         if (profileFocus.isNotEmpty) return profileFocus;
       }
       if (lesson['learner'] is Map<String, dynamic>) {
         final learner = Map<String, dynamic>.from(lesson['learner'] as Map);
-        final learnerFocus = (learner['learning_focus'] ?? '').toString().trim();
+        final learnerFocus =
+            (learner['learning_focus'] ?? '').toString().trim();
         if (learnerFocus.isNotEmpty) return learnerFocus;
       }
       return '';
@@ -3196,9 +3314,8 @@ class _UpcomingLessonsCard extends StatelessWidget {
     String? preferredSummary(List<dynamic> locations) {
       for (final entry in locations) {
         if (entry is Map) {
-          final label = (entry['label'] ?? entry['type'] ?? '')
-              .toString()
-              .trim();
+          final label =
+              (entry['label'] ?? entry['type'] ?? '').toString().trim();
           final address = (entry['address'] ?? '').toString().trim();
           if (label.isNotEmpty && address.isNotEmpty) {
             return '$label - $address';
@@ -3255,10 +3372,9 @@ class _UpcomingLessonsCard extends StatelessWidget {
       if (direct != null && direct.isNotEmpty) return direct;
       if (learner['profile'] is Map) {
         final nested = Map<String, dynamic>.from(learner['profile'] as Map);
-        final nestedUrl =
-            (nested['profile_image_url'] ?? nested['avatar_url'])
-                ?.toString()
-                .trim();
+        final nestedUrl = (nested['profile_image_url'] ?? nested['avatar_url'])
+            ?.toString()
+            .trim();
         if (nestedUrl != null && nestedUrl.isNotEmpty) return nestedUrl;
       }
     }
@@ -3272,10 +3388,9 @@ class _UpcomingLessonsCard extends StatelessWidget {
       if (url != null && url.isNotEmpty) return url;
       if (profile['profile'] is Map) {
         final nested = Map<String, dynamic>.from(profile['profile'] as Map);
-        final nestedUrl =
-            (nested['profile_image_url'] ?? nested['avatar_url'])
-                ?.toString()
-                .trim();
+        final nestedUrl = (nested['profile_image_url'] ?? nested['avatar_url'])
+            ?.toString()
+            .trim();
         if (nestedUrl != null && nestedUrl.isNotEmpty) return nestedUrl;
       }
     }
@@ -3285,67 +3400,347 @@ class _UpcomingLessonsCard extends StatelessWidget {
 
 class _RequestsCard extends StatelessWidget {
   final List<Map<String, dynamic>> requests;
+  final VoidCallback onTap;
 
-  const _RequestsCard({required this.requests});
+  const _RequestsCard({
+    required this.requests,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final pendingCount = requests.length;
     final hasRequests = pendingCount > 0;
+    final previewRequest = hasRequests ? requests.first : null;
+    final learnerName = previewRequest != null
+        ? formatLessonRequestLearnerName(previewRequest).toUpperCase()
+        : 'NO PENDING REQUESTS';
+    final learner = previewRequest?['learner'];
+    final learnerCity =
+        learner is Map<String, dynamic> ? learner['city'] : null;
+    final city =
+        ((previewRequest?['requested_city'] ?? learnerCity) as String?)?.trim();
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF5EB),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFFD9B3)),
+        color: AppColors.accent,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x24FFD700),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(28),
+        child: Row(
+          children: [
+            Container(
+              width: 78,
+              height: 78,
+              decoration: BoxDecoration(
+                color: const Color(0x33B88A00),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(
+                Icons.person_add_alt_1_rounded,
+                size: 36,
+                color: AppColors.foreground,
+              ),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasRequests ? 'New Request!' : 'Requests Inbox',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.foreground,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    hasRequests
+                        ? city != null && city.isNotEmpty
+                            ? '$learnerName • $city'
+                            : learnerName
+                        : 'Tap to view and manage learner requests',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                      color: Color(0xFF6A5200),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Icon(
+              Icons.play_arrow_rounded,
+              size: 34,
+              color: AppColors.foreground,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InstructorOverviewHeader extends StatelessWidget {
+  const _InstructorOverviewHeader({
+    required this.name,
+    required this.profileImageUrl,
+    required this.profileInitials,
+    required this.hasNotificationBadge,
+    required this.onProfileTap,
+    required this.onNotificationsTap,
+    required this.topPadding,
+  });
+
+  final String name;
+  final String? profileImageUrl;
+  final String profileInitials;
+  final bool hasNotificationBadge;
+  final VoidCallback onProfileTap;
+  final VoidCallback onNotificationsTap;
+  final double topPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final firstName = _greetingName(name);
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, topPadding + 16, 20, 18),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBlue,
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withOpacity(0.16)),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: const [
-              Icon(Icons.warning_amber_outlined, color: Color(0xFFFF8A34)),
-              SizedBox(width: 8),
-              Text(
-                'Pending Booking Requests',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            pendingCount == 0
-                ? 'You have no pending requests.'
-                : 'You have $pendingCount new booking request${pendingCount == 1 ? '' : 's'}.',
-            style: const TextStyle(color: Colors.black87),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6A2F),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              onPressed: hasRequests
-                  ? () => GoRouter.of(context).push(
-                        AppRoutes.reviewLearnerRequest,
-                        extra: requests.first,
-                      )
+          GestureDetector(
+            onTap: onProfileTap,
+            child: CircleAvatar(
+              radius: 28,
+              backgroundColor: Colors.white.withOpacity(0.18),
+              backgroundImage: profileImageUrl != null
+                  ? NetworkImage(profileImageUrl!)
                   : null,
-              child: Text(
-                hasRequests ? 'Review Requests' : 'No Requests',
+              child: profileImageUrl == null
+                  ? Text(
+                      profileInitials,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text(
+                  'Drive Tutor',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Hi, $firstName',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          InkWell(
+            onTap: onNotificationsTap,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Center(
+                    child: Icon(
+                      Icons.notifications_rounded,
+                      size: 24,
+                      color: Colors.white,
+                    ),
+                  ),
+                  if (hasNotificationBadge)
+                    const Positioned(
+                      right: 10,
+                      top: 9,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Color(0xFFFF4D4F),
+                          shape: BoxShape.circle,
+                        ),
+                        child: SizedBox(width: 10, height: 10),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  String _greetingName(String rawName) {
+    final trimmed = rawName.trim();
+    if (trimmed.isEmpty || trimmed.contains('@')) return 'Instructor';
+    final parts =
+        trimmed.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
+    if (parts.isEmpty) return 'Instructor';
+    final first = parts.first;
+    if (parts.length == 1 && RegExp(r'[0-9._]').hasMatch(first)) {
+      return 'Instructor';
+    }
+    return first;
+  }
+}
+
+class _InstructorOverviewStats extends StatelessWidget {
+  const _InstructorOverviewStats({required this.metrics});
+
+  final List<_OverviewMetric> metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: List.generate(metrics.length, (index) {
+        final metric = metrics[index];
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(
+              right: index == metrics.length - 1 ? 0 : 12,
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+              decoration: _outlinedSurfaceDecoration(24),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      metric.label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                        letterSpacing: 0.9,
+                        color: AppColors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    metric.value,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _OverviewMetric {
+  const _OverviewMetric({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+}
+
+class _InstructorSectionHeader extends StatelessWidget {
+  const _InstructorSectionHeader({
+    required this.title,
+    this.actionLabel,
+    this.onTap,
+  });
+
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              height: 1.1,
+              letterSpacing: -0.5,
+              color: AppColors.foreground,
+            ),
+          ),
+        ),
+        if (actionLabel != null && onTap != null)
+          TextButton(
+            onPressed: onTap,
+            child: Text(
+              actionLabel!,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -3361,110 +3756,137 @@ class _GlassBottomNavBar extends StatelessWidget {
 
   static const _items = [
     _NavItemData(
-      icon: Icons.dashboard_outlined,
-      activeIcon: Icons.dashboard,
-      label: 'Overview',
+      icon: Icons.home_outlined,
+      activeIcon: Icons.home_rounded,
+      label: 'HOME',
     ),
     _NavItemData(
-      icon: Icons.event_note_outlined,
-      activeIcon: Icons.event_note,
-      label: 'Schedule',
+      icon: Icons.person_add_alt_outlined,
+      activeIcon: Icons.person_add_alt_1_rounded,
+      label: 'REQUESTS',
     ),
     _NavItemData(
       icon: Icons.calendar_today_outlined,
-      activeIcon: Icons.calendar_today,
-      label: 'Bookings',
+      activeIcon: Icons.calendar_today_rounded,
+      label: 'SCHEDULE',
     ),
     _NavItemData(
-      icon: Icons.school_outlined,
-      activeIcon: Icons.school,
-      label: 'Learners',
+      icon: Icons.receipt_long_outlined,
+      activeIcon: Icons.receipt_long_rounded,
+      label: 'BOOKINGS',
+    ),
+    _NavItemData(
+      icon: Icons.groups_outlined,
+      activeIcon: Icons.groups_rounded,
+      label: 'STUDENTS',
     ),
     _NavItemData(
       icon: Icons.person_outline,
-      activeIcon: Icons.person,
-      label: 'Profile',
+      activeIcon: Icons.person_rounded,
+      label: 'PROFILE',
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-      child: GlassPanel(
-        borderRadius: BorderRadius.circular(36),
-        opacity: 0.46,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: List.generate(_items.length, (index) {
-            final item = _items[index];
-            final selected = index == currentIndex;
-            final isBookings = item.label == 'Bookings';
-            final Color accent = AppColors.ocean;
-            final Color bgColor = isBookings
-                ? (selected ? accent : accent.withOpacity(0.12))
-                : (selected ? Colors.white : Colors.transparent);
-            final Color iconColor = isBookings
-                ? (selected ? Colors.white : accent)
-                : (selected ? AppColors.primaryBlue : Colors.black54);
-            final Color textColor = isBookings
-                ? (selected ? Colors.white : accent)
-                : (selected
-                    ? AppColors.primaryBlue
-                    : Colors.black87.withOpacity(0.6));
-            return Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(24),
-                onTap: () => onTap(index),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: selected
-                        ? [
-                            BoxShadow(
-                              color: isBookings
-                                  ? accent.withOpacity(0.28)
-                                  : Colors.black.withOpacity(0.08),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        selected ? item.activeIcon : item.icon,
-                        color: iconColor,
-                        size: 22,
-                      ),
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        height: 16,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            item.label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight:
-                                  selected ? FontWeight.w600 : FontWeight.w500,
-                              color: textColor,
-                            ),
+    return Container(
+      decoration: const BoxDecoration(color: Color(0xFFF7F8FB)),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(34),
+                topRight: Radius.circular(34),
+                bottomLeft: Radius.circular(28),
+                bottomRight: Radius.circular(28),
+              ),
+              border: Border.all(color: const Color(0xFFE7EAF0)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x120F172A),
+                  blurRadius: 18,
+                  offset: Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+              child: Row(
+                children: List.generate(_items.length, (index) {
+                  final item = _items[index];
+                  final selected = index == currentIndex;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: InkWell(
+                        onTap: () => onTap(index),
+                        borderRadius: BorderRadius.circular(18),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Icon(
+                                    selected ? item.activeIcon : item.icon,
+                                    size: 24,
+                                    color: selected
+                                        ? const Color(0xFF1E53D5)
+                                        : const Color(0xFF6B7280),
+                                  ),
+                                  if (selected)
+                                    const Positioned(
+                                      right: -2,
+                                      top: -1,
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accent,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: SizedBox(width: 8, height: 8),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 7),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 10,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    item.label,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: selected
+                                          ? FontWeight.w800
+                                          : FontWeight.w700,
+                                      letterSpacing: 0.1,
+                                      color: selected
+                                          ? const Color(0xFF1E53D5)
+                                          : const Color(0xFF6B7280),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                }),
               ),
-            );
-          }),
+            ),
+          ),
         ),
       ),
     );

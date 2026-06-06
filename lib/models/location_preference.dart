@@ -1,23 +1,26 @@
-﻿import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PreferredLocation {
   PreferredLocation({
     required this.type,
     required this.label,
     required this.address,
+    this.isDefault = false,
   });
-
-  final String? type;
-  final String? label;
-  final String? address;
 
   factory PreferredLocation.fromMap(Map<dynamic, dynamic> map) {
     return PreferredLocation(
       type: (map['type'] as String?)?.trim(),
       label: (map['label'] as String?)?.trim(),
       address: (map['address'] as String?)?.trim(),
+      isDefault: map['is_default'] == true,
     );
   }
+
+  final String? type;
+  final String? label;
+  final String? address;
+  final bool isDefault;
 
   String get title {
     if (label != null && label!.isNotEmpty) {

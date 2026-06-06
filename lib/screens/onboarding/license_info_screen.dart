@@ -205,9 +205,21 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
             ? _asMap(questionnaire['instructorProfile'])
             : {};
 
+        final profileFirstName = _cleanString(profileSection['first_name']);
+        final profileLastName = _cleanString(profileSection['last_name']);
+        final profilePhone = _cleanString(profileSection['phone']);
         final profileCity = _cleanString(profileSection['city']);
         final profileAge = _asInt(profileSection['age']);
         final profileGender = _cleanString(profileSection['gender']);
+        if (profileFirstName != null) {
+          profileUpdates['first_name'] = profileFirstName;
+        }
+        if (profileLastName != null) {
+          profileUpdates['last_name'] = profileLastName;
+        }
+        if (profilePhone != null) {
+          profileUpdates['phone'] = profilePhone;
+        }
         if (profileCity != null) {
           profileUpdates['city'] = profileCity;
         }
@@ -218,8 +230,8 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
           profileUpdates['gender'] = profileGender;
         }
 
-        final vehicles =
-            await _ensureVehiclePhotos(_asMapList(instructorSection['vehicles']));
+        final vehicles = await _ensureVehiclePhotos(
+            _asMapList(instructorSection['vehicles']));
         final preferredLocations =
             _asMapList(instructorSection['preferred_locations']);
         final offerings = (instructorSection['offerings'] is List)
@@ -266,7 +278,8 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
           vehicles: vehicles,
           offerings: offerings,
           offeringRates: offeringRates,
-          preferredLocations: preferredLocations,
+          preferredLocations: pickupPreference == true ? null : preferredLocations,
+          clearPreferredLocations: pickupPreference == true,
           preferredLocationNotes: preferredLocationNotes,
           yearsOfExperience: yearsOfExperience,
           vehiclePhotoUrl: vehiclePhotoUrl,
@@ -279,10 +292,22 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
             ? _asMap(questionnaire['learnerProfile'])
             : {};
 
+        final profileFirstName = _cleanString(profileSection['first_name']);
+        final profileLastName = _cleanString(profileSection['last_name']);
+        final profilePhone = _cleanString(profileSection['phone']);
         final profileCity = _cleanString(profileSection['city']);
         final profileAge = _asInt(profileSection['age']);
         final profileGender = _cleanString(profileSection['gender']);
 
+        if (profileFirstName != null) {
+          profileUpdates['first_name'] = profileFirstName;
+        }
+        if (profileLastName != null) {
+          profileUpdates['last_name'] = profileLastName;
+        }
+        if (profilePhone != null) {
+          profileUpdates['phone'] = profilePhone;
+        }
         if (profileCity != null) {
           profileUpdates['city'] = profileCity;
         }
@@ -348,7 +373,7 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
         content: Text(
           widget.role == 'learner'
               ? 'Learner details saved! Let’s tailor your training.'
-              : 'Instructor credentials saved. Welcome to Drive T!',
+              : 'Instructor credentials saved. Welcome to Drive Tutor!',
         ),
         backgroundColor: AppColors.success,
       ),
@@ -356,10 +381,17 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
 
     setState(() => _isSubmitting = false);
 
+    await SupabaseService.updateOnboardingStage(
+      userId: userId,
+      stage: SupabaseService.onboardingStageQuestionnaireComplete,
+    );
+
+    if (!mounted) return;
+
     if (widget.role == 'learner') {
       context.go(AppRoutes.learningFocus, extra: widget.role);
     } else {
-      context.go(AppRoutes.instructorHome);
+      context.go(AppRoutes.instructorCredentialsPortal);
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../../constants/app_colors.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/progress_journey_timeline.dart';
 import 'progress_chart_screen.dart';
 
 class ProgressTrackerScreen extends StatefulWidget {
@@ -103,8 +104,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
             LinearProgressIndicator(
               value: progress,
               backgroundColor: Colors.grey[200],
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppColors.ocean),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.ocean),
               minHeight: 8,
             ),
             const SizedBox(height: 12),
@@ -139,11 +139,11 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withOpacity(0.1),
+                  color: AppColors.success.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
-                  children: const [
+                child: const Row(
+                  children: [
                     Icon(Icons.celebration, color: AppColors.success),
                     SizedBox(width: 8),
                     Expanded(
@@ -238,7 +238,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isUnlocked
-              ? AppColors.success.withOpacity(0.1)
+              ? AppColors.success.withValues(alpha: 0.1)
               : Colors.grey[100],
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
@@ -280,11 +280,43 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
   }
 
   Widget _buildSkillsList() {
+    final currentIndex = _skills.indexWhere((skill) => !skill.isCompleted);
+    final journeySteps = _skills.asMap().entries.map((entry) {
+      final index = entry.key;
+      final skill = entry.value;
+
+      final state = skill.isCompleted
+          ? ProgressJourneyStepState.completed
+          : currentIndex == -1
+              ? ProgressJourneyStepState.locked
+              : index == currentIndex
+                  ? ProgressJourneyStepState.current
+                  : ProgressJourneyStepState.locked;
+
+      final subtitle = switch (state) {
+        ProgressJourneyStepState.completed => skill.completedDate != null
+            ? 'Completed ${_formatDate(skill.completedDate!)}'
+            : 'Completed',
+        ProgressJourneyStepState.current => '',
+        ProgressJourneyStepState.locked => skill.description,
+      };
+
+      return ProgressJourneyStepData(
+        title: skill.name,
+        subtitle: subtitle,
+        icon: skill.icon,
+        state: state,
+        onTap: state == ProgressJourneyStepState.locked
+            ? null
+            : () => _toggleSkillCompletion(skill),
+      );
+    }).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Driving Skills',
+          'Driving Journey',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -292,88 +324,8 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        ..._skills.map(_buildSkillCard),
+        ProgressJourneyTimeline(steps: journeySteps),
       ],
-    );
-  }
-
-  Widget _buildSkillCard(DrivingSkill skill) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: skill.isCompleted
-                    ? AppColors.success.withOpacity(0.1)
-                    : AppColors.ocean.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(
-                skill.isCompleted ? Icons.check : Icons.radio_button_unchecked,
-                color: skill.isCompleted
-                    ? AppColors.success
-                    : AppColors.ocean,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    skill.name,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          skill.isCompleted ? Colors.grey[700] : Colors.black87,
-                      decoration:
-                          skill.isCompleted ? TextDecoration.lineThrough : null,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    skill.description,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                  ),
-                  if (skill.isCompleted && skill.completedDate != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Completed on ${_formatDate(skill.completedDate!)}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.success,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => _toggleSkillCompletion(skill),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: skill.isCompleted
-                    ? AppColors.warning
-                    : AppColors.ocean,
-                minimumSize: const Size(90, 32),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-              ),
-              child: Text(
-                skill.isCompleted ? 'Undo' : 'Mark Done',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -557,19 +509,21 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
 }
 
 class DrivingSkill {
-  final String id;
-  final String name;
-  final String description;
-  bool isCompleted;
-  DateTime? completedDate;
-
   DrivingSkill({
     required this.id,
     required this.name,
     required this.description,
+    required this.icon,
     required this.isCompleted,
     this.completedDate,
   });
+
+  final String id;
+  final String name;
+  final String description;
+  final IconData icon;
+  bool isCompleted;
+  DateTime? completedDate;
 }
 
 List<DrivingSkill> _buildDefaultSkills() {
@@ -578,50 +532,57 @@ List<DrivingSkill> _buildDefaultSkills() {
       id: 'basic_vehicle_control',
       name: 'Basic Vehicle Control',
       description: 'Steering, acceleration, and braking',
+      icon: Icons.sync_alt_rounded,
       isCompleted: false,
     ),
     DrivingSkill(
       id: 'parking',
       name: 'Parking',
       description: 'Parallel parking and angle parking',
+      icon: Icons.local_parking_rounded,
       isCompleted: false,
     ),
     DrivingSkill(
       id: 'city_driving',
       name: 'City Driving',
       description: 'Traffic lights, signs, and intersections',
+      icon: Icons.location_city_rounded,
       isCompleted: false,
     ),
     DrivingSkill(
       id: 'highway_driving',
       name: 'Highway Driving',
       description: 'Merging, lane changes, and speed control',
+      icon: Icons.route_rounded,
       isCompleted: false,
     ),
     DrivingSkill(
       id: 'night_driving',
       name: 'Night Driving',
       description: 'Driving in low light conditions',
+      icon: Icons.nights_stay_rounded,
       isCompleted: false,
     ),
     DrivingSkill(
       id: 'weather_driving',
       name: 'Weather Driving',
       description: 'Driving in rain, snow, and other conditions',
+      icon: Icons.cloud_rounded,
       isCompleted: false,
     ),
     DrivingSkill(
       id: 'emergency_situations',
       name: 'Emergency Situations',
       description: 'Handling unexpected situations',
+      icon: Icons.warning_amber_rounded,
       isCompleted: false,
     ),
     DrivingSkill(
       id: 'defensive_driving',
       name: 'Defensive Driving',
       description: 'Advanced safety techniques',
+      icon: Icons.shield_outlined,
       isCompleted: false,
     ),
   ];
 }
-

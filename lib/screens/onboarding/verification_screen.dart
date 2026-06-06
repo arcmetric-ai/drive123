@@ -1,329 +1,195 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../constants/app_colors.dart';
-import '../../services/supabase_service.dart';
 
-class VerificationScreen extends ConsumerStatefulWidget {
+import '../../constants/app_colors.dart';
+import '../../constants/app_durations.dart';
+import '../../constants/app_routes.dart';
+import '../../constants/app_spacing.dart';
+import '../../widgets/numeric_keypad.dart';
+import '../../widgets/otp_code_display.dart';
+import '../../widgets/primary_stage_scaffold.dart';
+
+class VerificationScreen extends StatefulWidget {
   const VerificationScreen({
     super.key,
     required this.role,
+    this.phoneNumber,
+    this.nextRoute,
   });
+
   final String role;
+  final String? phoneNumber;
+  final String? nextRoute;
 
   @override
-  ConsumerState<VerificationScreen> createState() => _VerificationScreenState();
+  State<VerificationScreen> createState() => _VerificationScreenState();
 }
 
-class _VerificationScreenState extends ConsumerState<VerificationScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _phoneController = TextEditingController();
+class _VerificationScreenState extends State<VerificationScreen> {
+  static const int _otpLength = 6;
+  static const int _initialResendSeconds = 45;
 
-  bool _isLoading = false;
-  bool _obscurePassword = true;
+  String _code = '';
+  int _remainingSeconds = _initialResendSeconds;
+  Timer? _resendTimer;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startResendTimer();
+  }
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _firstNameController.dispose();
-    _lastNameController.dispose();
-    _phoneController.dispose();
+    _resendTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _handleSignUp() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      final response = await SupabaseService.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        role: widget.role,
-        phone: _phoneController.text.trim().isNotEmpty
-            ? _phoneController.text.trim()
-            : null,
-      );
-
-      if (response.user != null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  'Account created successfully! Please check your email for verification.'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-          context.go('/home');
-        }
+  void _startResendTimer() {
+    _resendTimer?.cancel();
+    setState(() => _remainingSeconds = _initialResendSeconds);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_remainingSeconds <= 1) {
+        timer.cancel();
+        setState(() => _remainingSeconds = 0);
+      } else {
+        setState(() => _remainingSeconds -= 1);
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+    });
+  }
+
+  Future<void> _handleDigitPressed(String digit) async {
+    if (_isSubmitting || _code.length >= _otpLength) return;
+
+    setState(() => _code = '$_code$digit');
+
+    if (_code.length == _otpLength) {
+      await _submitCode();
     }
+  }
+
+  void _handleBackspace() {
+    if (_isSubmitting || _code.isEmpty) return;
+    setState(() => _code = _code.substring(0, _code.length - 1));
+  }
+
+  Future<void> _submitCode() async {
+    if (_code.length != _otpLength) return;
+
+    setState(() => _isSubmitting = true);
+    await Future<void>.delayed(AppDurations.fast);
+    if (!mounted) return;
+
+    final nextRoute = widget.nextRoute;
+    if (nextRoute != null && nextRoute.isNotEmpty) {
+      context.go(nextRoute, extra: widget.role);
+      return;
+    }
+
+    if (widget.role == 'instructor') {
+      context.go(AppRoutes.instructorQuestionnaire, extra: widget.role);
+    } else if (widget.role == 'learner') {
+      context.go(AppRoutes.learnerQuestionnaire, extra: widget.role);
+    } else {
+      context.go(AppRoutes.roleSelection);
+    }
+  }
+
+  void _handleResend() {
+    if (_remainingSeconds > 0 || _isSubmitting) return;
+
+    setState(() => _code = '');
+    _startResendTimer();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('A new verification code has been sent.'),
+        backgroundColor: AppColors.foreground,
+      ),
+    );
+  }
+
+  String get _formattedPhoneNumber {
+    final provided = widget.phoneNumber?.trim();
+    if (provided != null && provided.isNotEmpty) return provided;
+    return '+1 (555) 000-0000';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-            '${widget.role == 'learner' ? 'Learner' : 'Instructor'} Sign Up'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Center(
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: widget.role == 'learner'
-                              ? AppColors.ocean
-                              : AppColors.golden,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(
-                          widget.role == 'learner'
-                              ? Icons.school
-                              : Icons.person,
-                          color: widget.role == 'learner'
-                              ? Colors.white
-                              : AppColors.ocean,
-                          size: 40,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Create Your Account',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.ocean,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Join Drive T as a ${widget.role}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // Form Fields
-                _buildTextField(
-                  controller: _firstNameController,
-                  label: 'First Name',
-                  icon: Icons.person_outline,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your first name';
-                    }
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _lastNameController,
-                  label: 'Last Name',
-                  icon: Icons.person_outline,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your last name';
-                    }
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _emailController,
-                  label: 'Email',
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _phoneController,
-                  label: 'Phone Number (Optional)',
-                  icon: Icons.phone_outlined,
-                  keyboardType: TextInputType.phone,
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _passwordController,
-                  label: 'Password',
-                  icon: Icons.lock_outline,
-                  obscureText: _obscurePassword,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter a password';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 32),
-
-                // Sign Up Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleSignUp,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.ocean,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text(
-                            'Create Account',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Sign In Link
-                Center(
-                  child: TextButton(
-                    onPressed: () {
-                      // TODO: Implement sign in flow
-                      context.go('/home');
-                    },
-                    child: const Text(
-                      'Already have an account? Sign In',
-                      style: TextStyle(
-                        color: AppColors.ocean,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+    return PrimaryStageScaffold(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+        child: Column(
+          children: [
+            const SizedBox(height: 28),
+            const Text(
+              "Verify It's You",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.primaryForeground,
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+                letterSpacing: -0.6,
+              ),
             ),
-          ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Enter the 6-digit code sent to\n$_formattedPhoneNumber',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.primaryForeground.withValues(alpha: 0.68),
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+            ),
+            const Spacer(flex: 2),
+            OtpCodeDisplay(code: _code),
+            const SizedBox(height: AppSpacing.xxl),
+            TextButton(
+              onPressed: _remainingSeconds == 0 ? _handleResend : null,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primaryForeground,
+                disabledForegroundColor:
+                    AppColors.primaryForeground.withValues(alpha: 0.76),
+                padding: EdgeInsets.zero,
+              ),
+              child: Text(
+                _remainingSeconds > 0
+                    ? 'RESEND CODE IN 0:${_remainingSeconds.toString().padLeft(2, '0')}'
+                    : 'RESEND CODE',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.4,
+                ),
+              ),
+            ),
+            const Spacer(flex: 3),
+            if (_isSubmitting)
+              const Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.lg),
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: AppColors.primaryForeground,
+                  ),
+                ),
+              ),
+            NumericKeypad(
+              onDigitPressed: _handleDigitPressed,
+              onBackspacePressed: _handleBackspace,
+            ),
+          ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType? keyboardType,
-    bool obscureText = false,
-    Widget? suffixIcon,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      obscureText: obscureText,
-      validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        suffixIcon: suffixIcon,
-        filled: true,
-        fillColor: Colors.grey[50],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.ocean, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.error, width: 2),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
     );
   }
 }
-

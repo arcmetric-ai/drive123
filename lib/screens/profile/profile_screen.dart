@@ -7,8 +7,9 @@ import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
-import '../../services/supabase_service.dart';
 import '../../models/user_model.dart';
+import '../../services/supabase_service.dart';
+import '../../widgets/profile_expandable_section.dart';
 import '../instructor/instructor_bookings_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -51,6 +52,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, List<String>> _learnerWeeklyAvailability = {};
   bool _learnerAvailabilityRecurring = true;
   bool _openingAvailability = false;
+  bool _openingCredentialsPortal = false;
+  bool _isRequestingDeletion = false;
+  bool _isPersonalInfoExpanded = false;
+  bool _isLearnerDetailsExpanded = false;
+  bool _isInstructorDetailsExpanded = false;
 
   @override
   void initState() {
@@ -70,11 +76,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.grey100,
-      extendBodyBehindAppBar: false,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Profile'),
-        backgroundColor: AppColors.grey100,
+        backgroundColor: Colors.white,
         foregroundColor: AppColors.primaryBlue,
         elevation: 0,
       ),
@@ -105,6 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _profileCard({
     required Widget child,
     EdgeInsets padding = const EdgeInsets.all(22),
+    Color? borderColor,
   }) {
     return Container(
       width: double.infinity,
@@ -112,9 +118,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: borderColor ?? Colors.transparent,
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -127,6 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildProfileHeader() {
     return _profileCard(
       padding: const EdgeInsets.all(24),
+      borderColor: AppColors.primaryBlue.withValues(alpha: 0.45),
       child: Column(
         children: [
           GestureDetector(
@@ -135,7 +146,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 CircleAvatar(
                   radius: 52,
-                  backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
+                  backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
                   backgroundImage: _avatarImage,
                   child: _avatarImage == null
                       ? Text(
@@ -152,7 +163,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Positioned.fill(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.35),
+                        color: Colors.black.withValues(alpha: 0.35),
                         shape: BoxShape.circle,
                       ),
                       child: const Padding(
@@ -196,7 +207,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _roleLabel,
             style: TextStyle(
               fontSize: 16,
-              color: Colors.black.withOpacity(0.6),
+              color: Colors.black.withValues(alpha: 0.6),
             ),
           ),
           const SizedBox(height: 10),
@@ -213,15 +224,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 borderRadius: BorderRadius.circular(999),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF15C68A).withOpacity(0.25),
+                    color: const Color(0xFF15C68A).withValues(alpha: 0.25),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
                 ],
               ),
-              child: Row(
+              child: const Row(
                 mainAxisSize: MainAxisSize.min,
-                children: const [
+                children: [
                   Icon(
                     Icons.verified_rounded,
                     color: Colors.white,
@@ -250,35 +261,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Personal Information',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primaryBlue,
+          ProfileExpandableSection(
+            title: 'Personal Information',
+            isExpanded: _isPersonalInfoExpanded,
+            onToggle: () {
+              setState(() {
+                _isPersonalInfoExpanded = !_isPersonalInfoExpanded;
+              });
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildInfoRow(
+                  icon: Icons.person_outline,
+                  label: 'Name',
+                  value: _displayName,
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.email_outlined,
+                  label: 'Email',
+                  value: _emailController.text.isNotEmpty
+                      ? _emailController.text
+                      : (SupabaseService.currentUser?.email ?? 'Not provided'),
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.phone_outlined,
+                  label: 'Phone',
+                  value: _phoneController.text.trim().isEmpty
+                      ? 'Not provided'
+                      : _phoneController.text.trim(),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 14),
-          _buildInfoRow(
-            icon: Icons.person_outline,
-            label: 'Name',
-            value: _displayName,
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.email_outlined,
-            label: 'Email',
-            value: _emailController.text.isNotEmpty
-                ? _emailController.text
-                : (SupabaseService.currentUser?.email ?? 'Not provided'),
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.phone_outlined,
-            label: 'Phone',
-            value: _phoneController.text.trim().isEmpty
-                ? 'Not provided'
-                : _phoneController.text.trim(),
           ),
         ],
       ),
@@ -319,8 +335,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       height: 18,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
                   : const Icon(Icons.visibility_outlined),
@@ -338,8 +353,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed:
-                    _openingAvailability ? null : _openLearnerAvailabilityEditor,
+                onPressed: _openingAvailability
+                    ? null
+                    : _openLearnerAvailabilityEditor,
                 icon: _openingAvailability
                     ? const SizedBox(
                         width: 18,
@@ -351,6 +367,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _openingAvailability
                       ? 'Loading availability...'
                       : 'Update Weekly Availability',
+                ),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openingCredentialsPortal
+                    ? null
+                    : _openInstructorCredentialsPortal,
+                icon: _openingCredentialsPortal
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.verified_user_outlined),
+                label: Text(
+                  _openingCredentialsPortal
+                      ? 'Opening credentials portal...'
+                      : 'Manage Credentials Portal',
                 ),
               ),
             ),
@@ -397,6 +435,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'About',
             subtitle: 'App version and information',
             onTap: _showAboutDialog,
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.delete_forever_outlined,
+            title: 'Delete Account',
+            subtitle: 'Request account and data deletion',
+            onTap: _isRequestingDeletion ? () {} : _showDeleteAccountDialog,
+            textColor: AppColors.error,
           ),
           _buildActionDivider(),
           _buildActionTile(
@@ -486,77 +532,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Learner Details',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primaryBlue,
+          ProfileExpandableSection(
+            title: 'Learner Details',
+            isExpanded: _isLearnerDetailsExpanded,
+            onToggle: () {
+              setState(() {
+                _isLearnerDetailsExpanded = !_isLearnerDetailsExpanded;
+              });
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildInfoRow(
+                  icon: Icons.credit_card,
+                  label: 'G1 Licence',
+                  value: licenceParts.isEmpty
+                      ? 'Not provided'
+                      : licenceParts.join(' - '),
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.location_on_outlined,
+                  label: 'City',
+                  value: _learnerCity ?? 'Not provided',
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.meeting_room_outlined,
+                  label: 'Preferred Locations',
+                  value: _learnerLocations.isNotEmpty
+                      ? _learnerLocations.join(', ')
+                      : 'Not provided',
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.access_time,
+                  label: 'Weekly Availability',
+                  value: _formatWeeklyAvailabilitySummary(),
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.cake_outlined,
+                  label: 'Age',
+                  value: _learnerAge != null
+                      ? '$_learnerAge years'
+                      : 'Not provided',
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.person_outline,
+                  label: 'Gender',
+                  value: _learnerGender ?? 'Not provided',
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.school_outlined,
+                  label: 'Lesson Progress',
+                  value: _learnerClassesTaken != null
+                      ? '$_learnerClassesTaken classes completed'
+                      : 'No lessons recorded yet',
+                ),
+                if (_learnerLastClassDate != null) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    icon: Icons.event_available_outlined,
+                    label: 'Last Class',
+                    value: dateFormatter.format(_learnerLastClassDate!),
+                  ),
+                ],
+                if (_learnerTestDate != null) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    icon: Icons.assignment_outlined,
+                    label: 'G1 Test Date',
+                    value: dateFormatter.format(_learnerTestDate!),
+                  ),
+                ],
+              ],
             ),
           ),
-          const SizedBox(height: 14),
-          _buildInfoRow(
-            icon: Icons.credit_card,
-            label: 'G1 Licence',
-            value:
-                licenceParts.isEmpty ? 'Not provided' : licenceParts.join(' - '),
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.location_on_outlined,
-            label: 'City',
-            value: _learnerCity ?? 'Not provided',
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.meeting_room_outlined,
-            label: 'Preferred Locations',
-            value: _learnerLocations.isNotEmpty
-                ? _learnerLocations.join(', ')
-                : 'Not provided',
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.access_time,
-            label: 'Weekly Availability',
-            value: _formatWeeklyAvailabilitySummary(),
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.cake_outlined,
-            label: 'Age',
-            value: _learnerAge != null ? '$_learnerAge years' : 'Not provided',
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.person_outline,
-            label: 'Gender',
-            value: _learnerGender ?? 'Not provided',
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.school_outlined,
-            label: 'Lesson Progress',
-            value: _learnerClassesTaken != null
-                ? '${_learnerClassesTaken} classes completed'
-                : 'No lessons recorded yet',
-          ),
-          if (_learnerLastClassDate != null) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: Icons.event_available_outlined,
-              label: 'Last Class',
-              value: dateFormatter.format(_learnerLastClassDate!),
-            ),
-          ],
-          if (_learnerTestDate != null) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: Icons.assignment_outlined,
-              label: 'G1 Test Date',
-              value: dateFormatter.format(_learnerTestDate!),
-            ),
-          ],
         ],
       ),
     );
@@ -576,85 +630,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Instructor Details',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primaryBlue,
+          ProfileExpandableSection(
+            title: 'Instructor Details',
+            isExpanded: _isInstructorDetailsExpanded,
+            onToggle: () {
+              setState(() {
+                _isInstructorDetailsExpanded = !_isInstructorDetailsExpanded;
+              });
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildInfoRow(
+                  icon: Icons.badge_outlined,
+                  label: 'Instructor Licence',
+                  value: licenceParts.isEmpty
+                      ? 'Not provided'
+                      : licenceParts.join(' - '),
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.map_outlined,
+                  label: 'Service Area',
+                  value: _instructorServiceArea ?? 'Not provided',
+                ),
+                if (_instructorYearsExperience != null) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    icon: Icons.timeline_outlined,
+                    label: 'Years of Experience',
+                    value: _instructorYearsExperience == 1
+                        ? '1 year'
+                        : '$_instructorYearsExperience years',
+                  ),
+                ],
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  icon: Icons.description_outlined,
+                  label: 'Bio',
+                  value: _instructorBio != null && _instructorBio!.isNotEmpty
+                      ? _instructorBio!
+                      : 'Share your experience so learners know what to expect.',
+                ),
+                if (_instructorOfferings.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    icon: Icons.local_play_outlined,
+                    label: 'Offerings',
+                    value: _instructorOfferings.join(', '),
+                  ),
+                ],
+                if (_instructorLanguages.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    icon: Icons.language_outlined,
+                    label: 'Languages',
+                    value: _instructorLanguages.join(', '),
+                  ),
+                ],
+                if (_instructorPickupPreference != null) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    icon: Icons.directions_car_outlined,
+                    label: 'Learner Pickup',
+                    value: _instructorPickupPreference!
+                        ? 'Offered'
+                        : 'Not offered',
+                  ),
+                ],
+                if (_instructorLocations.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    icon: Icons.meeting_room_outlined,
+                    label: 'Preferred Lesson Locations',
+                    value: _instructorLocations.join(', '),
+                  ),
+                ],
+                if (_instructorVehicles.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    icon: Icons.directions_car_filled_outlined,
+                    label: 'Vehicles',
+                    value: _instructorVehicles.join('\n'),
+                  ),
+                ],
+              ],
             ),
           ),
-          const SizedBox(height: 14),
-          _buildInfoRow(
-            icon: Icons.badge_outlined,
-            label: 'Instructor Licence',
-            value:
-                licenceParts.isEmpty ? 'Not provided' : licenceParts.join(' - '),
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.map_outlined,
-            label: 'Service Area',
-            value: _instructorServiceArea ?? 'Not provided',
-          ),
-          if (_instructorYearsExperience != null) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: Icons.timeline_outlined,
-              label: 'Years of Experience',
-              value: _instructorYearsExperience == 1
-                  ? '1 year'
-                  : '${_instructorYearsExperience} years',
-            ),
-          ],
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.description_outlined,
-            label: 'Bio',
-            value: _instructorBio != null && _instructorBio!.isNotEmpty
-                ? _instructorBio!
-                : 'Share your experience so learners know what to expect.',
-          ),
-          if (_instructorOfferings.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: Icons.local_play_outlined,
-              label: 'Offerings',
-              value: _instructorOfferings.join(', '),
-            ),
-          ],
-          if (_instructorLanguages.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: Icons.language_outlined,
-              label: 'Languages',
-              value: _instructorLanguages.join(', '),
-            ),
-          ],
-          if (_instructorPickupPreference != null) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: Icons.directions_car_outlined,
-              label: 'Learner Pickup',
-              value: _instructorPickupPreference! ? 'Offered' : 'Not offered',
-            ),
-          ],
-          if (_instructorLocations.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: Icons.meeting_room_outlined,
-              label: 'Preferred Lesson Locations',
-              value: _instructorLocations.join(', '),
-            ),
-          ],
-          if (_instructorVehicles.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: Icons.directions_car_filled_outlined,
-              label: 'Vehicles',
-              value: _instructorVehicles.join('\n'),
-            ),
-          ],
         ],
       ),
     );
@@ -771,7 +833,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     : (_asString(entry['type']) ?? 'Location');
                 final combined = address != null && address.isNotEmpty
                     ? '$title: $address'
-                    : title ?? 'Location';
+                    : title;
                 _learnerLocations.add(combined);
               }
             } else if (entry is String) {
@@ -983,8 +1045,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user == null || _openingAvailability) return;
     setState(() => _openingAvailability = true);
     try {
-      final result =
-          await context.push<bool>(AppRoutes.editLearnerAvailability);
+      final result = await context.push<bool>(
+        AppRoutes.editLearnerAvailability,
+        extra: {
+          'initialAvailability': _learnerWeeklyAvailability,
+          'availabilityRecurring': _learnerAvailabilityRecurring,
+        },
+      );
       if (result == true) {
         await _loadProfile();
       }
@@ -1032,8 +1099,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           clean(profileMap['first_name']) ?? _firstNameController.text.trim();
       final last =
           clean(profileMap['last_name']) ?? _lastNameController.text.trim();
-      final parts =
-          [first, last].where((value) => value != null && value.isNotEmpty);
+      final parts = [first, last].where((value) => value.isNotEmpty);
       final name = parts.join(' ').trim();
       if (name.isNotEmpty) return name;
       return _displayName;
@@ -1057,8 +1123,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             final segments = <String>[];
             if (type != null && type.isNotEmpty) segments.add(type);
             if (makeModel.isNotEmpty) segments.add(makeModel);
-            if (plate != null && plate.isNotEmpty)
+            if (plate != null && plate.isNotEmpty) {
               segments.add('Plate: $plate');
+            }
             final summary = segments.join(' - ').trim();
             if (summary.isNotEmpty) {
               vehicles.add(summary);
@@ -1251,6 +1318,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final result = await context.push<bool>(AppRoutes.editProfile);
     if (result == true) {
       await _loadProfile();
+    }
+  }
+
+  Future<void> _openInstructorCredentialsPortal() async {
+    if (_openingCredentialsPortal) return;
+    setState(() => _openingCredentialsPortal = true);
+    try {
+      await context.push(AppRoutes.instructorCredentialsPortal);
+      if (mounted) {
+        await _loadProfile();
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _openingCredentialsPortal = false);
+      }
     }
   }
 
@@ -1481,12 +1563,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              // Capture the State's context (not the dialog's) to use after async gaps.
-              final stateContext = this.context;
-              Navigator.pop(stateContext);
+              Navigator.pop(context);
               await SupabaseService.signOut();
               if (!mounted) return;
-              stateContext.go(AppRoutes.roleSelection);
+              this.context.go(AppRoutes.auth);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Sign Out'),
@@ -1496,10 +1576,160 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _showDeleteAccountDialog() {
+    final detailsController = TextEditingController();
+    final confirmController = TextEditingController();
+    String reason = 'No longer using Drive Tutor';
+
+    showDialog(
+      context: context,
+      barrierDismissible: !_isRequestingDeletion,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final canSubmit =
+                confirmController.text.trim().toUpperCase() == 'DELETE';
+            return AlertDialog(
+              title: const Text('Delete Account'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'This submits an account deletion request. Drive Tutor may retain records required for safety, fraud prevention, legal compliance, billing, disputes, or law-enforcement requests.',
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: reason,
+                      decoration: const InputDecoration(
+                        labelText: 'Reason',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'No longer using Drive Tutor',
+                          child: Text('No longer using Drive Tutor'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Privacy or data concern',
+                          child: Text('Privacy or data concern'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Created account by mistake',
+                          child: Text('Created account by mistake'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Other',
+                          child: Text('Other'),
+                        ),
+                      ],
+                      onChanged: _isRequestingDeletion
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setDialogState(() => reason = value);
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: detailsController,
+                      enabled: !_isRequestingDeletion,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: 'Details (optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: confirmController,
+                      enabled: !_isRequestingDeletion,
+                      decoration: const InputDecoration(
+                        labelText: 'Type DELETE to confirm',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: _isRequestingDeletion
+                      ? null
+                      : () {
+                          Navigator.pop(dialogContext);
+                        },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: _isRequestingDeletion || !canSubmit
+                      ? null
+                      : () async {
+                          setDialogState(() => _isRequestingDeletion = true);
+                          setState(() => _isRequestingDeletion = true);
+                          try {
+                            await SupabaseService.requestAccountDeletion(
+                              reason: reason,
+                              details: detailsController.text,
+                            );
+                            await SupabaseService.signOut();
+                            if (!mounted || !dialogContext.mounted) return;
+                            Navigator.pop(dialogContext);
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Account deletion request submitted.',
+                                ),
+                                backgroundColor: AppColors.foreground,
+                              ),
+                            );
+                            this.context.go(AppRoutes.auth);
+                          } catch (e) {
+                            if (!mounted) return;
+                            setDialogState(() => _isRequestingDeletion = false);
+                            setState(() => _isRequestingDeletion = false);
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Unable to request account deletion: $e',
+                                ),
+                                backgroundColor: AppColors.error,
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                  ),
+                  child: _isRequestingDeletion
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Request Deletion'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).whenComplete(() {
+      detailsController.dispose();
+      confirmController.dispose();
+      if (mounted) {
+        setState(() => _isRequestingDeletion = false);
+      }
+    });
+  }
+
   void _showAboutDialog() {
     showAboutDialog(
       context: context,
-      applicationName: 'Drive T',
+      applicationName: 'Drive Tutor',
       applicationVersion: '1.0.0',
       children: const [
         Text(

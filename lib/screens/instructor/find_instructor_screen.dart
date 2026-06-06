@@ -2,14 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../utils/constants.dart';
 import '../../constants/ontario_locations.dart';
 import '../../models/instructor_model.dart';
+import '../../models/lesson_model.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/discovery_filter_chip.dart';
+import '../../widgets/instructor_discovery_card.dart';
 
 class FindInstructorScreen extends StatefulWidget {
   const FindInstructorScreen({super.key, this.selectedFocus});
@@ -42,7 +44,6 @@ class _LearnerRequestState {
 }
 
 class _FindInstructorScreenState extends State<FindInstructorScreen> {
-  String _selectedFilter = 'all';
   String _selectedCarType = 'all';
   String _selectedTransmission = 'all';
   String? _focusFilter;
@@ -59,7 +60,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
   String? _homeCity;
   final Map<String, _LearnerRequestState> _requestStates =
       <String, _LearnerRequestState>{};
-  final Set<String> _requestingInstructors = {};
+  final Set<String> _scheduledInstructorIds = <String>{};
   bool _syncingRequests = false;
   Timer? _requestStatusTimer;
   bool _isOpeningProfile = false;
@@ -70,6 +71,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     _focusFilter = widget.selectedFocus;
     _initializeLearnerContext();
     _loadActiveRequests();
+    _loadScheduledLessons();
     _scheduleRequestPolling();
   }
 
@@ -93,475 +95,294 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
   @override
   Widget build(BuildContext context) {
     final instructors = _filteredInstructors();
+    final searchHint = _homeCity != null && _homeCity!.isNotEmpty
+        ? '$_homeCity, ON'
+        : 'Toronto, ON';
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Find Instructor'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterBottomSheet,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Search by name or location...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {});
-                        },
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.location_on),
-                        onPressed: () {
-                          // TODO: Get current location
-                        },
+      backgroundColor: AppColors.grey50,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              color: AppColors.card,
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: searchHint,
+                      hintStyle: const TextStyle(
+                        fontSize: 18,
+                        color: AppColors.mutedForeground,
                       ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                _buildFilterChip('All', 'all'),
-                const SizedBox(width: 8),
-                _buildFilterChip('Nearby', 'nearby'),
-                const SizedBox(width: 8),
-                _buildFilterChip('Available Now', 'available'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Chip(
-                avatar: Icon(
-                  Icons.radar_outlined,
-                  size: 18,
-                  color: AppColors.ocean.withOpacity(0.8),
-                ),
-                label: Text(
-                  'Radius: ${_searchRadiusKm.round()} km',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ocean,
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        size: 30,
+                        color: AppColors.mutedForeground,
+                      ),
+                      suffixIcon: IconButton(
+                        onPressed: _showFilterBottomSheet,
+                        icon: const Icon(
+                          Icons.tune_rounded,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      filled: true,
+                      fillColor: AppColors.card,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 18,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(28),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(28),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(28),
+                        borderSide: const BorderSide(color: AppColors.primary),
+                      ),
+                    ),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.foreground,
+                    ),
                   ),
-                ),
-                backgroundColor: AppColors.ocean.withOpacity(0.08),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                          child: Text(
-                            _error!,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey[600]),
+                  const SizedBox(height: 14),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        DiscoveryFilterChip(
+                          label: 'AUTOMATIC',
+                          selected: _selectedTransmission == 'automatic',
+                          onTap: () => setState(() {
+                            _selectedTransmission =
+                                _selectedTransmission == 'automatic'
+                                    ? 'all'
+                                    : 'automatic';
+                          }),
+                        ),
+                        const SizedBox(width: 12),
+                        DiscoveryFilterChip(
+                          label: 'MANUAL',
+                          selected: _selectedTransmission == 'manual',
+                          onTap: () => setState(() {
+                            _selectedTransmission =
+                                _selectedTransmission == 'manual'
+                                    ? 'all'
+                                    : 'manual';
+                          }),
+                        ),
+                        const SizedBox(width: 12),
+                        DiscoveryFilterChip(
+                          label: 'MORE FILTERS',
+                          selected: _selectedAreaFilter != null ||
+                              _selectedCityFilter != null ||
+                              _selectedCarType != 'all',
+                          onTap: _showFilterBottomSheet,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.radar_rounded,
+                          size: 22,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'RADIUS ${_searchRadiusKm.round()} KM',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.6,
+                            color: AppColors.foreground,
                           ),
                         ),
-                      )
-                    : instructors.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 24.0),
-                              child: Text(
-                                'No instructors match your filters yet. Try adjusting the focus or filters.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.grey[600]),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              overlayShape: SliderComponentShape.noOverlay,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 8,
                               ),
+                              trackHeight: 6,
                             ),
-                          )
-                        : AnimationLimiter(
-                            child: ListView.builder(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
-                              itemCount: instructors.length,
-                              itemBuilder: (context, index) {
-                                return AnimationConfiguration.staggeredList(
-                                  position: index,
-                                  duration: const Duration(milliseconds: 600),
-                                  child: SlideAnimation(
-                                    verticalOffset: 50.0,
-                                    child: FadeInAnimation(
-                                      child: _buildInstructorCard(
-                                          instructors[index]),
-                                    ),
-                                  ),
-                                );
-                              },
+                            child: Slider(
+                              value: _searchRadiusKm,
+                              min: _minRadiusKm,
+                              max: _maxRadiusKm,
+                              onChanged: (value) => setState(() {
+                                _searchRadiusKm = value;
+                              }),
                             ),
                           ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, String value) {
-    final isSelected = _selectedFilter == value;
-
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() => _selectedFilter = value);
-      },
-      selectedColor: AppColors.primaryBlue.withOpacity(0.2),
-      checkmarkColor: AppColors.primaryBlue,
-      labelStyle: TextStyle(
-        color: isSelected ? AppColors.primaryBlue : Colors.grey[600],
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _isLoading && _instructors.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: AppColors.mutedForeground,
+                              ),
+                            ),
+                          ),
+                        )
+                      : CustomScrollView(
+                          slivers: [
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                              sliver: SliverToBoxAdapter(
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        instructors.isEmpty
+                                            ? 'Nearby Instructors'
+                                            : 'Nearby Instructors',
+                                        style: const TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.foreground,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (instructors.isEmpty)
+                              const SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: Center(
+                                  child: Padding(
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 24),
+                                    child: Text(
+                                      'No instructors match your filters yet. Try adjusting the search radius or filters.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: AppColors.mutedForeground,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              )
+                            else
+                              SliverPadding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                                sliver: SliverList.separated(
+                                  itemCount: instructors.length,
+                                  itemBuilder: (context, index) =>
+                                      _buildInstructorCard(instructors[index]),
+                                  separatorBuilder: (context, index) =>
+                                      const SizedBox(height: 18),
+                                ),
+                              ),
+                          ],
+                        ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildInstructorCard(InstructorModel instructor) {
-    final requestState = _requestStates[instructor.id];
-    final bool isProcessing = _requestingInstructors.contains(instructor.id);
-    String buttonLabel = 'Request Lesson';
-    Color buttonBackground = AppColors.primaryBlue;
-    Color buttonDisabledBackground = AppColors.primaryBlue.withOpacity(0.7);
-    Color buttonForeground = Colors.white;
-    Color buttonDisabledForeground = Colors.white70;
-    VoidCallback? buttonAction = () => _toggleRequestFromList(instructor);
-    String? statusMessage;
-    Color? statusMessageColor;
-    Color? statusMessageBackground;
+    final statusLabel = _statusLabelForInstructor(instructor.id);
+    final displayedRate = _displayRateForInstructor(instructor);
+    return InstructorDiscoveryCard(
+      instructor: instructor,
+      onViewProfile: () => _openInstructorProfile(instructor),
+      requestStatusLabel: statusLabel,
+      displayedRate: displayedRate,
+    );
+  }
 
-    if (requestState != null) {
-      final status = requestState.status;
-      if (status == 'accepted') {
-        buttonLabel = 'Accepted';
-        buttonAction = null;
-        buttonBackground = AppColors.success;
-        buttonDisabledBackground = AppColors.success;
-        buttonForeground = Colors.white;
-        buttonDisabledForeground = Colors.white;
-        statusMessage =
-            'Request accepted. Your instructor will reach out soon.';
-        statusMessageColor = AppColors.success;
-        statusMessageBackground = AppColors.success.withOpacity(0.1);
-      } else if (status == 'pending') {
-        buttonLabel = 'Pending';
-        buttonAction = null;
-        buttonBackground = AppColors.golden;
-        buttonDisabledBackground = AppColors.golden.withOpacity(0.85);
-        buttonForeground = Colors.black87;
-        buttonDisabledForeground = Colors.black54;
-        statusMessage = 'Awaiting instructor response.';
-        statusMessageColor = Colors.orange.shade700;
-        statusMessageBackground = AppColors.golden.withOpacity(0.15);
-      } else if (status == 'declined') {
-        final bool coolingDown = requestState.isCoolingDown;
-        if (coolingDown) {
-          buttonLabel = 'Declined';
-          buttonAction = null;
-          buttonBackground = AppColors.error.withOpacity(0.85);
-          buttonDisabledBackground = AppColors.error.withOpacity(0.7);
-          buttonForeground = Colors.white;
-          buttonDisabledForeground = Colors.white;
-          final remaining = requestState.cooldownRemaining;
-          final remainingDays = remaining.inDays;
-          final remainingHours = remaining.inHours.remainder(24);
-          String remainingText;
-          if (remainingDays >= 1) {
-            remainingText =
-                '$remainingDays day${remainingDays == 1 ? '' : 's'}';
-          } else if (remainingHours > 0) {
-            remainingText =
-                '$remainingHours hour${remainingHours == 1 ? '' : 's'}';
-          } else {
-            remainingText = 'less than an hour';
-          }
-          statusMessage =
-              'Request declined. You can try again in $remainingText.';
-          statusMessageColor = AppColors.error;
-          statusMessageBackground = AppColors.error.withOpacity(0.12);
-        } else {
-          buttonLabel = 'Request Again';
-          buttonBackground = AppColors.primaryBlue;
-          buttonDisabledBackground = AppColors.primaryBlue.withOpacity(0.7);
-          buttonForeground = Colors.white;
-          buttonDisabledForeground = Colors.white70;
-          buttonAction = () => _toggleRequestFromList(instructor);
-          statusMessage =
-              'Previously declined. You can submit a new request now.';
-          statusMessageColor = AppColors.primaryBlue;
-          statusMessageBackground = AppColors.primaryBlue.withOpacity(0.1);
+  double _displayRateForInstructor(InstructorModel instructor) {
+    double? matchOfferingRate(String? focus) {
+      if (focus == null || focus.trim().isEmpty) return null;
+      final normalizedFocus =
+          focus.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      for (final entry in instructor.offeringRates.entries) {
+        final normalizedKey =
+            entry.key.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        if (normalizedKey == normalizedFocus) {
+          return entry.value;
         }
       }
+      return null;
     }
 
-    final bool isButtonEnabled = buttonAction != null && !isProcessing;
-    final VoidCallback? effectiveAction = isButtonEnabled ? buttonAction : null;
-    final locationLabel = _formatServiceArea(instructor);
-
-    final Widget actionButton = ElevatedButton(
-      onPressed: effectiveAction,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: buttonBackground,
-        disabledBackgroundColor: buttonDisabledBackground,
-        foregroundColor: buttonForeground,
-        disabledForegroundColor: buttonDisabledForeground,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: isProcessing
-          ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: buttonForeground,
-              ),
-            )
-          : Text(buttonLabel),
-    );
-
-    final profileImageUrl = instructor.user.profileImageUrl?.trim();
-    final hasProfileImage =
-        profileImageUrl != null && profileImageUrl.isNotEmpty;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: InkWell(
-        onTap: () => _openInstructorProfile(instructor),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
-                  backgroundImage:
-                      hasProfileImage ? NetworkImage(profileImageUrl) : null,
-                  child: hasProfileImage
-                      ? null
-                      : Text(
-                          '${instructor.user.firstName.isNotEmpty ? instructor.user.firstName[0] : ''}'
-                                  '${instructor.user.lastName.isNotEmpty ? instructor.user.lastName[0] : ''}'
-                              .toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primaryBlue,
-                          ),
-                        ),
-                ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${instructor.user.firstName} ${instructor.user.lastName}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${instructor.yearsOfExperience} years experience',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '\$${instructor.hourlyRate.toStringAsFixed(0)}/hr',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primaryBlue,
-                        ),
-                      ),
-                      Text(
-                        'per hour',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                instructor.bio,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                  height: 1.4,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  ...instructor.carTypes
-                      .map((type) => _buildTag(type.toUpperCase())),
-                  ...instructor.transmissionTypes
-                      .map((type) => _buildTag(type.toUpperCase())),
-                  ...instructor.levelsOffered.map(_buildTag),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on,
-                                size: 16, color: AppColors.primaryBlue),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                locationLabel,
-                                style: TextStyle(color: Colors.grey[600]),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(Icons.language,
-                                size: 16, color: AppColors.primaryBlue),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                instructor.languages.join(', '),
-                                style: TextStyle(color: Colors.grey[600]),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(width: 160, child: actionButton),
-                ],
-              ),
-              if (statusMessage != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: statusMessageBackground ??
-                        Colors.grey.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    statusMessage!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: statusMessageColor ?? Colors.grey[700],
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTag(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.primaryBlue.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          color: AppColors.primaryBlue,
-        ),
-      ),
-    );
-  }
-
-
-  String _formatServiceArea(InstructorModel instructor) {
-    String? composed;
-    final serviceArea = instructor.serviceArea?.trim();
-    if (serviceArea != null && serviceArea.isNotEmpty) {
-      composed = serviceArea;
-    } else {
-      final area = instructor.serviceAreaArea?.trim() ?? '';
-      final city = instructor.serviceAreaCity?.trim() ?? '';
-      if (area.isNotEmpty && city.isNotEmpty) {
-        composed = '$area - $city';
-      } else if (area.isNotEmpty) {
-        composed = area;
-      } else if (city.isNotEmpty) {
-        composed = city;
-      }
+    final focusRate = matchOfferingRate(_focusFilter);
+    if (focusRate != null && focusRate > 0) {
+      return focusRate;
     }
 
-    return (composed != null && composed.isNotEmpty)
-        ? composed
-        : instructor.address;
+    if (instructor.hourlyRate > 0) {
+      return instructor.hourlyRate;
+    }
+
+    if (instructor.offeringRates.isNotEmpty) {
+      return instructor.offeringRates.values.first;
+    }
+
+    return 45.0;
+  }
+
+  String? _statusLabelForInstructor(String instructorId) {
+    if (_scheduledInstructorIds.contains(instructorId)) {
+      return 'Scheduled';
+    }
+    final state = _requestStates[instructorId];
+    if (state == null) {
+      return null;
+    }
+    switch (state.status) {
+      case 'pending':
+        return 'Requested';
+      case 'accepted':
+        return 'Accepted';
+      default:
+        return null;
+    }
   }
 
   String _formatCarTypeLabel(String value) {
@@ -663,192 +484,41 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     }
   }
 
+  Future<void> _loadScheduledLessons() async {
+    final learnerId = SupabaseService.currentUser?.id;
+    if (learnerId == null) {
+      return;
+    }
+
+    try {
+      final lessons = await SupabaseService.getLessons(learnerId);
+      final scheduledIds = <String>{};
+      for (final lesson in lessons) {
+        if (_isScheduledRelationship(lesson)) {
+          scheduledIds.add(lesson.instructor.id);
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _scheduledInstructorIds
+          ..clear()
+          ..addAll(scheduledIds);
+      });
+    } catch (_) {
+      // Ignore failures for now; cards can still render without scheduled state.
+    }
+  }
+
+  bool _isScheduledRelationship(LessonModel lesson) {
+    final status = lesson.effectiveStatus;
+    return status == LessonStatus.scheduled ||
+        status == LessonStatus.inProgress;
+  }
+
   void _scheduleRequestPolling() {
     _requestStatusTimer?.cancel();
     _requestStatusTimer = Timer.periodic(
         const Duration(seconds: 30), (_) => _loadActiveRequests());
-  }
-
-  Future<void> _toggleRequestFromList(InstructorModel instructor) async {
-    final requestState = _requestStates[instructor.id];
-    if (requestState != null) {
-      switch (requestState.status) {
-        case 'pending':
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                    'Your request is still pending. The instructor will respond soon.'),
-                backgroundColor: AppColors.golden,
-              ),
-            );
-          }
-          return;
-        case 'accepted':
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('This instructor has already accepted you.'),
-                backgroundColor: AppColors.success,
-              ),
-            );
-          }
-          return;
-        case 'declined':
-          if (requestState.isCoolingDown) {
-            if (mounted) {
-              final remaining = requestState.cooldownRemaining;
-              final days = remaining.inDays;
-              final hours = remaining.inHours.remainder(24);
-              String remainingText;
-              if (days >= 1) {
-                remainingText = '$days day${days == 1 ? '' : 's'}';
-              } else if (hours > 0) {
-                remainingText = '$hours hour${hours == 1 ? '' : 's'}';
-              } else {
-                remainingText = 'less than an hour';
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                      'Please wait $remainingText before requesting again.'),
-                  backgroundColor: AppColors.golden,
-                ),
-              );
-            }
-            return;
-          }
-          break;
-      }
-    }
-    await _sendLessonRequest(instructor);
-  }
-
-  Future<void> _sendLessonRequest(InstructorModel instructor) async {
-    final learnerId = SupabaseService.currentUser?.id;
-    if (learnerId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please sign in to request a lesson.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-    if (_requestingInstructors.contains(instructor.id)) return;
-
-    final note = await _promptRequestMessage(instructor);
-    if (note == null) return;
-
-    setState(() => _requestingInstructors.add(instructor.id));
-    try {
-      await SupabaseService.createLessonRequest(
-        instructorId: instructor.id,
-        learnerId: learnerId,
-        focus: _focusFilter,
-        message: note.isEmpty ? null : note,
-      );
-      await _loadActiveRequests();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lesson request sent to ${instructor.user.firstName}.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      final rawMessage = e.toString();
-      final displayMessage =
-          rawMessage.replaceFirst(RegExp(r'^Exception:\s?'), '');
-      final isCooldown =
-          displayMessage.contains('You can request this instructor again');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(displayMessage.isNotEmpty
-              ? displayMessage
-              : 'Unable to send request. Please try again later.'),
-          backgroundColor: isCooldown ? AppColors.golden : AppColors.error,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _requestingInstructors.remove(instructor.id));
-      }
-    }
-  }
-
-  Future<String?> _promptRequestMessage(InstructorModel instructor) async {
-    final controller = TextEditingController();
-    final focus = _focusFilter;
-    final theme = Theme.of(context);
-
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Request ${instructor.user.firstName}',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              focus != null && focus.isNotEmpty
-                  ? 'Let ${instructor.user.firstName} know what you need help with for $focus.'
-                  : 'Let ${instructor.user.firstName} know what you need help with.',
-              style: TextStyle(color: Colors.grey[700]),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              maxLines: 4,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                hintText: 'Share a short note (optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(null),
-                    child: const Text('Cancel'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () =>
-                        Navigator.of(context).pop(controller.text.trim()),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.ocean,
-                    ),
-                    child: const Text('Send request'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-
-    controller.dispose();
-    return result;
   }
 
   Future<void> _openInstructorProfile(InstructorModel instructor) async {
@@ -863,6 +533,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
         'instructorId': instructor.id,
         if (_focusFilter != null && _focusFilter!.isNotEmpty)
           'focus': _focusFilter,
+        if (_selectedCarType != 'all') 'matchedVehicleType': _selectedCarType,
         if (requestState != null) 'status': requestState.status,
         if (requestState?.requestId != null)
           'requestId': requestState?.requestId,
@@ -894,11 +565,35 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     }
   }
 
+  String _normalizeVehicleType(String? value) {
+    if (value == null) return '';
+    return value.trim().toLowerCase();
+  }
+
+  List<InstructorVehicle> _orderedVehiclesForPreview(
+      InstructorModel instructor) {
+    final vehicles = List<InstructorVehicle>.from(instructor.vehicles);
+    final selectedType = _normalizeVehicleType(_selectedCarType);
+    if (selectedType.isEmpty || selectedType == 'all' || vehicles.length < 2) {
+      return vehicles;
+    }
+
+    final matching = <InstructorVehicle>[];
+    final others = <InstructorVehicle>[];
+    for (final vehicle in vehicles) {
+      if (_normalizeVehicleType(vehicle.type) == selectedType) {
+        matching.add(vehicle);
+      } else {
+        others.add(vehicle);
+      }
+    }
+    return [...matching, ...others];
+  }
+
   Map<String, dynamic> _buildInstructorPreview(InstructorModel instructor) {
-    final vehicleSummaries =
-        instructor.vehicles.map((vehicle) => vehicle.summary()).toList();
+    final orderedVehicles = _orderedVehiclesForPreview(instructor);
     final vehiclesRaw =
-        instructor.vehicles.map((vehicle) => vehicle.toJson()).toList();
+        orderedVehicles.map((vehicle) => vehicle.toJson()).toList();
     final areaSummaries = _areasOfOperation(instructor).map((area) {
       final city = area.city ?? 'City not set';
       final radius = area.radiusKm;
@@ -946,12 +641,14 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
       'phone': instructor.user.phone ?? '',
       'bio': instructor.bio,
       'profileImageUrl': instructor.user.profileImageUrl ?? '',
-      'vehiclePhotoUrl': instructor.vehiclePhotoUrl ?? '',
+      'vehiclePhotoUrl': orderedVehicles.isNotEmpty
+          ? (orderedVehicles.first.photoUrl ?? instructor.vehiclePhotoUrl ?? '')
+          : (instructor.vehiclePhotoUrl ?? ''),
       'serviceArea': instructor.serviceArea ?? instructor.address,
       'serviceAreaArea': instructor.serviceAreaArea,
       'serviceAreaCity': instructor.serviceAreaCity,
-      'car': instructor.vehicles.isNotEmpty
-          ? instructor.vehicles.first.summary()
+      'car': orderedVehicles.isNotEmpty
+          ? orderedVehicles.first.summary()
           : 'Vehicle details not provided',
       'vehicles': vehiclesRaw,
       'areas': areaSummaries,
@@ -985,7 +682,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     if ((instructor.serviceArea ?? '').toLowerCase().contains(lowerTerm)) {
       return true;
     }
-    if ((instructor.address ?? '').toLowerCase().contains(lowerTerm)) {
+    if (instructor.address.toLowerCase().contains(lowerTerm)) {
       return true;
     }
     for (final area in _areasOfOperation(instructor)) {
@@ -1062,7 +759,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     if ((instructor.serviceArea ?? '').toLowerCase().contains(target)) {
       return true;
     }
-    if ((instructor.address ?? '').toLowerCase().contains(target)) {
+    if (instructor.address.toLowerCase().contains(target)) {
       return true;
     }
     for (final area in _areasOfOperation(instructor)) {
@@ -1133,8 +830,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
               Wrap(
                 spacing: 8,
                 children: [
-                  for (final type
-                      in ['all', ...AppConstants.carTypes]) ...[
+                  for (final type in ['all', ...AppConstants.carTypes]) ...[
                     _buildFilterOption(
                       type == 'all' ? 'All' : _formatCarTypeLabel(type),
                       type,
@@ -1173,7 +869,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _selectedAreaFilter,
+                initialValue: _selectedAreaFilter,
                 decoration: const InputDecoration(
                   labelText: 'Area',
                   border: OutlineInputBorder(),
@@ -1204,7 +900,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _selectedCityFilter,
+                initialValue: _selectedCityFilter,
                 decoration: const InputDecoration(
                   labelText: 'City',
                   border: OutlineInputBorder(),

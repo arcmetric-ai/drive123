@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_radii.dart';
 import '../../constants/app_routes.dart';
+import '../../constants/app_spacing.dart';
 import '../../models/lesson_model.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/compact_schedule_lesson_card.dart';
+import '../../widgets/my_lessons_empty_state.dart';
+import '../../widgets/primary_schedule_lesson_card.dart';
+import '../../widgets/schedule_day_card.dart';
 import 'ongoing_lesson_screen.dart';
 
 class MyLessonsScreen extends StatefulWidget {
@@ -23,6 +30,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
   final List<LessonModel> _completedLessons = [];
   final List<LessonModel> _cancelledLessons = [];
   LessonModel? _ongoingLesson;
+  DateTime? _selectedUpcomingDate;
   bool _isProcessingAction = false;
   bool _loading = true;
   String? _error;
@@ -107,6 +115,11 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
           ..clear()
           ..addAll(cancelled);
         _ongoingLesson = ongoing;
+        _selectedUpcomingDate = _resolveSelectedUpcomingDate(
+          upcomingLessons: upcoming,
+          ongoingLesson: ongoing,
+          previousSelection: _selectedUpcomingDate,
+        );
         _loading = false;
         _error = null;
       });
@@ -135,8 +148,9 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     final offeringRates = lesson.instructor.offeringRates.values
         .where((rate) => rate > 0)
         .toList();
-    final bestOfferingRate =
-        offeringRates.isNotEmpty ? offeringRates.reduce((a, b) => a < b ? a : b) : 0.0;
+    final bestOfferingRate = offeringRates.isNotEmpty
+        ? offeringRates.reduce((a, b) => a < b ? a : b)
+        : 0.0;
 
     final fallbackRate = bestOfferingRate > 0 ? bestOfferingRate : hourlyRate;
     final computed = fallbackRate > 0 ? fallbackRate * duration : 0.0;
@@ -148,7 +162,8 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     if (price <= 0) return 'Price to be confirmed';
 
     final needsDecimals = price % 1 != 0;
-    final formatted = needsDecimals ? price.toStringAsFixed(2) : price.toStringAsFixed(0);
+    final formatted =
+        needsDecimals ? price.toStringAsFixed(2) : price.toStringAsFixed(0);
     return '\$$formatted';
   }
 
@@ -230,11 +245,19 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_handleTabChanged);
     _loadLessons();
+  }
+
+  void _handleTabChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -242,28 +265,111 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Lessons'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Upcoming'),
-            Tab(text: 'Completed'),
-            Tab(text: 'Cancelled'),
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.md,
+              ),
+              child: _buildHeader(),
+            ),
+            TabBar(
+              controller: _tabController,
+              labelPadding: const EdgeInsets.only(bottom: 10),
+              indicatorSize: TabBarIndicatorSize.label,
+              indicatorColor: AppColors.primary,
+              indicatorWeight: 4,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.mutedForeground,
+              labelStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              tabs: const [
+                Tab(text: 'Upcoming'),
+                Tab(text: 'Completed'),
+                Tab(text: 'Cancelled'),
+              ],
+            ),
+            const Divider(height: 1, thickness: 1, color: AppColors.foreground),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildUpcomingLessons(),
+                  _buildCompletedLessons(),
+                  _buildCancelledLessons(),
+                ],
+              ),
+            ),
           ],
-          labelColor: AppColors.ocean,
-          unselectedLabelColor: Colors.grey[600],
-          indicatorColor: AppColors.ocean,
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildUpcomingLessons(),
-          _buildCompletedLessons(),
-          _buildCancelledLessons(),
-        ],
-      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    final hasSchedule = _tabController.index == 0 &&
+        (_upcomingLessons.isNotEmpty || _ongoingLesson != null);
+
+    if (!hasSchedule) {
+      return const Center(
+        child: Text(
+          'My Lessons',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: AppColors.foreground,
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        const Expanded(
+          child: Text(
+            'Your Schedule',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: AppColors.foreground,
+            ),
+          ),
+        ),
+        Container(
+          width: 78,
+          height: 78,
+          decoration: const BoxDecoration(
+            color: AppColors.secondary,
+            shape: BoxShape.circle,
+          ),
+          child: IconButton(
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Calendar shortcuts are coming soon.'),
+                ),
+              );
+            },
+            icon: const Icon(
+              Icons.calendar_month_rounded,
+              size: 34,
+              color: AppColors.foreground,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -279,30 +385,311 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
       return _buildStartLearningView();
     }
     if (_upcomingLessons.isEmpty && !hasOngoing) {
-      return _buildEmptyState(
-        icon: Icons.schedule_outlined,
-        title: 'No Upcoming Lessons',
-        subtitle:
-            'Your instructor\'s weekly plan will appear here once it\'s shared.',
-        actionText: 'Find Instructor',
-        onAction: () => context.go(AppRoutes.findInstructor),
-      );
+      return _buildStartLearningView();
     }
+
+    final scheduleDates = _scheduleDates;
+    final selectedDate = _selectedUpcomingDate ?? scheduleDates.first;
+    final selectedLessons = _lessonsForDate(selectedDate);
+    final primaryLesson = selectedLessons.isNotEmpty
+        ? selectedLessons.first
+        : (_ongoingLesson ?? _upcomingLessons.first);
+    final remainingSelectedLessons = selectedLessons.skip(1).toList();
+    final nextDate = _nextScheduleDate(selectedDate);
+    final nextDateLessons =
+        nextDate == null ? const <LessonModel>[] : _lessonsForDate(nextDate);
 
     return RefreshIndicator(
       onRefresh: _refreshLessons,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.lg,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+        ),
         children: [
-          if (_ongoingLesson != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _buildOngoingLessonBanner(_ongoingLesson!),
+          SizedBox(
+            height: 152,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: scheduleDates.length,
+              separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.md),
+              itemBuilder: (context, index) {
+                final day = scheduleDates[index];
+                return ScheduleDayCard(
+                  monthLabel: DateFormat('MMM').format(day),
+                  dayLabel: DateFormat('d').format(day),
+                  weekdayLabel: DateFormat('EEE').format(day),
+                  isSelected: _isSameDay(day, selectedDate),
+                  hasLesson: _lessonsForDate(day).isNotEmpty,
+                  onTap: () => setState(() => _selectedUpcomingDate = day),
+                );
+              },
             ),
-          for (final lesson in _upcomingLessons)
-            _buildLessonCard(lesson, statusLabel: LessonStatus.scheduled),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          _buildScheduleSectionHeader(
+            title: _isToday(selectedDate)
+                ? 'Today\'s Lessons'
+                : DateFormat('EEEE, MMM d').format(selectedDate),
+            dotColor: AppColors.accent,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          PrimaryScheduleLessonCard(
+            avatarUrl: primaryLesson.instructor.user.profileImageUrl,
+            fallbackInitials: _initialsForLesson(primaryLesson),
+            instructorName: _instructorName(primaryLesson),
+            subtitle: _lessonSubtitle(primaryLesson),
+            focusLabel: _lessonFocusLabel(primaryLesson),
+            timeLabel: _lessonTimeLabel(primaryLesson, includeDuration: true),
+            locationLabel: primaryLesson.location ?? 'Location to be confirmed',
+            primaryLabel:
+                primaryLesson.isInProgress ? 'RESUME LESSON' : 'START LESSON',
+            onPrimaryPressed: () => _startLesson(primaryLesson),
+            onCallPressed: _callActionForLesson(primaryLesson),
+          ),
+          if (remainingSelectedLessons.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xl),
+            for (final lesson in remainingSelectedLessons) ...[
+              CompactScheduleLessonCard(
+                avatarUrl: lesson.instructor.user.profileImageUrl,
+                fallbackInitials: _initialsForLesson(lesson),
+                instructorName: _instructorName(lesson),
+                subtitle: _lessonSubtitle(lesson),
+                focusLabel: _lessonFocusLabel(lesson),
+                dateTimeLabel: _lessonDateTimeLabel(lesson),
+                actionLabel: 'Reschedule',
+                onActionPressed: () => _showRescheduleNotice(lesson),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+          ],
+          if (nextDateLessons.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            _buildScheduleSectionHeader(
+              title: _upcomingSectionLabel(nextDate!),
+              dotColor: AppColors.grey300,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            for (final lesson in nextDateLessons) ...[
+              CompactScheduleLessonCard(
+                avatarUrl: lesson.instructor.user.profileImageUrl,
+                fallbackInitials: _initialsForLesson(lesson),
+                instructorName: _instructorName(lesson),
+                subtitle: _lessonSubtitle(lesson),
+                focusLabel: _lessonFocusLabel(lesson),
+                dateTimeLabel: _lessonDateTimeLabel(lesson),
+                actionLabel: 'Reschedule',
+                onActionPressed: () => _showRescheduleNotice(lesson),
+                isMuted: true,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildScheduleSectionHeader({
+    required String title,
+    required Color dotColor,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: dotColor,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.foreground,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  bool _isSameDay(DateTime a, DateTime b) => _dateOnly(a) == _dateOnly(b);
+
+  bool _isToday(DateTime value) => _isSameDay(value, DateTime.now());
+
+  DateTime? _resolveSelectedUpcomingDate({
+    required List<LessonModel> upcomingLessons,
+    required LessonModel? ongoingLesson,
+    required DateTime? previousSelection,
+  }) {
+    final dates = <DateTime>{
+      if (ongoingLesson != null)
+        _dateOnly(ongoingLesson.scheduledDate.toLocal()),
+      ...upcomingLessons
+          .map((lesson) => _dateOnly(lesson.scheduledDate.toLocal())),
+    }.toList()
+      ..sort();
+
+    if (dates.isEmpty) return null;
+    if (previousSelection != null) {
+      for (final date in dates) {
+        if (_isSameDay(date, previousSelection)) {
+          return date;
+        }
+      }
+    }
+    for (final date in dates) {
+      if (_isToday(date)) return date;
+    }
+    return dates.first;
+  }
+
+  List<DateTime> get _scheduleDates => <DateTime>{
+        if (_ongoingLesson != null)
+          _dateOnly(_ongoingLesson!.scheduledDate.toLocal()),
+        ..._upcomingLessons
+            .map((lesson) => _dateOnly(lesson.scheduledDate.toLocal())),
+      }.toList()
+        ..sort();
+
+  List<LessonModel> _lessonsForDate(DateTime date) {
+    final lessons = <LessonModel>[
+      if (_ongoingLesson != null &&
+          _isSameDay(_ongoingLesson!.scheduledDate.toLocal(), date))
+        _ongoingLesson!,
+      ..._upcomingLessons.where(
+        (lesson) => _isSameDay(lesson.scheduledDate.toLocal(), date),
+      ),
+    ];
+    lessons.sort(
+        (a, b) => _lessonStartDateTime(a).compareTo(_lessonStartDateTime(b)));
+    return lessons;
+  }
+
+  DateTime? _nextScheduleDate(DateTime currentDate) {
+    for (final date in _scheduleDates) {
+      if (date.isAfter(_dateOnly(currentDate))) {
+        return date;
+      }
+    }
+    return null;
+  }
+
+  String _instructorName(LessonModel lesson) =>
+      '${lesson.instructor.user.firstName} ${lesson.instructor.user.lastName}'
+          .trim();
+
+  String _initialsForLesson(LessonModel lesson) {
+    final first = lesson.instructor.user.firstName;
+    final last = lesson.instructor.user.lastName;
+    final buffer = StringBuffer();
+    if (first.isNotEmpty) buffer.write(first[0]);
+    if (last.isNotEmpty) buffer.write(last[0]);
+    return buffer.isEmpty ? 'DT' : buffer.toString().toUpperCase();
+  }
+
+  String _lessonSubtitle(LessonModel lesson) {
+    final transmission = (lesson.instructor.vehicles.isNotEmpty
+                ? lesson.instructor.vehicles.first.transmission
+                : lesson.instructor.transmissionTypes.isNotEmpty
+                    ? lesson.instructor.transmissionTypes.first
+                    : null)
+            ?.trim()
+            .toUpperCase() ??
+        'AUTO';
+    final vehicle = lesson.instructor.vehicles.isNotEmpty
+        ? [
+            lesson.instructor.vehicles.first.make,
+            lesson.instructor.vehicles.first.model,
+          ]
+            .whereType<String>()
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .join(' ')
+        : lesson.instructor.carTypes.isNotEmpty
+            ? lesson.instructor.carTypes.first
+            : 'Vehicle';
+    return '$transmission • ${vehicle.toUpperCase()}';
+  }
+
+  String? _lessonFocusLabel(LessonModel lesson) {
+    final focus = (lesson.focus?.trim().isNotEmpty == true
+            ? lesson.focus!.trim()
+            : null) ??
+        (lesson.instructor.offerings.isNotEmpty
+            ? lesson.instructor.offerings.first
+            : null);
+    if (focus == null || focus.isEmpty) return null;
+    final normalized = focus.toLowerCase();
+    if (normalized.contains('g2')) return 'G2 PREP';
+    if (normalized == 'g' || normalized.contains('g prep')) return 'G PREP';
+    if (normalized.contains('refresh')) return 'REFRESHER';
+    return focus.toUpperCase();
+  }
+
+  String _lessonTimeLabel(
+    LessonModel lesson, {
+    bool includeDuration = false,
+  }) {
+    final start = lesson.startTime.toUpperCase();
+    final end = lesson.endTime.toUpperCase();
+    if (!includeDuration) return '$start - $end';
+    final durationMinutes = (lesson.duration * 60).round();
+    return '$start - $end ($durationMinutes mins)';
+  }
+
+  String _lessonDateTimeLabel(LessonModel lesson) {
+    final dateLabel = DateFormat('MMM d')
+        .format(lesson.scheduledDate.toLocal())
+        .toUpperCase();
+    final timeLabel = lesson.startTime.toUpperCase();
+    return '$dateLabel, $timeLabel';
+  }
+
+  String _upcomingSectionLabel(DateTime date) {
+    final tomorrow = _dateOnly(DateTime.now().add(const Duration(days: 1)));
+    if (_isSameDay(date, tomorrow)) {
+      return 'Upcoming (Tomorrow)';
+    }
+    return 'Upcoming (${DateFormat('EEE, MMM d').format(date)})';
+  }
+
+  VoidCallback? _callActionForLesson(LessonModel lesson) {
+    final phone = lesson.instructor.user.phone?.trim();
+    if (phone == null || phone.isEmpty) return null;
+    return () async {
+      final uri = Uri(scheme: 'tel', path: phone);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Calling is not available on this device right now.'),
+          ),
+        );
+      }
+    };
+  }
+
+  void _showRescheduleNotice(LessonModel lesson) {
+    final name = lesson.instructor.user.firstName;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Rescheduling with $name will be available soon. For now, contact your instructor directly.',
+        ),
       ),
     );
   }
@@ -387,22 +774,22 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
 
     switch (statusLabel) {
       case LessonStatus.scheduled:
-        chipColor = AppColors.ocean.withOpacity(0.1);
+        chipColor = AppColors.ocean.withValues(alpha: 0.1);
         textColor = AppColors.ocean;
         label = 'Upcoming';
         break;
       case LessonStatus.inProgress:
-        chipColor = AppColors.golden.withOpacity(0.15);
+        chipColor = AppColors.golden.withValues(alpha: 0.15);
         textColor = AppColors.golden;
         label = 'In Progress';
         break;
       case LessonStatus.completed:
-        chipColor = AppColors.success.withOpacity(0.12);
+        chipColor = AppColors.success.withValues(alpha: 0.12);
         textColor = AppColors.success;
         label = 'Completed';
         break;
       case LessonStatus.cancelled:
-        chipColor = AppColors.error.withOpacity(0.12);
+        chipColor = AppColors.error.withValues(alpha: 0.12);
         textColor = AppColors.error;
         label = 'Cancelled';
         break;
@@ -420,7 +807,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
               children: [
                 CircleAvatar(
                   radius: 25,
-                  backgroundColor: AppColors.ocean.withOpacity(0.1),
+                  backgroundColor: AppColors.ocean.withValues(alpha: 0.1),
                   backgroundImage:
                       hasProfileImage ? NetworkImage(profileImageUrl) : null,
                   child: hasProfileImage
@@ -546,8 +933,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color:
-                        priceValue > 0 ? AppColors.ocean : Colors.grey[700],
+                    color: priceValue > 0 ? AppColors.ocean : Colors.grey[700],
                   ),
                 ),
               ],
@@ -716,6 +1102,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
       return;
     }
 
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -761,6 +1148,22 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
   }
 
   Future<void> _startLesson(LessonModel lesson) async {
+    if (lesson.status == LessonStatus.inProgress || lesson.isInProgress) {
+      final result = await Navigator.of(context).push<LessonModel?>(
+        MaterialPageRoute(
+          builder: (context) => OngoingLessonScreen(
+            lesson: lesson,
+            onMarkCompleted: () => _completeLesson(lesson),
+          ),
+        ),
+      );
+      if (!mounted) return;
+      if (result != null) {
+        _handleLessonCompletion(result);
+      }
+      return;
+    }
+
     if (_ongoingLesson != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -813,6 +1216,11 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     setState(() {
       _upcomingLessons.removeWhere((l) => l.id == lesson.id);
       _ongoingLesson = updated;
+      _selectedUpcomingDate = _resolveSelectedUpcomingDate(
+        upcomingLessons: _upcomingLessons,
+        ongoingLesson: updated,
+        previousSelection: _selectedUpcomingDate,
+      );
       _isProcessingAction = false;
     });
 
@@ -881,6 +1289,11 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
       if (_ongoingLesson?.id == lesson.id) {
         _ongoingLesson = null;
       }
+      _selectedUpcomingDate = _resolveSelectedUpcomingDate(
+        upcomingLessons: _upcomingLessons,
+        ongoingLesson: _ongoingLesson,
+        previousSelection: _selectedUpcomingDate,
+      );
       _isProcessingAction = false;
     });
 
@@ -915,6 +1328,11 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
         _ongoingLesson = null;
       }
       _completedLessons.insert(0, updated!);
+      _selectedUpcomingDate = _resolveSelectedUpcomingDate(
+        upcomingLessons: _upcomingLessons,
+        ongoingLesson: _ongoingLesson,
+        previousSelection: _selectedUpcomingDate,
+      );
     });
 
     return updated;
@@ -933,70 +1351,6 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     );
   }
 
-  Widget _buildOngoingLessonBanner(LessonModel lesson) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.golden.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.play_circle_fill,
-                color: AppColors.golden,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Lesson in progress with ${lesson.instructor.user.firstName} ${lesson.instructor.user.lastName}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Started at ${lesson.startTime}. Tap below to view live session details.',
-            style: TextStyle(
-              color: Colors.grey[700],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () async {
-                final result = await Navigator.of(context).push<LessonModel?>(
-                  MaterialPageRoute(
-                    builder: (context) => OngoingLessonScreen(
-                      lesson: lesson,
-                      onMarkCompleted: () => _completeLesson(lesson),
-                    ),
-                  ),
-                );
-                if (!mounted) return;
-                if (result != null) {
-                  _handleLessonCompletion(result);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.ocean,
-              ),
-              child: const Text('Open Session'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildLoadingView() {
     return const Center(
       child: Padding(
@@ -1011,41 +1365,64 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
       onRefresh: _refreshLessons,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xxxl,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+        ),
         children: [
-          Icon(
-            Icons.wifi_off_outlined,
-            size: 80,
-            color: Colors.grey[400],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Something went wrong',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              border: Border.all(color: AppColors.border),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _error ?? 'Unable to load your lessons right now.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _refreshLessons,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.ocean,
-              ),
-              child: const Text('Try again'),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.wifi_off_outlined,
+                  size: 76,
+                  color: AppColors.mutedForeground.withValues(alpha: 0.45),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                const Text(
+                  'Something went wrong',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.foreground,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  _error ?? 'Unable to load your lessons right now.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    height: 1.45,
+                    color: AppColors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _refreshLessons,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.primaryForeground,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadii.lg),
+                      ),
+                    ),
+                    child: const Text('Try again'),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1053,53 +1430,33 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     );
   }
 
-  Widget _buildStartLearningView() {
+  Widget _buildStartLearningView({
+    String title = 'Start learning',
+    String subtitle =
+        'You don\'t have any lessons yet. Once your instructor shares a weekly plan, it will appear here.',
+  }) {
     return RefreshIndicator(
       onRefresh: _refreshLessons,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.lg,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+        ),
         children: [
-          Icon(
-            Icons.school_outlined,
-            size: 86,
-            color: AppColors.ocean.withOpacity(0.25),
-          ),
-          const SizedBox(height: 18),
-          const Text(
-            'Start learning',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'You don\'t have any lessons yet. Once your instructor shares a weekly plan, it will appear here.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 28),
           SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => context.go(AppRoutes.findInstructor),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.ocean,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-              ),
-              child: const Text('Find Instructor'),
+            height: MediaQuery.of(context).size.height * 0.58,
+            child: MyLessonsEmptyState(
+              title: title,
+              subtitle: subtitle,
+              actionLabel: 'Find Instructor',
+              onAction: () => context.go(AppRoutes.findInstructor),
             ),
           ),
         ],
       ),
     );
   }
-
 }

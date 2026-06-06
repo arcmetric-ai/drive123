@@ -108,9 +108,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (trimmed.isEmpty) return '';
     final words = trimmed.split(RegExp(r'\s+'));
     return words
-        .map((word) => word.isEmpty
-            ? ''
-            : word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .map(
+          (word) => word.isEmpty
+              ? ''
+              : word[0].toUpperCase() + word.substring(1).toLowerCase(),
+        )
         .join(' ');
   }
 
@@ -301,12 +303,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           if (type == 'home') {
             _homeLocationSelected = true;
             _homeLocationController.text = address ?? '';
-          } else if (type == 'office') {
+          } else if (type == 'office' || type == 'work') {
             _officeLocationSelected = true;
             _officeLocationController.text = address ?? '';
           } else if (type == 'other') {
             _otherLocationSelected = true;
             _otherLocationLabelController.text = label ?? '';
+            _otherLocationAddressController.text = address ?? '';
+          } else if (type == 'gym') {
+            _otherLocationSelected = true;
+            _otherLocationLabelController.text = label ?? 'Gym/Other';
             _otherLocationAddressController.text = address ?? '';
           }
         }
@@ -455,17 +461,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           if (type == 'home') {
             _homeLocationSelected = true;
             _homeLocationController.text = address ?? '';
-          } else if (type == 'office') {
+          } else if (type == 'office' || type == 'work') {
             _officeLocationSelected = true;
             _officeLocationController.text = address ?? '';
           } else if (type == 'other') {
             _otherLocationSelected = true;
             _otherLocationLabelController.text = label ?? '';
             _otherLocationAddressController.text = address ?? '';
+          } else if (type == 'gym') {
+            _otherLocationSelected = true;
+            _otherLocationLabelController.text = label ?? 'Gym/Other';
+            _otherLocationAddressController.text = address ?? '';
           }
         }
       }
     }
+  }
+
+  void _clearInstructorLocationSelections() {
+    _homeLocationSelected = false;
+    _officeLocationSelected = false;
+    _otherLocationSelected = false;
+    _homeLocationController.clear();
+    _officeLocationController.clear();
+    _otherLocationLabelController.clear();
+    _otherLocationAddressController.clear();
   }
 
   @override
@@ -662,10 +682,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: Text('Select area'),
             ),
             ...OntarioLocations.areaNames.map(
-              (area) => DropdownMenuItem(
-                value: area,
-                child: Text(area),
-              ),
+              (area) => DropdownMenuItem(value: area, child: Text(area)),
             ),
           ],
           onChanged: (value) => setState(() {
@@ -700,10 +717,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ? OntarioLocations.citiesForArea(_selectedArea)
                     : OntarioLocations.allCities))
                 .map(
-              (city) => DropdownMenuItem(
-                value: city,
-                child: Text(city),
-              ),
+              (city) => DropdownMenuItem(value: city, child: Text(city)),
             ),
           ],
           onChanged: (value) => setState(() => _selectedCity = value),
@@ -738,10 +752,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           value: _selectedGender,
           items: _genderOptions
               .map(
-                (gender) => DropdownMenuItem(
-                  value: gender,
-                  child: Text(gender),
-                ),
+                (gender) =>
+                    DropdownMenuItem(value: gender, child: Text(gender)),
               )
               .toList(),
           decoration: const InputDecoration(
@@ -783,7 +795,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ),
         CheckboxListTile(
-          title: const Text('Office'),
+          title: const Text('Work'),
           value: _officeLocationSelected,
           onChanged: (value) {
             setState(() {
@@ -800,13 +812,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             child: TextField(
               controller: _officeLocationController,
               decoration: const InputDecoration(
-                labelText: 'Office Address',
+                labelText: 'Work Address',
                 border: OutlineInputBorder(),
               ),
             ),
           ),
         CheckboxListTile(
-          title: const Text('Other'),
+          title: const Text('Gym/Other'),
           value: _otherLocationSelected,
           onChanged: (value) {
             setState(() {
@@ -824,7 +836,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             child: TextField(
               controller: _otherLocationLabelController,
               decoration: const InputDecoration(
-                labelText: 'Location Label',
+                labelText: 'Custom Label',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -834,7 +846,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             child: TextField(
               controller: _otherLocationAddressController,
               decoration: const InputDecoration(
-                labelText: 'Location Address',
+                labelText: 'Gym/Other Address',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -941,10 +953,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: Text('Select city'),
             ),
             ..._instructorCityOptions().map(
-              (city) => DropdownMenuItem(
-                value: city,
-                child: Text(city),
-              ),
+              (city) => DropdownMenuItem(value: city, child: Text(city)),
             ),
           ],
           onChanged: (value) => setState(() {
@@ -1001,95 +1010,102 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
           title: const Text('Offer learner pickup?'),
-          subtitle: const Text(
-            'I can pick learners up from their location.',
-          ),
+          subtitle: const Text('I can pick learners up from their location.'),
           value: _pickupPreference,
-          onChanged: (value) => setState(() => _pickupPreference = value),
-        ),
-        const SizedBox(height: 12),
-        _buildSectionTitle('Preferred Lesson Locations'),
-        const SizedBox(height: 12),
-        CheckboxListTile(
-          title: const Text('Home'),
-          value: _homeLocationSelected,
           onChanged: (value) {
             setState(() {
-              _homeLocationSelected = value ?? false;
-              if (!_homeLocationSelected) {
-                _homeLocationController.clear();
+              _pickupPreference = value;
+              if (value) {
+                _clearInstructorLocationSelections();
               }
             });
           },
         ),
-        if (_homeLocationSelected)
-          Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 12),
-            child: TextField(
-              controller: _homeLocationController,
-              decoration: const InputDecoration(
-                labelText: 'Home Address',
-                border: OutlineInputBorder(),
+        if (!_pickupPreference) ...[
+          const SizedBox(height: 12),
+          _buildSectionTitle('Preferred Lesson Locations'),
+          const SizedBox(height: 12),
+          CheckboxListTile(
+            title: const Text('Home'),
+            value: _homeLocationSelected,
+            onChanged: (value) {
+              setState(() {
+                _homeLocationSelected = value ?? false;
+                if (!_homeLocationSelected) {
+                  _homeLocationController.clear();
+                }
+              });
+            },
+          ),
+          if (_homeLocationSelected)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 12),
+              child: TextField(
+                controller: _homeLocationController,
+                decoration: const InputDecoration(
+                  labelText: 'Home Address',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
+          CheckboxListTile(
+            title: const Text('Work'),
+            value: _officeLocationSelected,
+            onChanged: (value) {
+              setState(() {
+                _officeLocationSelected = value ?? false;
+                if (!_officeLocationSelected) {
+                  _officeLocationController.clear();
+                }
+              });
+            },
           ),
-        CheckboxListTile(
-          title: const Text('Office'),
-          value: _officeLocationSelected,
-          onChanged: (value) {
-            setState(() {
-              _officeLocationSelected = value ?? false;
-              if (!_officeLocationSelected) {
-                _officeLocationController.clear();
-              }
-            });
-          },
-        ),
-        if (_officeLocationSelected)
-          Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 12),
-            child: TextField(
-              controller: _officeLocationController,
-              decoration: const InputDecoration(
-                labelText: 'Office Address',
-                border: OutlineInputBorder(),
+          if (_officeLocationSelected)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 12),
+              child: TextField(
+                controller: _officeLocationController,
+                decoration: const InputDecoration(
+                  labelText: 'Work Address',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
+          CheckboxListTile(
+            title: const Text('Gym/Other'),
+            value: _otherLocationSelected,
+            onChanged: (value) {
+              setState(() {
+                _otherLocationSelected = value ?? false;
+                if (!_otherLocationSelected) {
+                  _otherLocationLabelController.clear();
+                  _otherLocationAddressController.clear();
+                }
+              });
+            },
           ),
-        CheckboxListTile(
-          title: const Text('Other'),
-          value: _otherLocationSelected,
-          onChanged: (value) {
-            setState(() {
-              _otherLocationSelected = value ?? false;
-              if (!_otherLocationSelected) {
-                _otherLocationLabelController.clear();
-                _otherLocationAddressController.clear();
-              }
-            });
-          },
-        ),
-        if (_otherLocationSelected) ...[
-          Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 12),
-            child: TextField(
-              controller: _otherLocationLabelController,
-              decoration: const InputDecoration(
-                labelText: 'Location Label',
-                border: OutlineInputBorder(),
+          if (_otherLocationSelected) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 12),
+              child: TextField(
+                controller: _otherLocationLabelController,
+                decoration: const InputDecoration(
+                  labelText: 'Custom Label',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 12),
-            child: TextField(
-              controller: _otherLocationAddressController,
-              decoration: const InputDecoration(
-                labelText: 'Location Address',
-                border: OutlineInputBorder(),
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 12),
+              child: TextField(
+                controller: _otherLocationAddressController,
+                decoration: const InputDecoration(
+                  labelText: 'Gym/Other Address',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
-          ),
+          ],
         ],
         const SizedBox(height: 24),
         _buildSectionTitle('Vehicles'),
@@ -1097,12 +1113,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         DropdownButtonFormField<String>(
           value: _selectedVehicleType,
           items: _vehicleTypes
-              .map(
-                (type) => DropdownMenuItem(
-                  value: type,
-                  child: Text(type),
-                ),
-              )
+              .map((type) => DropdownMenuItem(value: type, child: Text(type)))
               .toList(),
           decoration: const InputDecoration(
             labelText: 'Vehicle Type',
@@ -1170,7 +1181,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(width: 8),
               IconButton(
                 tooltip: 'Remove selected photo',
-                onPressed: () => setState(() => _pendingVehicleImagePath = null),
+                onPressed: () =>
+                    setState(() => _pendingVehicleImagePath = null),
                 icon: const Icon(Icons.delete_outline),
               ),
             ],
@@ -1264,10 +1276,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           value: _instructorGender,
           items: _genderOptions
               .map(
-                (gender) => DropdownMenuItem(
-                  value: gender,
-                  child: Text(gender),
-                ),
+                (gender) =>
+                    DropdownMenuItem(value: gender, child: Text(gender)),
               )
               .toList(),
           decoration: const InputDecoration(
@@ -1317,7 +1327,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: TextField(
                         controller: controller,
                         keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
+                          decimal: true,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'Hourly rate (\$)',
                           border: OutlineInputBorder(),
@@ -1355,7 +1366,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
-    if (!_homeLocationSelected &&
+    if (!_pickupPreference &&
+        !_homeLocationSelected &&
         !_officeLocationSelected &&
         !_otherLocationSelected) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1376,46 +1388,49 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final lastName = _lastNameController.text.trim();
     final phone = _phoneController.text.trim();
     final locations = <Map<String, String>>[];
-    if (_homeLocationSelected) {
-      final address = _homeLocationController.text.trim();
-      if (address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Enter your Home address.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
+    if (!_pickupPreference) {
+      if (_homeLocationSelected) {
+        final address = _homeLocationController.text.trim();
+        if (address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enter your Home address.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        locations.add({'type': 'Home', 'label': 'Home', 'address': address});
       }
-      locations.add({'type': 'Home', 'label': 'Home', 'address': address});
-    }
-    if (_officeLocationSelected) {
-      final address = _officeLocationController.text.trim();
-      if (address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Enter your Office address.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
+      if (_officeLocationSelected) {
+        final address = _officeLocationController.text.trim();
+        if (address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enter your Work address.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        locations.add({'type': 'Work', 'label': 'Work', 'address': address});
       }
-      locations.add({'type': 'Office', 'label': 'Office', 'address': address});
-    }
-    if (_otherLocationSelected) {
-      final label = _otherLocationLabelController.text.trim();
-      final address = _otherLocationAddressController.text.trim();
-      if (label.isEmpty || address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Provide both a label and address for the other location.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
+      if (_otherLocationSelected) {
+        final label = _otherLocationLabelController.text.trim();
+        final address = _otherLocationAddressController.text.trim();
+        if (label.isEmpty || address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Provide both a label and address for the Gym/Other location.',
+              ),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        locations.add({'type': 'Other', 'label': label, 'address': address});
       }
-      locations.add({'type': 'Other', 'label': label, 'address': address});
     }
 
     setState(() => _isSaving = true);
@@ -1500,7 +1515,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
-    if (!_homeLocationSelected &&
+    if (!_pickupPreference &&
+        !_homeLocationSelected &&
         !_officeLocationSelected &&
         !_otherLocationSelected) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1536,7 +1552,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                'Enter a valid hourly rate for ${_labelForOffering(code)}.'),
+              'Enter a valid hourly rate for ${_labelForOffering(code)}.',
+            ),
             backgroundColor: AppColors.error,
           ),
         );
@@ -1558,46 +1575,49 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         .toList();
 
     final locations = <Map<String, String>>[];
-    if (_homeLocationSelected) {
-      final address = _homeLocationController.text.trim();
-      if (address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Enter your Home address.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
+    if (!_pickupPreference) {
+      if (_homeLocationSelected) {
+        final address = _homeLocationController.text.trim();
+        if (address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enter your Home address.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        locations.add({'type': 'Home', 'label': 'Home', 'address': address});
       }
-      locations.add({'type': 'Home', 'label': 'Home', 'address': address});
-    }
-    if (_officeLocationSelected) {
-      final address = _officeLocationController.text.trim();
-      if (address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Enter your Office address.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
+      if (_officeLocationSelected) {
+        final address = _officeLocationController.text.trim();
+        if (address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enter your Work address.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        locations.add({'type': 'Work', 'label': 'Work', 'address': address});
       }
-      locations.add({'type': 'Office', 'label': 'Office', 'address': address});
-    }
-    if (_otherLocationSelected) {
-      final label = _otherLocationLabelController.text.trim();
-      final address = _otherLocationAddressController.text.trim();
-      if (label.isEmpty || address.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Provide both a label and address for the other location.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
+      if (_otherLocationSelected) {
+        final label = _otherLocationLabelController.text.trim();
+        final address = _otherLocationAddressController.text.trim();
+        if (label.isEmpty || address.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Provide both a label and address for the Gym/Other location.',
+              ),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          return;
+        }
+        locations.add({'type': 'Other', 'label': label, 'address': address});
       }
-      locations.add({'type': 'Other', 'label': label, 'address': address});
     }
 
     setState(() => _isSaving = true);
@@ -1625,10 +1645,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         profileUpdates['gender'] = _instructorGender!.trim();
       }
 
-      _instructorSelectedCity =
-          (_instructorSelectedCity != null && _instructorSelectedCity!.trim().isNotEmpty)
-              ? _instructorSelectedCity!.trim()
-              : null;
+      _instructorSelectedCity = (_instructorSelectedCity != null &&
+              _instructorSelectedCity!.trim().isNotEmpty)
+          ? _instructorSelectedCity!.trim()
+          : null;
       final profileCity = _instructorSelectedCity ?? '';
 
       if (profileCity.isNotEmpty) {
@@ -1665,8 +1685,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }).toList();
       final locationPayload =
           locations.map((entry) => Map<String, dynamic>.from(entry)).toList();
-      final yearsExperience =
-          int.tryParse(_yearsExperienceController.text.trim());
+      final yearsExperience = int.tryParse(
+        _yearsExperienceController.text.trim(),
+      );
 
       await SupabaseService.upsertInstructorProfile(
         userId: userId,
@@ -1677,7 +1698,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         vehicles: vehiclePayload,
         offerings: selectedOfferings,
         offeringRates: rates,
-        preferredLocations: locationPayload,
+        preferredLocations: _pickupPreference ? null : locationPayload,
+        clearPreferredLocations: _pickupPreference,
         yearsOfExperience: yearsExperience,
         pickupPreference: _pickupPreference,
       );
@@ -1830,10 +1852,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             file: file,
           );
           if (url != null && url.isNotEmpty) {
-            current = current.copyWith(
-              photoUrl: url,
-              localImagePath: null,
-            );
+            current = current.copyWith(photoUrl: url, localImagePath: null);
           }
         }
       }
@@ -1844,10 +1863,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   void _showInlineError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.error,
-      ),
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
     );
   }
 
@@ -1884,10 +1900,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           color: Colors.grey[200],
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(
-          Icons.directions_car,
-          color: AppColors.primaryBlue,
-        ),
+        child: const Icon(Icons.directions_car, color: AppColors.primaryBlue),
       );
     }
 
@@ -1947,10 +1960,7 @@ class _VehicleEntry {
 }
 
 class _OfferingOption {
-  const _OfferingOption({
-    required this.code,
-    required this.label,
-  });
+  const _OfferingOption({required this.code, required this.label});
 
   final String code;
   final String label;

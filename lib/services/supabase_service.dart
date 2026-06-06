@@ -1,13 +1,48 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:math' as math;
 import 'dart:io';
+import 'dart:convert';
+import '../constants/app_routes.dart';
+import '../models/identity_verification_state.dart';
+import '../models/instructor_billing.dart';
+import '../models/instructor_document_type.dart';
+import '../models/learner_onboarding_draft.dart';
+import '../models/signup_flow_state.dart';
+import '../services/launch_preferences.dart';
 import '../models/user_model.dart';
 import '../models/instructor_model.dart';
 import '../models/lesson_model.dart';
 
+class AccountAlreadyExistsException implements Exception {
+  const AccountAlreadyExistsException(this.email);
+
+  final String email;
+
+  @override
+  String toString() => 'An account already exists for $email.';
+}
+
 class SupabaseService {
   static final SupabaseClient _client = Supabase.instance.client;
   static const int learnerSkillCatalogSize = 8;
+  static const Set<String> _supportedRoles = {'learner', 'instructor'};
+  static const String _identityVerificationBucket = 'identity-verification';
+  static const String _instructorCredentialsBucket = 'instructor-credentials';
+  static const String _baseAppUrl = 'https://www.drivetutor.ca';
+  static const String _authRedirectUrl = '$_baseAppUrl/auth-redirect';
+  static const String _signUpRedirectUrl = _authRedirectUrl;
+  static const String onboardingStageRoleSelected = 'role_selected';
+  static const String onboardingStageVerificationPending =
+      'verification_pending';
+  static const String onboardingStageQuestionnaireComplete =
+      'questionnaire_complete';
+
+  static String? _normalizeRole(dynamic role) {
+    if (role is! String) return null;
+    final normalized = role.trim().toLowerCase();
+    if (_supportedRoles.contains(normalized)) return normalized;
+    return null;
+  }
 
   // Auth Methods
   static Future<AuthResponse> signUp({
@@ -15,7 +50,6 @@ class SupabaseService {
     required String password,
     required String firstName,
     required String lastName,
-    required String role,
     String? phone,
   }) async {
     final response = await _client.auth.signUp(
@@ -24,7 +58,6 @@ class SupabaseService {
       data: {
         'first_name': firstName,
         'last_name': lastName,
-        'role': role,
         'phone': phone,
       },
     );
@@ -35,20 +68,9 @@ class SupabaseService {
           'id': user.id,
           'email': email,
           'phone': phone,
-          'role': role,
           'first_name': firstName,
           'last_name': lastName,
         });
-
-        if (role == 'instructor') {
-          await _client.from('instructor_profiles').upsert({
-            'profile_id': user.id,
-          });
-        } else if (role == 'learner') {
-          await _client.from('learner_profiles').upsert({
-            'profile_id': user.id,
-          });
-        }
       } catch (e) {
         // ignore, profile trigger will still insert minimal row
         print('Warning: unable to upsert profile after signup: $e');
@@ -68,11 +90,477 @@ class SupabaseService {
     return response;
   }
 
+  static Future<AuthResponse> signUpWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    final response = await _client.auth.signUp(
+      email: email,
+      password: password,
+    );
+
+    final user = response.user ?? _client.auth.currentUser;
+    if (user != null) {
+      try {
+        await _client.from('profiles').upsert({
+          'id': user.id,
+          'email': user.email ?? email,
+        }, onConflict: 'id');
+      } catch (e) {
+        print('Warning: unable to upsert profile after signup: $e');
+      }
+    }
+
+    return response;
+  }
+
   static Future<void> signOut() async {
     await _client.auth.signOut();
   }
 
+  static Future<void> requestPasswordRecoveryCode({
+    required String email,
+  }) async {
+    await _client.auth.resetPasswordForEmail(email.trim().toLowerCase());
+  }
+
+  static Future<SignupFlowState> startSignUpFlow({
+    required String email,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    final tempPassword = _generateTemporaryPassword();
+    final response = await _client.auth.signUp(
+      email: normalizedEmail,
+      password: tempPassword,
+      emailRedirectTo: _signUpRedirectUrl,
+    );
+
+    final user = response.user;
+    if (user == null) {
+      throw Exception('Unable to start sign up. Please try again.');
+    }
+
+    final flowState = SignupFlowState(
+      email: normalizedEmail,
+      authUserId: user.id,
+      flowToken: _generateFlowToken(),
+    );
+
+    try {
+      await _client.functions.invoke(
+        'begin-signup-flow',
+        body: flowState.toMap(),
+      );
+    } catch (error) {
+      final message = error.toString().toLowerCase();
+      if (message.contains('auth user not found') ||
+          message.contains('user already registered')) {
+        throw AccountAlreadyExistsException(normalizedEmail);
+      }
+      rethrow;
+    }
+
+    return flowState;
+  }
+
+  static Future<bool> checkSignUpConfirmation({
+    required SignupFlowState flowState,
+  }) async {
+    final response = await _client.functions.invoke(
+      'check-signup-confirmation',
+      body: flowState.toMap(),
+    );
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Unexpected signup confirmation response.');
+    }
+    return data['confirmed'] == true;
+  }
+
+  static Future<void> completeSignUpPassword({
+    required SignupFlowState flowState,
+    required String newPassword,
+  }) async {
+    await _client.functions.invoke(
+      'complete-signup-password',
+      body: {
+        ...flowState.toMap(),
+        'newPassword': newPassword,
+      },
+    );
+  }
+
+  static Future<AuthResponse> verifySignUpCode({
+    required String email,
+    required String token,
+  }) async {
+    final response = await _client.auth.verifyOTP(
+      email: email,
+      token: token,
+      type: OtpType.email,
+    );
+
+    final user = response.user ?? _client.auth.currentUser;
+    if (user != null) {
+      try {
+        await _client.from('profiles').upsert({
+          'id': user.id,
+          'email': user.email ?? email,
+        }, onConflict: 'id');
+      } catch (e) {
+        print('Warning: unable to upsert profile after signup verify: $e');
+      }
+    }
+
+    return response;
+  }
+
+  static Future<AuthResponse> verifyPasswordRecoveryCode({
+    required String email,
+    required String token,
+  }) async {
+    return _client.auth.verifyOTP(
+      email: email,
+      token: token,
+      type: OtpType.recovery,
+    );
+  }
+
+  static Future<void> assignUserRole({
+    required String userId,
+    required String role,
+  }) async {
+    final normalizedRole = _normalizeRole(role);
+    if (normalizedRole == null) {
+      throw ArgumentError('Unsupported role "$role"');
+    }
+
+    await _client.from('profiles').upsert(
+      {
+        'id': userId,
+        'role': normalizedRole,
+        'onboarding_stage': onboardingStageRoleSelected,
+      },
+      onConflict: 'id',
+    );
+
+    if (normalizedRole == 'instructor') {
+      await _client.from('instructor_profiles').upsert(
+        {'profile_id': userId},
+        onConflict: 'profile_id',
+      );
+    } else {
+      await _client.from('learner_profiles').upsert(
+        {'profile_id': userId},
+        onConflict: 'profile_id',
+      );
+    }
+
+    // Keep auth metadata in sync because multiple screens read role from metadata.
+    final currentUser = _client.auth.currentUser;
+    if (currentUser?.id == userId) {
+      try {
+        await _client.auth.updateUser(
+          UserAttributes(data: {'role': normalizedRole}),
+        );
+      } catch (e) {
+        print('Warning: unable to update auth role metadata: $e');
+      }
+    }
+  }
+
+  static Future<String?> resolveUserRole({
+    required String userId,
+    dynamic metadataRole,
+  }) async {
+    final normalizedMetadata = _normalizeRole(metadataRole);
+    if (normalizedMetadata != null) return normalizedMetadata;
+
+    try {
+      final profile = await _client
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .maybeSingle();
+      final profileRole = _normalizeRole(profile?['role']);
+      if (profileRole != null) {
+        final currentUser = _client.auth.currentUser;
+        if (normalizedMetadata == null && currentUser?.id == userId) {
+          try {
+            await _client.auth.updateUser(
+              UserAttributes(data: {'role': profileRole}),
+            );
+          } catch (e) {
+            print('Warning: unable to sync role metadata from profile: $e');
+          }
+        }
+        return profileRole;
+      }
+    } catch (e) {
+      print('Warning: unable to resolve user role from profile: $e');
+    }
+    return null;
+  }
+
+  static Future<String?> getCurrentUserRole() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+    return resolveUserRole(
+      userId: user.id,
+      metadataRole: user.userMetadata?['role'],
+    );
+  }
+
   static User? get currentUser => _client.auth.currentUser;
+
+  static Future<void> ensureCurrentProfile() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await _client.from('profiles').upsert({
+        'id': user.id,
+        'email': user.email,
+      }, onConflict: 'id');
+    } catch (e) {
+      print('Warning: unable to ensure current profile: $e');
+    }
+  }
+
+  static String _generateTemporaryPassword() {
+    return '${_generateFlowToken()}Aa1!';
+  }
+
+  static String _generateFlowToken() {
+    final random = math.Random.secure();
+    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
+  static Future<void> updateOnboardingStage({
+    required String userId,
+    required String stage,
+  }) async {
+    await _client.from('profiles').update({
+      'onboarding_stage': stage,
+    }).eq('id', userId);
+  }
+
+  static Future<IdentityVerificationState?>
+      getCurrentIdentityVerificationState() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+    return getIdentityVerificationState(user.id);
+  }
+
+  static Future<IdentityVerificationState?> getIdentityVerificationState(
+    String userId,
+  ) async {
+    try {
+      final response = await _client
+          .from('profiles')
+          .select(
+            'id, role, first_name, created_at, is_verified, verification_status, verification_submitted_at, verification_review_started_at, verification_approved_at, identity_license_path, identity_selfie_path, onboarding_stage',
+          )
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (response == null) return null;
+      return IdentityVerificationState.fromJson(response);
+    } catch (e) {
+      print('Warning: unable to fetch identity verification state: $e');
+      return null;
+    }
+  }
+
+  static Future<String> resolvePostAuthRoute({
+    required String userId,
+    dynamic metadataRole,
+  }) async {
+    final role = await resolveUserRole(
+      userId: userId,
+      metadataRole: metadataRole,
+    );
+    final verificationState = await getIdentityVerificationState(userId);
+
+    if (role == null) {
+      return AppRoutes.roleSelection;
+    }
+
+    if (role == 'learner') {
+      if (verificationState?.isPendingReview == true) {
+        return AppRoutes.identityPendingReview;
+      }
+      if (!(verificationState?.isApproved ?? false)) {
+        return AppRoutes.identityVerificationIntro;
+      }
+      final approvalToken = verificationState?.verificationApprovedAt
+              ?.toUtc()
+              .toIso8601String() ??
+          verificationState?.verificationStatus ??
+          'approved';
+      final shouldShowSuccess =
+          await LaunchPreferences.shouldShowLearnerApprovalSuccess(
+        userId: userId,
+        approvalToken: approvalToken,
+      );
+      if (shouldShowSuccess) {
+        return AppRoutes.learnerApprovalSuccess;
+      }
+
+      if (verificationState?.onboardingStage !=
+          onboardingStageQuestionnaireComplete) {
+        return AppRoutes.learnerQuestionnaire;
+      }
+      try {
+        final learnerDetail = await getLearnerProfileDetail(userId);
+        final focus = (learnerDetail?['learning_focus'] as String?)?.trim();
+        if (focus == null || focus.isEmpty) {
+          return AppRoutes.learningFocus;
+        }
+      } catch (_) {
+        return AppRoutes.learningFocus;
+      }
+      return AppRoutes.home;
+    }
+
+    if (role == 'instructor') {
+      final identityStatus =
+          verificationState?.verificationStatus?.trim().toLowerCase();
+      final hasIdentityDocs =
+          verificationState?.identityLicensePath?.trim().isNotEmpty == true &&
+              verificationState?.identitySelfiePath?.trim().isNotEmpty == true;
+      if (!hasIdentityDocs || identityStatus == 'rejected') {
+        return AppRoutes.identityVerificationIntro;
+      }
+
+      if (verificationState?.onboardingStage !=
+          onboardingStageQuestionnaireComplete) {
+        return AppRoutes.instructorQuestionnaire;
+      }
+
+      final instructorDetail = await getInstructorProfileDetail(userId);
+      final credentialsStatus =
+          (instructorDetail?['credentials_status'] as String?)
+              ?.trim()
+              .toLowerCase();
+      if (credentialsStatus == 'pending') {
+        return AppRoutes.identityPendingReview;
+      }
+      if (credentialsStatus != 'approved') {
+        return AppRoutes.instructorCredentialsPortal;
+      }
+      if (!(verificationState?.isApproved ?? false)) {
+        return AppRoutes.identityPendingReview;
+      }
+      return AppRoutes.instructorHome;
+    }
+    return AppRoutes.roleSelection;
+  }
+
+  static Future<void> submitIdentityVerification({
+    required String userId,
+    required String role,
+    required String licenseImagePath,
+    required String selfieImagePath,
+  }) async {
+    final submittedAt = DateTime.now().toUtc().toIso8601String();
+    final licensePath = await _uploadIdentityAsset(
+      userId: userId,
+      file: File(licenseImagePath),
+      filePrefix: 'license',
+    );
+    final selfiePath = await _uploadIdentityAsset(
+      userId: userId,
+      file: File(selfieImagePath),
+      filePrefix: 'selfie',
+    );
+
+    await _client.from('profiles').update({
+      'role': role,
+      'verification_status': 'pending',
+      'verification_submitted_at': submittedAt,
+      'verification_review_started_at': null,
+      'verification_approved_at': null,
+      'identity_license_path': licensePath,
+      'identity_selfie_path': selfiePath,
+      'is_verified': false,
+      'onboarding_stage': onboardingStageVerificationPending,
+    }).eq('id', userId);
+  }
+
+  static Future<void> approveIdentityVerificationForTesting({
+    required String userId,
+    required String role,
+  }) async {
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    await _client.from('profiles').update({
+      'role': role,
+      'verification_status': 'approved',
+      'verification_submitted_at': timestamp,
+      'verification_review_started_at': timestamp,
+      'verification_approved_at': timestamp,
+      'identity_license_path': 'testing://license-skip',
+      'identity_selfie_path': 'testing://selfie-skip',
+      'is_verified': role == 'learner',
+    }).eq('id', userId);
+  }
+
+  static Future<void> uploadInstructorCredentialDocument({
+    required String userId,
+    required InstructorDocumentType documentType,
+    required File file,
+  }) async {
+    final bytes = await file.readAsBytes();
+    final extension = file.path.split('.').last.toLowerCase();
+    final storagePath =
+        '$userId/${documentType.storageKey}-${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+    await _client.storage.from(_instructorCredentialsBucket).uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: const FileOptions(upsert: true),
+        );
+
+    await _client.from('instructor_profiles').upsert({
+      'profile_id': userId,
+      documentType.columnName: storagePath,
+      'credentials_status': 'not_started',
+    }, onConflict: 'profile_id');
+  }
+
+  static Future<void> submitInstructorCredentialsForReview({
+    required String userId,
+  }) async {
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    await _client.from('instructor_profiles').upsert({
+      'profile_id': userId,
+      'credentials_status': 'pending',
+      'credentials_submitted_at': timestamp,
+      'credentials_review_started_at': null,
+      'credentials_approved_at': null,
+    }, onConflict: 'profile_id');
+    await updateProfileFields(userId, {'is_verified': false});
+  }
+
+  static Future<String> _uploadIdentityAsset({
+    required String userId,
+    required File file,
+    required String filePrefix,
+  }) async {
+    final bytes = await file.readAsBytes();
+    final fileExtension = file.path.split('.').last.toLowerCase();
+    final storagePath =
+        '$userId/$filePrefix-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+
+    await _client.storage.from(_identityVerificationBucket).uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: const FileOptions(upsert: true),
+        );
+
+    return storagePath;
+  }
 
   static Future<void> updatePassword(String newPassword) async {
     await _client.auth.updateUser(
@@ -140,7 +628,6 @@ class SupabaseService {
     return publicUrl;
   }
 
-
   static Future<String?> uploadVehicleGalleryImage({
     required String userId,
     required File file,
@@ -160,12 +647,12 @@ class SupabaseService {
       final publicUrl =
           _client.storage.from('instructor-assets').getPublicUrl(filePath);
       if (publicUrl.isNotEmpty) {
-      await _client
-          .from('instructor_profiles')
-          .update({'vehicle_photo_url': publicUrl}).eq('profile_id', userId);
-    }
+        await _client
+            .from('instructor_profiles')
+            .update({'vehicle_photo_url': publicUrl}).eq('profile_id', userId);
+      }
 
-    return publicUrl;
+      return publicUrl;
     } catch (e) {
       print('Error uploading vehicle image: $e');
       rethrow;
@@ -187,6 +674,33 @@ class SupabaseService {
     }
   }
 
+  static Future<void> requestAccountDeletion({
+    String? reason,
+    String? details,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw Exception('Please sign in again before requesting account deletion.');
+    }
+
+    String? role;
+    try {
+      role = await getCurrentUserRole();
+    } catch (_) {}
+
+    await _client.from('account_deletion_requests').insert({
+      'profile_id': user.id,
+      'role': role,
+      'reason': reason?.trim().isEmpty == true ? null : reason?.trim(),
+      'details': details?.trim().isEmpty == true ? null : details?.trim(),
+      'status': 'requested',
+      'metadata': {
+        'source': 'mobile_app',
+        'email': user.email,
+      },
+    });
+  }
+
   static Future<Map<String, dynamic>?> getInstructorProfileDetail(
       String userId) async {
     try {
@@ -201,6 +715,49 @@ class SupabaseService {
       print('Error fetching instructor profile: $e');
       return null;
     }
+  }
+
+  static Future<List<InstructorBillingPlan>> getInstructorBillingPlans() async {
+    final rows = await _client
+        .from('instructor_billing_plans')
+        .select(
+          'plan_key, display_name, description, amount_cents, currency, billing_interval, access_days, feature_codes',
+        )
+        .eq('is_active', true)
+        .order('amount_cents');
+
+    return (rows as List)
+        .whereType<Map>()
+        .map((row) => InstructorBillingPlan.fromJson(
+              Map<String, dynamic>.from(row),
+            ))
+        .toList(growable: false);
+  }
+
+  static Future<InstructorBillingEntitlement?>
+      getCurrentInstructorBillingEntitlement() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return null;
+
+    final row = await _client
+        .from('instructor_billing_entitlements')
+        .select(
+          'plan_key, status, access_expires_at, cancel_at_period_end',
+        )
+        .eq('profile_id', userId)
+        .maybeSingle();
+
+    if (row == null) return null;
+    return InstructorBillingEntitlement.fromJson(
+        Map<String, dynamic>.from(row));
+  }
+
+  static Future<bool> hasActiveInstructorBilling(String userId) async {
+    final result = await _client.rpc<bool>(
+      'instructor_has_active_billing',
+      params: {'target_profile_id': userId},
+    );
+    return result == true;
   }
 
   static Future<Map<String, dynamic>?> getLearnerProfileDetail(
@@ -239,6 +796,7 @@ class SupabaseService {
     List<String>? offerings,
     Map<String, double>? offeringRates,
     List<Map<String, dynamic>>? preferredLocations,
+    bool clearPreferredLocations = false,
     String? preferredLocationNotes,
     int? yearsOfExperience,
     String? vehiclePhotoUrl,
@@ -273,7 +831,7 @@ class SupabaseService {
       data['offering_rates'] =
           offeringRates.map((key, value) => MapEntry(key, value.toDouble()));
     }
-    if (preferredLocations != null) {
+    if (preferredLocations != null || clearPreferredLocations) {
       data['preferred_locations'] = preferredLocations;
     }
     final cleanedLocationNotes = cleanString(preferredLocationNotes);
@@ -356,6 +914,69 @@ class SupabaseService {
     await _client
         .from('learner_profiles')
         .upsert(data, onConflict: 'profile_id');
+  }
+
+  static Future<void> submitLearnerOnboardingDraft({
+    required LearnerOnboardingDraft draft,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Please sign in again to continue.');
+    }
+
+    final profileUpdates = <String, dynamic>{};
+    final firstName = draft.firstName?.trim();
+    if (firstName != null && firstName.isNotEmpty) {
+      profileUpdates['first_name'] = firstName;
+    }
+    final lastName = draft.lastName?.trim();
+    if (lastName != null && lastName.isNotEmpty) {
+      profileUpdates['last_name'] = lastName;
+    }
+    final phone = draft.phone?.trim();
+    if (phone != null && phone.isNotEmpty) {
+      profileUpdates['phone'] = phone;
+    }
+    final licenceNumber = draft.g1LicenceNumber?.trim().toUpperCase();
+    if (licenceNumber != null && licenceNumber.isNotEmpty) {
+      profileUpdates['licence_number'] = licenceNumber;
+    }
+    if (draft.g1ExpiryDate != null) {
+      final expiry = draft.g1ExpiryDate!;
+      final endOfDay = DateTime(
+        expiry.year,
+        expiry.month,
+        expiry.day,
+        23,
+        59,
+        59,
+      );
+      profileUpdates['licence_expiry'] = endOfDay.toIso8601String();
+    }
+    final city = draft.city?.trim();
+    if (city != null && city.isNotEmpty) {
+      profileUpdates['city'] = city;
+    }
+    if (draft.age != null) {
+      profileUpdates['age'] = draft.age;
+    }
+    final gender = draft.gender?.trim();
+    if (gender != null && gender.isNotEmpty) {
+      profileUpdates['gender'] = gender;
+    }
+
+    if (profileUpdates.isNotEmpty) {
+      await updateProfileFields(userId, profileUpdates);
+    }
+
+    await upsertLearnerProfile(
+      userId: userId,
+      classesTakenSoFar: draft.classesTakenSoFar,
+      lastClassDate: draft.lastClassDate,
+      preferredLocations: draft.preferredLocationsPayload,
+      weeklyAvailability: draft.weeklyAvailabilityPayload,
+      availabilityRecurring: draft.availabilityRecurring,
+    );
   }
 
   static Future<List<Map<String, dynamic>>> getLearnerSkillProgress(
@@ -977,8 +1598,7 @@ class SupabaseService {
     final missingIds = <String>{};
     for (final lesson in lessons) {
       final learner = lesson['learner'];
-      if (_hasIdentity(
-          learner is Map<String, dynamic> ? learner : null)) {
+      if (_hasIdentity(learner is Map<String, dynamic> ? learner : null)) {
         continue;
       }
       final learnerId = lesson['learner_id']?.toString();
@@ -987,8 +1607,8 @@ class SupabaseService {
       }
     }
 
-    Map<String, dynamic>? _profileFor(String? learnerId,
-        Map<String, Map<String, dynamic>> profiles) {
+    Map<String, dynamic>? _profileFor(
+        String? learnerId, Map<String, Map<String, dynamic>> profiles) {
       if (learnerId == null || learnerId.isEmpty) return null;
       final profile = profiles[learnerId];
       return profile != null ? Map<String, dynamic>.from(profile) : null;
@@ -1085,6 +1705,8 @@ class SupabaseService {
     required String learnerId,
     String? focus,
     String? message,
+    String? requestedVehicleLabel,
+    String? requestedVehicleType,
   }) async {
     final existing = await _client
         .from('learner_requests')
@@ -1150,6 +1772,8 @@ class SupabaseService {
     final requestedAge = learnerSnapshot?['age'];
     final normalizedFocus = _clean(focus)?.trim();
     final normalizedMessage = _clean(message)?.trim();
+    final normalizedVehicleLabel = _clean(requestedVehicleLabel)?.trim();
+    final normalizedVehicleType = _clean(requestedVehicleType)?.trim();
 
     await _client.from('learner_requests').insert({
       'instructor_id': instructorId,
@@ -1157,6 +1781,12 @@ class SupabaseService {
       'focus': normalizedFocus?.isNotEmpty == true ? normalizedFocus : null,
       'message':
           normalizedMessage?.isNotEmpty == true ? normalizedMessage : null,
+      'requested_vehicle_label': normalizedVehicleLabel?.isNotEmpty == true
+          ? normalizedVehicleLabel
+          : null,
+      'requested_vehicle_type': normalizedVehicleType?.isNotEmpty == true
+          ? normalizedVehicleType
+          : null,
       'status': 'pending',
       'requested_first_name': requestedFirst,
       'requested_last_name': requestedLast,
@@ -1188,7 +1818,8 @@ class SupabaseService {
   }) async {
     final request = await _client
         .from('learner_requests')
-        .select('id, status, focus, message, created_at')
+        .select(
+            'id, status, focus, message, created_at, requested_vehicle_label, requested_vehicle_type')
         .eq('instructor_id', instructorId)
         .eq('learner_id', learnerId)
         .or('status.eq.pending,status.eq.accepted')
@@ -1227,8 +1858,9 @@ class SupabaseService {
         .maybeSingle();
     if (request == null) return;
 
-    final normalizedDuration =
-        durationHours.isNaN || durationHours.isInfinite ? 1.0 : durationHours.toDouble();
+    final normalizedDuration = durationHours.isNaN || durationHours.isInfinite
+        ? 1.0
+        : durationHours.toDouble();
 
     await _client.from('lessons').insert({
       'learner_id': request['learner_id'],
@@ -1301,8 +1933,8 @@ class SupabaseService {
     final nowLocal = DateTime.now();
     // Include all of today's lessons plus anything upcoming, so active/in-progress
     // sessions that started earlier in the day still appear.
-    final windowStart = DateTime(nowLocal.year, nowLocal.month, nowLocal.day)
-        .toUtc();
+    final windowStart =
+        DateTime(nowLocal.year, nowLocal.month, nowLocal.day).toUtc();
     final results = await _client
         .from('lessons')
         .select(
@@ -1422,7 +2054,7 @@ class SupabaseService {
     }) async {
       var query = _client
           .from('lessons')
-          .select('cost, scheduled_at, status')
+          .select('cost, scheduled_at, status, duration_hours, focus')
           .eq('instructor_id', instructorId);
       if (statuses.isNotEmpty) {
         query = query.inFilter('status', statuses);
@@ -1458,6 +2090,20 @@ class SupabaseService {
       return count;
     }
 
+    double sumHours(Iterable<dynamic> rows) {
+      var total = 0.0;
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final hours = (row['duration_hours'] as num?)?.toDouble();
+        if (hours != null && hours > 0) {
+          total += hours;
+        } else {
+          total += 1.0;
+        }
+      }
+      return total;
+    }
+
     double sumEarnings(Iterable<dynamic> rows) {
       var total = 0.0;
       for (final row in rows) {
@@ -1477,25 +2123,27 @@ class SupabaseService {
     }
 
     try {
-    final monthlyLessonRows = await fetchLessons(
-      statuses: lessonCountStatuses,
-      start: monthStart,
-      end: nextMonth,
-    );
+      final monthlyLessonRows = await fetchLessons(
+        statuses: lessonCountStatuses,
+        start: monthStart,
+        end: nextMonth,
+      );
       final totalLessonRows = await fetchLessons(
         statuses: lessonCountStatuses,
       );
 
-    // For display, treat earnings as upcoming + completed sessions for the month.
-    // If a lesson has an explicit cost, we use it; otherwise we derive from rate.
-    final monthlyEarnings = sumEarnings(monthlyLessonRows);
+      // For display, treat earnings as upcoming + completed sessions for the month.
+      // If a lesson has an explicit cost, we use it; otherwise we derive from rate.
+      final monthlyEarnings = sumEarnings(monthlyLessonRows);
       final monthlyClasses = countLessons(monthlyLessonRows);
       final totalClasses = countLessons(totalLessonRows);
+      final totalHours = sumHours(totalLessonRows);
 
       return {
         'monthlyEarnings': monthlyEarnings,
         'monthlyClasses': monthlyClasses,
         'totalClasses': totalClasses,
+        'totalHours': totalHours,
       };
     } catch (error) {
       print('Error fetching instructor earnings summary: $error');
@@ -1503,6 +2151,7 @@ class SupabaseService {
         'monthlyEarnings': 0.0,
         'monthlyClasses': 0,
         'totalClasses': 0,
+        'totalHours': 0.0,
       };
     }
   }
@@ -1681,7 +2330,7 @@ class SupabaseService {
               'email': (row['contact_email'] as String?) ?? '',
               'phone': row['contact_phone'],
               'first_name':
-                  (row['display_name'] as String?) ?? 'Drive T Instructor',
+                  (row['display_name'] as String?) ?? 'Drive Tutor Instructor',
               'last_name': '',
               'role': 'instructor',
               'profile_image_url': row['profile_image_url'],
@@ -1746,14 +2395,46 @@ class SupabaseService {
           .eq('learner_id', learnerId)
           .order('scheduled_at', ascending: true);
 
-      return response
-          .map((json) => LessonModel.fromJson(json))
-          .map(
-            (lesson) => lesson.effectiveStatus == lesson.status
+      final lessons = <LessonModel>[];
+      for (final row in response) {
+        final json = Map<String, dynamic>.from(row);
+        final lessonId = json['id']?.toString() ?? '<unknown>';
+        final instructor = json['instructor'];
+        if (instructor is! Map) {
+          print(
+            'Skipping malformed lesson $lessonId: missing instructor join.',
+          );
+          continue;
+        }
+
+        final instructorMap = Map<String, dynamic>.from(instructor);
+        final user = instructorMap['user'];
+        if (user is! Map) {
+          print(
+            'Skipping malformed lesson $lessonId: missing instructor user join.',
+          );
+          continue;
+        }
+
+        try {
+          final lesson = LessonModel.fromJson({
+            ...json,
+            'instructor': {
+              ...instructorMap,
+              'user': Map<String, dynamic>.from(user),
+            },
+          });
+          lessons.add(
+            lesson.effectiveStatus == lesson.status
                 ? lesson
                 : lesson.copyWith(status: lesson.effectiveStatus),
-          )
-          .toList();
+          );
+        } catch (parseError) {
+          print('Skipping malformed lesson $lessonId: $parseError');
+        }
+      }
+
+      return lessons;
     } catch (e) {
       print('Error fetching lessons: $e');
       return [];

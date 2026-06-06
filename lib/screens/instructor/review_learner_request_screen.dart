@@ -391,6 +391,8 @@ class _ReviewLearnerRequestScreenState
     final profileImage = (learner['profile_image_url'] as String?) ??
         (request?['requested_profile_url'] as String?);
     final focus = (request?['focus'] as String?)?.trim();
+    final requestedVehicle =
+        (request?['requested_vehicle_label'] as String?)?.trim();
     final message = (request?['message'] as String?)?.trim();
     final createdAtRaw = request?['created_at']?.toString();
     final createdAt = createdAtRaw != null
@@ -508,6 +510,13 @@ class _ReviewLearnerRequestScreenState
                           if (focus != null && focus.isNotEmpty)
                             _infoTile('Focus', focus,
                                 icon: Icons.center_focus_strong),
+                          if (requestedVehicle != null &&
+                              requestedVehicle.isNotEmpty)
+                            _infoTile(
+                              'Preferred vehicle',
+                              requestedVehicle,
+                              icon: Icons.directions_car_outlined,
+                            ),
                           _infoTile(
                             'Message',
                             message?.isNotEmpty == true

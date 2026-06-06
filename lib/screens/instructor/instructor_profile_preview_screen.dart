@@ -133,6 +133,15 @@ class _InstructorProfilePreviewScreenState
     return const {};
   }
 
+  bool _readBool(String key) {
+    final value = _profile[key];
+    if (value is bool) return value;
+    if (value is String) {
+      return value.toLowerCase() == 'true';
+    }
+    return false;
+  }
+
   String _readString(String key, {String fallback = ''}) {
     final value = _profile[key];
     if (value is String && value.trim().isNotEmpty) {
@@ -188,8 +197,8 @@ class _InstructorProfilePreviewScreenState
       return;
     }
 
-    final note = await _promptRequestMessage();
-    if (note == null) return;
+    final draft = await _promptRequestMessage();
+    if (draft == null) return;
 
     setState(() => _submitting = true);
 
@@ -200,7 +209,9 @@ class _InstructorProfilePreviewScreenState
         focus: (contextData['focus'] as String?)?.trim().isNotEmpty == true
             ? contextData['focus'] as String
             : null,
-        message: note.isEmpty ? null : note,
+        message: draft.note.isEmpty ? null : draft.note,
+        requestedVehicleLabel: draft.vehicleLabel,
+        requestedVehicleType: draft.vehicleType,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -219,78 +230,161 @@ class _InstructorProfilePreviewScreenState
     }
   }
 
-  Future<String?> _promptRequestMessage() async {
+  List<_RequestVehicleOption> _requestVehicleOptions() {
+    final rawVehicles = _profile['vehicles'];
+    final options = <_RequestVehicleOption>[];
+    if (rawVehicles is List) {
+      for (final entry in rawVehicles) {
+        if (entry is Map) {
+          final type = _asNullableString(entry['type']);
+          final year = _asNullableString(entry['year']);
+          final make = _asNullableString(entry['make']);
+          final model = _asNullableString(entry['model']);
+          final plate = _asNullableString(entry['numberPlate']);
+          final summary = _concealPlate([
+            if (type != null) type,
+            [
+              if (year != null) year,
+              if (make != null) make,
+              if (model != null) model,
+            ].join(' ').trim(),
+            if (plate != null) 'Plate: $plate',
+          ].where((value) => value.isNotEmpty).join(' - ').trim());
+          if (summary.isNotEmpty) {
+            options
+                .add(_RequestVehicleOption(label: summary, type: type ?? ''));
+          }
+        } else if (entry is String) {
+          final summary = _concealPlate(entry.trim());
+          if (summary.isNotEmpty) {
+            options.add(_RequestVehicleOption(label: summary, type: ''));
+          }
+        }
+      }
+    }
+    return options;
+  }
+
+  Future<_RequestLessonDraft?> _promptRequestMessage() async {
     final controller = TextEditingController();
     final focus = (_requestContext?['focus'] as String?)?.trim();
+    final options = _requestVehicleOptions();
+    final matchedType = (_requestContext?['matchedVehicleType'] as String?)
+        ?.trim()
+        .toLowerCase();
+    _RequestVehicleOption? initialSelection;
+    if (matchedType != null && matchedType.isNotEmpty) {
+      for (final option in options) {
+        if (option.type.trim().toLowerCase() == matchedType) {
+          initialSelection = option;
+          break;
+        }
+      }
+    }
+    initialSelection ??= options.length == 1 ? options.first : null;
 
-    return showModalBottomSheet<String>(
+    return showModalBottomSheet<_RequestLessonDraft>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Request lesson',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
+      builder: (context) {
+        _RequestVehicleOption? selectedVehicle = initialSelection;
+        return StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
             ),
-            const SizedBox(height: 8),
-            Text(
-              focus != null && focus.isNotEmpty
-                  ? 'Let the instructor know what you need help with ($focus).'
-                  : 'Let the instructor know what you need help with.',
-              style: TextStyle(color: Colors.grey[700]),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Share a short note (optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                Text(
+                  'Request lesson',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  focus != null && focus.isNotEmpty
+                      ? 'Let the instructor know what you need help with ($focus).'
+                      : 'Let the instructor know what you need help with.',
+                  style: TextStyle(color: Colors.grey[700]),
+                ),
+                if (options.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<_RequestVehicleOption>(
+                    value: selectedVehicle,
+                    decoration: const InputDecoration(
+                      labelText: 'Preferred vehicle',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: options
+                        .map(
+                          (option) => DropdownMenuItem<_RequestVehicleOption>(
+                            value: option,
+                            child: Text(
+                              option.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setModalState(() => selectedVehicle = value);
+                    },
+                  ),
+                ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    hintText: 'Share a short note (optional)',
+                    border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () =>
-                        Navigator.of(context).pop(controller.text.trim()),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.ocean,
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
                     ),
-                    child: const Text('Send request'),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(
+                          _RequestLessonDraft(
+                            note: controller.text.trim(),
+                            vehicleLabel: selectedVehicle?.label,
+                            vehicleType: selectedVehicle?.type,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.ocean,
+                        ),
+                        child: const Text('Send request'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final name = _readString('name', fallback: 'Drive T Instructor');
+    final name = _readString('name', fallback: 'Drive Tutor Instructor');
     final phone = _readString('phone', fallback: 'Add your phone number');
     final bio = _readString('bio', fallback: 'Describe your experience.');
     final serviceArea =
@@ -312,6 +406,8 @@ class _InstructorProfilePreviewScreenState
     final vehicles = vehicleSummaries;
     final areas = _asStringList('areas');
     final preferredLocations = _asStringList('preferredLocations');
+    final pickupFromLearnerLocation =
+        _readBool('pickupPreference') || _readBool('pickup_preference');
     final offerings = _asStringList('offerings');
     final offeringRates = _asStringMap('offeringRates');
 
@@ -462,17 +558,32 @@ class _InstructorProfilePreviewScreenState
             content: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                areas.isNotEmpty
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: areas.map(_bullet).toList(),
-                      )
-                    : const Text(
-                        'Add the areas you teach in so learners can book with confidence.',
-                        style: TextStyle(color: Colors.grey),
+                if (pickupFromLearnerLocation) ...[
+                  const Text(
+                    'Pickup option',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ocean,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _bullet('Picks up learners from their chosen location'),
+                  if (areas.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Areas covered',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ocean,
                       ),
-                if (preferredLocations.isNotEmpty) ...[
-                  const SizedBox(height: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: areas.map(_bullet).toList(),
+                    ),
+                  ],
+                ] else if (preferredLocations.isNotEmpty) ...[
                   const Text(
                     'Preferred pickup spots',
                     style: TextStyle(
@@ -485,7 +596,31 @@ class _InstructorProfilePreviewScreenState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: preferredLocations.map(_bullet).toList(),
                   ),
-                ],
+                  if (areas.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Areas covered',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ocean,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: areas.map(_bullet).toList(),
+                    ),
+                  ],
+                ] else if (areas.isNotEmpty) ...[
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: areas.map(_bullet).toList(),
+                  ),
+                ] else
+                  const Text(
+                    'Add the areas you teach in so learners can book with confidence.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
               ],
             ),
           ),
@@ -723,4 +858,26 @@ class _InfoCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RequestLessonDraft {
+  const _RequestLessonDraft({
+    required this.note,
+    this.vehicleLabel,
+    this.vehicleType,
+  });
+
+  final String note;
+  final String? vehicleLabel;
+  final String? vehicleType;
+}
+
+class _RequestVehicleOption {
+  const _RequestVehicleOption({
+    required this.label,
+    required this.type,
+  });
+
+  final String label;
+  final String type;
 }

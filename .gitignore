@@ -89,6 +89,13 @@ app.*.map.json
 .env.test.local
 .env.production.local
 
+# Local-only folders that live outside the mobile app repository.
+Website-main/
+website-main2/
+admin_dashboard/
+flutter/
+flutter_windows/
+
 # Supabase
 .supabase/
 

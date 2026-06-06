@@ -1,10 +1,10 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
@@ -12,6 +12,9 @@ import '../../models/lesson_model.dart';
 import '../../models/location_preference.dart';
 import '../../models/user_model.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/learner_action_tile.dart';
+import '../../widgets/learner_bottom_nav_bar.dart';
+import '../../widgets/lesson_spotlight_card.dart';
 import '../instructor/find_instructor_screen.dart';
 import '../lessons/my_lessons_screen.dart';
 import '../progress/progress_tracker_screen.dart';
@@ -715,14 +718,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       body: body,
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: LearnerBottomNavBar(
         currentIndex: _selectedIndex,
         onTap: (index) {
           if (index == 1 && _selectedFocus == null && _isLearner) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
-                    'Select a training focus to see tailored instructors.'),
+                  'Select a training focus to see tailored instructors.',
+                ),
                 backgroundColor: AppColors.info,
               ),
             );
@@ -731,36 +735,6 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           _openTab(index);
         },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppColors.ocean,
-        unselectedItemColor: Colors.grey[500],
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search_outlined),
-            activeIcon: Icon(Icons.search),
-            label: 'Find',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.schedule_outlined),
-            activeIcon: Icon(Icons.schedule),
-            label: 'Lessons',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.track_changes_outlined),
-            activeIcon: Icon(Icons.track_changes),
-            label: 'Progress',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
       ),
     );
   }
@@ -790,14 +764,6 @@ class HomeDashboard extends StatelessWidget {
   final VoidCallback onNotifications;
   final bool hasNewNotifications;
 
-  static const List<String> _adImageUrls = [
-    'https://images.unsplash.com/photo-1502877828070-33dc21f37ada?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1517142089942-ba376ce32a0b?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1503736334956-4c8f8e92946d?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1200&q=80',
-  ];
-
   const HomeDashboard({
     super.key,
     required this.name,
@@ -826,258 +792,158 @@ class HomeDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials =
-        name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
-    final hasProfileImage =
-        profileImageUrl != null && profileImageUrl!.trim().isNotEmpty;
-
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leadingWidth: isLearner ? 68 : null,
-        leading: isLearner
-            ? Padding(
-                padding: const EdgeInsets.only(left: 16),
-                child: GestureDetector(
-                  onTap: onProfile,
-                  child: CircleAvatar(
-                    radius: 22,
-                    backgroundColor: AppColors.ocean.withOpacity(0.12),
-                    backgroundImage:
-                        hasProfileImage ? NetworkImage(profileImageUrl!) : null,
-                    child: hasProfileImage
-                        ? null
-                        : Text(
-                            initials,
-                            style: const TextStyle(
-                              color: AppColors.ocean,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: AppColors.grey50),
+      child: SafeArea(
+        child: Column(
+          children: [
+            _buildGreetingCard(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildQuickActions(),
+                    const SizedBox(height: 30),
+                    _buildUpcomingLessons(),
+                  ],
                 ),
-              )
-            : null,
-        titleSpacing: isLearner ? 0 : null,
-        title: const Text('Drive - T'),
-        actions: [
-          IconButton(
-            tooltip: 'Notifications',
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications_outlined),
-                if (hasNewNotifications)
-                  Positioned(
-                    right: -2,
-                    top: -2,
-                    child: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            onPressed: onNotifications,
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: AnimationLimiter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: AnimationConfiguration.toStaggeredList(
-              duration: const Duration(milliseconds: 500),
-              childAnimationBuilder: (widget) => SlideAnimation(
-                verticalOffset: 50.0,
-                child: FadeInAnimation(child: widget),
               ),
-              children: [
-                _buildGreetingCard(),
-                const SizedBox(height: 20),
-                if (isLearner) _buildFocusCard(),
-                if (isLearner) const SizedBox(height: 20),
-                _buildQuickActions(),
-                const SizedBox(height: 24),
-                _buildUpcomingLessons(),
-                const SizedBox(height: 24),
-                _buildProgressOverview(),
-                const SizedBox(height: 24),
-                _buildAdCarousel(),
-              ],
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildGreetingCard() {
-    final hasLocation = locationLabel != null && locationLabel!.isNotEmpty;
-
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.primaryBlue,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.ocean.withOpacity(0.25),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+      decoration: const BoxDecoration(
+        color: AppColors.card,
+        border: Border(
+          bottom: BorderSide(color: AppColors.border),
+        ),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Hey $name 👋',
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Hi, $name',
+                  style: const TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.foreground,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _learnerRoleLine(),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                    color: AppColors.mutedForeground,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Let’s get you road-ready today.',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.9),
+          GestureDetector(
+            onTap: onProfile,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 38,
+                  backgroundColor: const Color(0xFF5B6BC8),
+                  backgroundImage: profileImageUrl != null &&
+                          profileImageUrl!.trim().isNotEmpty
+                      ? NetworkImage(profileImageUrl!.trim())
+                      : null,
+                  child: profileImageUrl != null &&
+                          profileImageUrl!.trim().isNotEmpty
+                      ? null
+                      : Text(
+                          name.trim().isNotEmpty
+                              ? name.trim()[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                ),
+                const Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      shape: BoxShape.circle,
+                      border: Border.fromBorderSide(
+                        BorderSide(color: Colors.white, width: 3),
+                      ),
+                    ),
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Center(
+                        child: Text(
+                          'L',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildFocusCard() {
-    final focusLabel = _formatFocus(selectedFocus);
-    final hasFocus = selectedFocus != null && selectedFocus!.isNotEmpty;
-
-    return GestureDetector(
-      onTap: onChangeFocus,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.grey[200]!),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppColors.golden.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.emoji_events,
-                color: AppColors.ocean,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    focusLabel,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ocean,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    hasFocus
-                        ? 'Tap to change your training focus.'
-                        : 'Pick G2, G, or Practice to see matching instructors.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios,
-                size: 18, color: AppColors.ocean),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAdCarousel() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
-        Text(
-          'Essentials',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppColors.ocean,
-          ),
-        ),
-        SizedBox(height: 12),
-        _AdCarousel(imageUrls: _adImageUrls),
-      ],
     );
   }
 
   Widget _buildQuickActions() {
+    final scheduledCount =
+        upcomingLessons.length + (ongoingLesson != null ? 1 : 0);
+    final progressPercent = totalSkills <= 0
+        ? 0
+        : ((completedSkills.clamp(0, totalSkills) / totalSkills) * 100).round();
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Quick Actions',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppColors.ocean,
-          ),
-        ),
-        const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
-              child: _QuickActionCard(
-                title: 'Book Lesson',
-                subtitle: 'Find an instructor',
-                icon: Icons.add_circle_outline,
-                color: AppColors.ocean,
+              child: LearnerActionTile(
+                title: 'Find',
+                subtitle: 'Instructors',
+                icon: Icons.record_voice_over_rounded,
                 onTap: onBookLesson,
+                isPrimary: true,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _QuickActionCard(
-                title: 'My Lessons',
-                subtitle: 'See schedule',
-                icon: Icons.schedule_outlined,
-                color: AppColors.golden,
+              child: LearnerActionTile(
+                title: 'Schedule',
+                subtitle: '$scheduledCount upcoming',
+                icon: Icons.calendar_month_rounded,
                 onTap: onMyLessons,
+                accentColor: AppColors.primary,
               ),
             ),
           ],
@@ -1086,22 +952,22 @@ class HomeDashboard extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: _QuickActionCard(
+              child: LearnerActionTile(
                 title: 'Progress',
-                subtitle: 'Track milestones',
-                icon: Icons.track_changes_outlined,
-                color: AppColors.success,
+                subtitle: '$progressPercent% to Goal',
+                icon: Icons.arrow_outward_rounded,
                 onTap: onProgress,
+                accentColor: AppColors.accent,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _QuickActionCard(
-                title: 'Profile',
-                subtitle: 'Manage account',
-                icon: Icons.person_outline,
-                color: AppColors.info,
-                onTap: onProfile,
+              child: LearnerActionTile(
+                title: 'Theory',
+                subtitle: 'Practice tests',
+                icon: Icons.menu_book_rounded,
+                onTap: onChangeFocus,
+                accentColor: AppColors.grey700,
               ),
             ),
           ],
@@ -1111,40 +977,28 @@ class HomeDashboard extends StatelessWidget {
   }
 
   Widget _buildUpcomingLessons() {
-    Widget wrapInCard(Widget child) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[200]!),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: child,
-      );
-    }
-
     final header = Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         const Text(
-          'Upcoming Lessons',
+          'Upcoming Lesson',
           style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppColors.ocean,
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: AppColors.foreground,
           ),
         ),
         TextButton(
           onPressed: onMyLessons,
-          child: const Text('View All'),
+          child: const Text(
+            'VIEW ALL',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+              color: AppColors.primary,
+            ),
+          ),
         ),
       ],
     );
@@ -1155,15 +1009,19 @@ class HomeDashboard extends StatelessWidget {
         children: [
           header,
           const SizedBox(height: 16),
-          wrapInCard(
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: const CircularProgressIndicator(strokeWidth: 2.5),
-                ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: const CircularProgressIndicator(strokeWidth: 2.5),
               ),
             ),
           ),
@@ -1177,8 +1035,15 @@ class HomeDashboard extends StatelessWidget {
         children: [
           header,
           const SizedBox(height: 16),
-          wrapInCard(
-            Column(
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -1220,66 +1085,52 @@ class HomeDashboard extends StatelessWidget {
         children: [
           header,
           const SizedBox(height: 16),
-          wrapInCard(_buildNoLessonsCta()),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: _buildNoLessonsCta(),
+          ),
         ],
       );
     }
 
-    final tiles = <Widget>[];
-    if (ongoingLesson != null) {
-      tiles.add(
-        _buildLessonTile(
-          lesson: ongoingLesson!,
-          statusLabel: 'In progress',
-          accentColor: AppColors.golden,
-        ),
-      );
-    }
-
-    for (final lesson in upcomingLessons.take(2)) {
-      tiles.add(
-        _buildLessonTile(
-          lesson: lesson,
-          statusLabel: 'Scheduled',
-          accentColor: AppColors.ocean,
-        ),
-      );
-    }
-
-    if (upcomingLessons.length > 2) {
-      final remaining = upcomingLessons.length - 2;
-      tiles.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            '+ $remaining more lesson${remaining == 1 ? '' : 's'} scheduled',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-          ),
-        ),
-      );
-    }
+    final lesson = ongoingLesson ?? upcomingLessons.first;
+    final phone = lesson.instructor.user.phone?.trim();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         header,
         const SizedBox(height: 16),
-        wrapInCard(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var i = 0; i < tiles.length; i++) ...[
-                if (i > 0) const SizedBox(height: 16),
-                tiles[i],
-              ],
-            ],
-          ),
+        LessonSpotlightCard(
+          lesson: lesson,
+          onDetails: onMyLessons,
+          onCall: phone == null || phone.isEmpty
+              ? null
+              : () async {
+                  final uri = Uri(scheme: 'tel', path: phone);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri);
+                  }
+                },
+          note:
+              'You will be able to find and request other instructors after your first class.',
         ),
       ],
     );
+  }
+
+  String _learnerRoleLine() {
+    final focus = selectedFocus?.trim();
+    if (focus == 'G2') return 'ONTARIO G2 LEARNER';
+    if (focus == 'G') return 'ONTARIO G LEARNER';
+    if (focus == 'PR') return 'ONTARIO REFRESHER LEARNER';
+    return 'ONTARIO LEARNER';
   }
 
   Widget _buildNoLessonsCta() {
@@ -1346,303 +1197,6 @@ class HomeDashboard extends StatelessWidget {
         ...actionButtons,
       ],
     );
-  }
-
-  Widget _buildLessonTile({
-    required LessonModel lesson,
-    required String statusLabel,
-    required Color accentColor,
-  }) {
-    final instructorName = _lessonInstructorName(lesson);
-    final initials = _lessonInstructorInitials(lesson);
-    final timeLabel = _lessonTimeRange(lesson);
-    final durationLabel = _lessonDurationLabel(lesson);
-    final locationLabel = lesson.location?.trim().isNotEmpty == true
-        ? lesson.location!.trim()
-        : 'Location TBD';
-    final profileImageUrl = lesson.instructor.user.profileImageUrl;
-    final hasProfileImage =
-        profileImageUrl != null && profileImageUrl.trim().isNotEmpty;
-
-    final highlight = statusLabel.toLowerCase().contains('progress');
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: highlight ? accentColor.withOpacity(0.12) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: accentColor.withOpacity(highlight ? 0.35 : 0.15)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: accentColor.withOpacity(0.12),
-                backgroundImage:
-                    hasProfileImage ? NetworkImage(profileImageUrl!) : null,
-                child: hasProfileImage
-                    ? null
-                    : Text(
-                        initials,
-                        style: TextStyle(
-                          color: accentColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      instructorName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      timeLabel,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: accentColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            icon: Icons.timer_outlined,
-            label: durationLabel,
-          ),
-          const SizedBox(height: 8),
-          _buildInfoRow(
-            icon: Icons.location_on_outlined,
-            label: locationLabel,
-          ),
-        ],
-      ),
-    );
-  }
-
-  DateTime? _combineDateAndTime(DateTime date, String rawTime) {
-    final formats = [
-      DateFormat('h:mm a'),
-      DateFormat('hh:mm a'),
-      DateFormat('HH:mm'),
-      DateFormat('H:mm'),
-      DateFormat('HH:mm:ss'),
-    ];
-
-    for (final format in formats) {
-      try {
-        final parsed = format.parse(rawTime.trim());
-        return DateTime(
-            date.year, date.month, date.day, parsed.hour, parsed.minute);
-      } catch (_) {
-        continue;
-      }
-    }
-    return null;
-  }
-
-  String _lessonTimeRange(LessonModel lesson) {
-    final start = _combineDateAndTime(lesson.scheduledDate, lesson.startTime);
-    final end = _combineDateAndTime(lesson.scheduledDate, lesson.endTime);
-    final dateLabel = DateFormat('EEE, MMM d').format(lesson.scheduledDate);
-    if (start != null && end != null) {
-      final startLabel = DateFormat('h:mm a').format(start);
-      final endLabel = DateFormat('h:mm a').format(end);
-      return '$dateLabel - $startLabel - $endLabel';
-    }
-    return '$dateLabel - ${lesson.startTime} - ${lesson.endTime}';
-  }
-
-  String _lessonDurationLabel(LessonModel lesson) {
-    final duration = lesson.duration;
-    if (duration <= 0) {
-      return 'Duration to be confirmed';
-    }
-    final formatted = duration % 1 == 0
-        ? duration.toStringAsFixed(0)
-        : duration.toStringAsFixed(1);
-    final suffix = duration == 1 ? 'hr' : 'hrs';
-    return '$formatted $suffix';
-  }
-
-  String _lessonInstructorName(LessonModel lesson) {
-    final first = lesson.instructor.user.firstName.trim();
-    final last = lesson.instructor.user.lastName.trim();
-    final combined = '$first $last'.trim();
-    if (combined.isNotEmpty) {
-      return combined;
-    }
-    return lesson.instructor.user.email;
-  }
-
-  String _lessonInstructorInitials(LessonModel lesson) {
-    final first = lesson.instructor.user.firstName.trim();
-    final last = lesson.instructor.user.lastName.trim();
-    if (first.isNotEmpty && last.isNotEmpty) {
-      return '${first[0]}${last[0]}'.toUpperCase();
-    }
-    if (first.isNotEmpty) {
-      return first[0].toUpperCase();
-    }
-    final email = lesson.instructor.user.email;
-    if (email.isNotEmpty) {
-      return email[0].toUpperCase();
-    }
-    return '?';
-  }
-
-  Widget _buildInfoRow({required IconData icon, required String label}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 18, color: Colors.grey[600]),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[700],
-              height: 1.35,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProgressOverview() {
-    final clampedTotal = totalSkills <= 0 ? 1 : totalSkills;
-    final validCompleted = completedSkills.clamp(0, clampedTotal);
-    final progressValue =
-        clampedTotal == 0 ? 0.0 : validCompleted / clampedTotal;
-    final completedLabel = '$validCompleted/$clampedTotal';
-    final nextLabel = nextSkillName ?? 'All skills completed';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Progress Overview',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppColors.ocean,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Skills Completed',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    completedLabel,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.ocean,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (isProgressLoading)
-                const LinearProgressIndicator()
-              else ...[
-                LinearProgressIndicator(
-                  value: progressValue,
-                  backgroundColor: Colors.grey[200],
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(AppColors.ocean),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Next: $nextLabel',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: onProgress,
-                      child: const Text('View Details'),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _formatFocus(String? focus) {
-    switch (focus) {
-      case 'G2':
-        return 'G2 Road Test';
-      case 'G':
-        return 'G Road Test';
-      case 'PR':
-        return 'Practice Sessions';
-      default:
-        return 'Choose training focus';
-    }
   }
 }
 
@@ -1857,286 +1411,6 @@ class _NotificationMessage extends StatelessWidget {
               const SizedBox(height: 12),
               action!,
             ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AdCarousel extends StatefulWidget {
-  const _AdCarousel({
-    required this.imageUrls,
-    this.intervalSeconds = 6,
-  });
-
-  final List<String> imageUrls;
-  final int intervalSeconds;
-
-  @override
-  State<_AdCarousel> createState() => _AdCarouselState();
-}
-
-class _AdCarouselState extends State<_AdCarousel> {
-  late final PageController _pageController;
-  Timer? _timer;
-  int _currentPage = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-    _startAutoScroll();
-  }
-
-  @override
-  void didUpdateWidget(covariant _AdCarousel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.intervalSeconds != oldWidget.intervalSeconds ||
-        widget.imageUrls.length != oldWidget.imageUrls.length) {
-      _restartAutoScroll();
-    }
-  }
-
-  void _restartAutoScroll() {
-    _timer?.cancel();
-    _startAutoScroll();
-  }
-
-  void _startAutoScroll() {
-    if (widget.imageUrls.isEmpty) return;
-    _timer = Timer.periodic(
-      Duration(seconds: widget.intervalSeconds),
-      (_) => _goToNextPage(),
-    );
-  }
-
-  void _goToNextPage() {
-    if (!mounted || widget.imageUrls.isEmpty) return;
-    final nextPage = (_currentPage + 1) % widget.imageUrls.length;
-    _pageController.animateToPage(
-      nextPage,
-      duration: const Duration(milliseconds: 450),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.imageUrls.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      children: [
-        Container(
-          height: 170,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: PageView.builder(
-              controller: _pageController,
-              onPageChanged: (index) => setState(() => _currentPage = index),
-              itemCount: widget.imageUrls.length,
-              itemBuilder: (context, index) =>
-                  _AdBannerCard(imageUrl: widget.imageUrls[index]),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            for (var i = 0; i < widget.imageUrls.length; i++)
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: i == _currentPage ? 16 : 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color:
-                      i == _currentPage ? AppColors.ocean : Colors.grey[300],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _AdBannerCard extends StatelessWidget {
-  const _AdBannerCard({required this.imageUrl});
-
-  final String imageUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned.fill(
-          child: Image.network(
-            imageUrl,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Container(
-                color: Colors.grey[200],
-                child: const Center(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  ),
-                ),
-              );
-            },
-            errorBuilder: (_, __, ___) => Container(
-              color: Colors.grey[200],
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.image_not_supported_outlined,
-                      size: 32, color: Colors.black45),
-                  SizedBox(height: 6),
-                  Text(
-                    'Ad unavailable',
-                    style: TextStyle(
-                      color: Colors.black54,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [
-                  Colors.black.withOpacity(0.5),
-                  Colors.black.withOpacity(0.1),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 10,
-          right: 10,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: const [
-                Icon(Icons.campaign_outlined,
-                    size: 16, color: AppColors.ocean),
-                SizedBox(width: 6),
-                Text(
-                  'Ad space',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ocean,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _QuickActionCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _QuickActionCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 20,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
           ],
         ),
       ),

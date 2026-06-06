@@ -20,6 +20,7 @@ class LessonModel {
     required this.duration,
     required this.cost,
     required this.status,
+    this.focus,
     this.notes,
     this.location,
     required this.createdAt,
@@ -43,7 +44,7 @@ class LessonModel {
       return 1.0;
     })();
 
-    double _parseCost(dynamic value) {
+    double parseCost(dynamic value) {
       if (value is num) return value.toDouble();
       if (value is String) {
         final parsed = double.tryParse(value);
@@ -61,8 +62,9 @@ class LessonModel {
       startTime: json['start_time'] as String,
       endTime: json['end_time'] as String,
       duration: durationHours,
-      cost: _parseCost(json['cost']),
+      cost: parseCost(json['cost']),
       status: LessonModel.parseStatus(json['status'] as String?),
+      focus: json['focus'] as String?,
       notes: json['notes'] as String?,
       location: _parseLocation(json),
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -78,6 +80,7 @@ class LessonModel {
   final double duration; // in hours
   final double cost;
   final LessonStatus status;
+  final String? focus;
   final String? notes;
   final String? location;
   final DateTime createdAt;
@@ -94,6 +97,7 @@ class LessonModel {
       'duration_hours': _normalizeDuration(duration),
       'cost': cost,
       'status': status.name,
+      'focus': focus,
       'notes': notes,
       'pickup_location': location,
       'created_at': createdAt.toIso8601String(),
@@ -127,6 +131,7 @@ class LessonModel {
     double? duration,
     double? cost,
     LessonStatus? status,
+    String? focus,
     String? notes,
     String? location,
     DateTime? createdAt,
@@ -142,6 +147,7 @@ class LessonModel {
       duration: duration ?? this.duration,
       cost: cost ?? this.cost,
       status: status ?? this.status,
+      focus: focus ?? this.focus,
       notes: notes ?? this.notes,
       location: location ?? this.location,
       createdAt: createdAt ?? this.createdAt,
@@ -185,12 +191,9 @@ class LessonModel {
     final localDate = scheduledDate.toLocal();
     final start = _combineDateAndTime(localDate, startTime);
     final end = _combineDateAndTime(localDate, endTime) ??
-        (start != null
-            ? start.add(Duration(
-                minutes:
-                    (durationHours != null ? durationHours * 60 : 60).round(),
-              ))
-            : null);
+        start?.add(Duration(
+          minutes: (durationHours != null ? durationHours * 60 : 60).round(),
+        ));
 
     if (end != null && !end.isAfter(clock)) {
       return LessonStatus.completed;
@@ -237,8 +240,9 @@ class LessonModel {
   }
 
   static String? _parseLocation(Map<String, dynamic> json) {
-    final rawLocation =
-        json.containsKey('pickup_location') ? json['pickup_location'] : json['location'];
+    final rawLocation = json.containsKey('pickup_location')
+        ? json['pickup_location']
+        : json['location'];
     if (rawLocation is String) {
       final trimmed = rawLocation.trim();
       return trimmed.isEmpty ? null : trimmed;
