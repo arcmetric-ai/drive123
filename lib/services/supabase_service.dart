@@ -2505,6 +2505,50 @@ class SupabaseService {
     }
   }
 
+  static Future<LessonModel?> updateScheduledLesson({
+    required String lessonId,
+    required DateTime scheduledDate,
+    required String startTime,
+    required String endTime,
+    required double duration,
+    double? cost,
+    String? notes,
+    String? location,
+    String? focus,
+    DateTime? lessonDate,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'scheduled_at': scheduledDate.toIso8601String(),
+        'start_time': startTime,
+        'end_time': endTime,
+        'duration_hours': _durationHoursToInt(duration),
+        if (cost != null) 'cost': cost,
+        if (notes != null) 'notes': notes,
+        if (location != null) 'pickup_location': location,
+        if (focus != null) 'focus': focus,
+        if (lessonDate != null)
+          'lesson_date': DateTime(
+            lessonDate.year,
+            lessonDate.month,
+            lessonDate.day,
+          ).toIso8601String(),
+      };
+
+      final response = await _client
+          .from('lessons')
+          .update(payload)
+          .eq('id', lessonId)
+          .select('*, instructor:instructor_profiles(*, user:profiles(*))')
+          .single();
+
+      return LessonModel.fromJson(response);
+    } catch (e) {
+      print('Error updating scheduled lesson: $e');
+      return null;
+    }
+  }
+
   static Future<int> getMonthlyCancellationCount({
     required String userId,
     required bool isInstructor,

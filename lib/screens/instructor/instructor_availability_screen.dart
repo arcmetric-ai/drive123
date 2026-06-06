@@ -103,12 +103,17 @@ class _InstructorAvailabilityScreenState
 
       _learnerOptions
         ..clear()
-        ..addEntries(learners
-            .whereType<Map<dynamic, dynamic>>()
-            .map((raw) => Map<String, dynamic>.from(
-                raw.map((key, value) => MapEntry(key.toString(), value))))
-            .map((data) => _LearnerOption.fromMap(data))
-            .map((option) => MapEntry(option.id, option)));
+        ..addEntries(
+          learners
+              .whereType<Map<dynamic, dynamic>>()
+              .map(
+                (raw) => Map<String, dynamic>.from(
+                  raw.map((key, value) => MapEntry(key.toString(), value)),
+                ),
+              )
+              .map((data) => _LearnerOption.fromMap(data))
+              .map((option) => MapEntry(option.id, option)),
+        );
 
       setState(() {
         _committedSlots = lessons;
@@ -263,14 +268,21 @@ class _InstructorAvailabilityScreenState
         return _CommittedSlotSheet(
           slot: slot,
           onCancel: () => _cancelLesson(slot),
+          onReplace: () => _replaceCommittedLesson(slot),
+          onMove: () => _moveCommittedLesson(slot),
         );
       },
     );
   }
 
-  Future<void> _cancelLesson(_ScheduledSlot slot) async {
+  Future<bool> _confirmLessonCancellation(
+    _ScheduledSlot slot, {
+    String title = 'Cancel lesson?',
+    String confirmLabel = 'Cancel lesson',
+    String? message,
+  }) async {
     final lessonId = slot.lessonId;
-    if (lessonId == null) return;
+    if (lessonId == null) return false;
     final instructorId = SupabaseService.currentUser?.id;
     int? remainingCancels;
     if (instructorId != null) {
@@ -283,6 +295,8 @@ class _InstructorAvailabilityScreenState
         remainingCancels = remaining < 0 ? 0 : remaining;
       } catch (_) {}
     }
+
+    if (!mounted) return false;
 
     if (remainingCancels != null && remainingCancels <= 0) {
       await showDialog<void>(
@@ -300,19 +314,20 @@ class _InstructorAvailabilityScreenState
           ],
         ),
       );
-      return;
+      return false;
     }
 
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Cancel lesson?'),
+            title: Text(title),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Cancel the lesson with ${slot.learnerName} on ${_formatDateTime(slot.start)}?',
+                  message ??
+                      'Cancel the lesson with ${slot.learnerName} on ${_formatDateTime(slot.start)}?',
                 ),
                 const SizedBox(height: 12),
                 if (remainingCancels != null)
@@ -331,12 +346,19 @@ class _InstructorAvailabilityScreenState
               TextButton(
                 onPressed: () => Navigator.of(context).pop(true),
                 style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                child: const Text('Cancel lesson'),
+                child: Text(confirmLabel),
               ),
             ],
           ),
         ) ??
         false;
+    return confirmed;
+  }
+
+  Future<void> _cancelLesson(_ScheduledSlot slot) async {
+    final lessonId = slot.lessonId;
+    if (lessonId == null) return;
+    final confirmed = await _confirmLessonCancellation(slot);
     if (!confirmed) return;
 
     setState(() => _loading = true);
@@ -346,8 +368,9 @@ class _InstructorAvailabilityScreenState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-              Text('Lesson with ${slot.learnerName} cancelled successfully.'),
+          content: Text(
+            'Lesson with ${slot.learnerName} cancelled successfully.',
+          ),
         ),
       );
       AppNotifier.instance.notifyLessonsChanged();
@@ -363,18 +386,180 @@ class _InstructorAvailabilityScreenState
     }
   }
 
+  Future<void> _replaceCommittedLesson(_ScheduledSlot slot) async {
+    final lessonId = slot.lessonId;
+    final instructorId = SupabaseService.currentUser?.id;
+    if (lessonId == null || instructorId == null) return;
+
+    final availableLearners = _availableLearnersForSlot(
+      slot.start,
+    ).where((learner) => learner.id != slot.learnerId).toList();
+    if (availableLearners.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No other learners are available for this booked slot.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final result = await showModalBottomSheet<_SlotDraftResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        return _SlotEditorSheet(
+          slotStart: slot.start,
+          learnerOptions: availableLearners,
+          title: 'Replace ${slot.learnerName}',
+          saveLabel: 'Replace lesson',
+        );
+      },
+    );
+    if (!mounted || result == null || result.learnerId == null) return;
+
+    final learner = _learnerOptions[result.learnerId];
+    if (learner == null) return;
+    final confirmed = await _confirmLessonCancellation(
+      slot,
+      title: 'Replace booked lesson?',
+      confirmLabel: 'Replace lesson',
+      message:
+          'This will cancel ${slot.learnerName} at ${_formatDateTime(slot.start)} and book ${learner.displayName} in this slot.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _loading = true);
+    try {
+      final cancelled = await SupabaseService.updateLessonStatus(
+        lessonId,
+        'cancelled',
+      );
+      if (cancelled == null) {
+        throw Exception('Existing lesson could not be cancelled.');
+      }
+      final created = await _createLessonForDraft(
+        draft: _ScheduledSlot(
+          start: slot.start,
+          durationMinutes: result.durationMinutes ?? slot.durationMinutes,
+          learnerId: learner.id,
+          learnerName: learner.displayName,
+          learnerColors: learner.colors,
+          isDraft: true,
+          notes: result.notes,
+        ),
+        instructorId: instructorId,
+      );
+      if (created == null) {
+        throw Exception('Replacement lesson could not be created.');
+      }
+      await _loadWeekSchedule();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${slot.learnerName} cancelled. ${learner.displayName} booked.',
+          ),
+        ),
+      );
+      AppNotifier.instance.notifyLessonsChanged();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to replace lesson: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _moveCommittedLesson(_ScheduledSlot slot) async {
+    final lessonId = slot.lessonId;
+    if (lessonId == null) return;
+
+    final target = await showModalBottomSheet<_MoveSlotResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        return _MoveLessonSheet(
+          learnerName: slot.learnerName,
+          currentStart: slot.start,
+          candidateStarts: _moveTargetsForLearner(slot),
+        );
+      },
+    );
+    if (!mounted || target == null) return;
+
+    final start = target.start;
+    final end = start.add(Duration(minutes: slot.durationMinutes));
+    final durationHours = slot.durationMinutes / 60.0;
+    final focus = _resolveFocusForLearner(slot.learnerId);
+    final pickup = _resolvePickupForLearner(slot.learnerId);
+    final cost = _deriveRate(_instructorProfile, focus) * durationHours;
+
+    setState(() => _loading = true);
+    try {
+      final updated = await SupabaseService.updateScheduledLesson(
+        lessonId: lessonId,
+        scheduledDate: start,
+        startTime: DateFormat('HH:mm').format(start),
+        endTime: DateFormat('HH:mm').format(end),
+        duration: durationHours,
+        cost: cost,
+        notes: (slot.notes?.isNotEmpty ?? false)
+            ? slot.notes
+            : 'Moved via weekly planner',
+        location: pickup,
+        focus: focus,
+        lessonDate: DateTime(start.year, start.month, start.day),
+      );
+      if (updated == null) {
+        throw Exception('Lesson could not be moved.');
+      }
+      await _loadWeekSchedule();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${slot.learnerName} moved to ${_formatDateTime(start)}.',
+          ),
+        ),
+      );
+      AppNotifier.instance.notifyLessonsChanged();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to move lesson: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   List<_LearnerOption> _availableLearnersForSlot(DateTime slotStart) {
     final dayKey = DateFormat('EEEE').format(slotStart).toLowerCase();
     return _learnerOptions.values
         .where((option) => option.isAvailableForSlot(dayKey, slotStart, 15))
-        .where((option) =>
-            !_learnerHasSlot(option.id, slotStart, includeDrafts: true))
+        .where(
+          (option) =>
+              !_learnerHasSlot(option.id, slotStart, includeDrafts: true),
+        )
         .toList()
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
   }
 
-  bool _learnerHasSlot(String learnerId, DateTime slotStart,
-      {bool includeDrafts = false}) {
+  bool _learnerHasSlot(
+    String learnerId,
+    DateTime slotStart, {
+    bool includeDrafts = false,
+  }) {
     for (final slot in _committedSlots) {
       if (slot.learnerId == learnerId &&
           slot.start.isAtSameMomentAs(slotStart) &&
@@ -393,36 +578,69 @@ class _InstructorAvailabilityScreenState
     return false;
   }
 
+  List<DateTime> _moveTargetsForLearner(_ScheduledSlot slot) {
+    final targets = <DateTime>[];
+    for (var dayOffset = 0; dayOffset < 7; dayOffset++) {
+      final day = _weekStart.add(Duration(days: dayOffset));
+      final dayKey = DateFormat('EEEE').format(day).toLowerCase();
+      final learner = _learnerOptions[slot.learnerId];
+      if (learner == null) continue;
+      for (final candidate in _generateSlotsForDay(day)) {
+        if (candidate.isAtSameMomentAs(slot.start)) continue;
+        if (_resolveSlot(candidate).state != _SlotState.empty) continue;
+        if (!learner.isAvailableForSlot(
+          dayKey,
+          candidate,
+          slot.durationMinutes,
+        )) {
+          continue;
+        }
+        targets.add(candidate);
+      }
+    }
+    targets.sort((a, b) => a.compareTo(b));
+    return targets;
+  }
+
+  Future<dynamic> _createLessonForDraft({
+    required _ScheduledSlot draft,
+    required String instructorId,
+  }) async {
+    final start = draft.start;
+    final durationHours = draft.durationMinutes / 60.0;
+    final end = start.add(Duration(minutes: draft.durationMinutes));
+    final focus = _resolveFocusForLearner(draft.learnerId);
+    final pickup = _resolvePickupForLearner(draft.learnerId);
+    final cost = _deriveRate(_instructorProfile, focus) * durationHours;
+    final lessonDate = DateTime(start.year, start.month, start.day);
+    return SupabaseService.createLesson(
+      learnerId: draft.learnerId,
+      instructorId: instructorId,
+      scheduledDate: start,
+      startTime: DateFormat('HH:mm').format(start),
+      endTime: DateFormat('HH:mm').format(end),
+      duration: durationHours,
+      cost: cost,
+      notes: (draft.notes?.isNotEmpty ?? false)
+          ? draft.notes
+          : 'Scheduled via weekly planner',
+      location: pickup,
+      focus: focus,
+      lessonDate: lessonDate,
+    );
+  }
+
   Future<void> _sendSchedule() async {
     if (_draftSlots.isEmpty) return;
     final instructorId = SupabaseService.currentUser?.id;
     if (instructorId == null) return;
-    final instructorProfile = _instructorProfile;
 
     setState(() => _sending = true);
     try {
       for (final draft in List<_ScheduledSlot>.from(_draftSlots)) {
-        final start = draft.start;
-        final durationHours = draft.durationMinutes / 60.0;
-        final end = start.add(Duration(minutes: draft.durationMinutes));
-        final focus = _resolveFocusForLearner(draft.learnerId);
-        final pickup = _resolvePickupForLearner(draft.learnerId);
-        final cost = _deriveRate(instructorProfile, focus) * durationHours;
-        final lessonDate = DateTime(start.year, start.month, start.day);
-        final result = await SupabaseService.createLesson(
-          learnerId: draft.learnerId,
+        final result = await _createLessonForDraft(
+          draft: draft,
           instructorId: instructorId,
-          scheduledDate: start,
-          startTime: DateFormat('HH:mm').format(start),
-          endTime: DateFormat('HH:mm').format(end),
-          duration: durationHours,
-          cost: cost,
-          notes: (draft.notes?.isNotEmpty ?? false)
-              ? draft.notes
-              : 'Scheduled via weekly planner',
-          location: pickup,
-          focus: focus,
-          lessonDate: lessonDate,
         );
         if (result != null) {
           _committedSlots.add(
@@ -438,9 +656,7 @@ class _InstructorAvailabilityScreenState
       if (!mounted) return;
       setState(() => _sending = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Schedule sent to learners.'),
-        ),
+        const SnackBar(content: Text('Schedule sent to learners.')),
       );
       AppNotifier.instance.notifyLessonsChanged();
       await _loadWeekSchedule();
@@ -460,8 +676,9 @@ class _InstructorAvailabilityScreenState
     if (_weekOffset == 0) return;
     setState(() {
       _weekOffset -= 1;
-      _weekStart =
-          _startOfWeek(DateTime.now()).add(Duration(days: 7 * _weekOffset));
+      _weekStart = _startOfWeek(
+        DateTime.now(),
+      ).add(Duration(days: 7 * _weekOffset));
     });
     _loadWeekSchedule();
   }
@@ -470,8 +687,9 @@ class _InstructorAvailabilityScreenState
     if (_weekOffset >= 1) return;
     setState(() {
       _weekOffset += 1;
-      _weekStart =
-          _startOfWeek(DateTime.now()).add(Duration(days: 7 * _weekOffset));
+      _weekStart = _startOfWeek(
+        DateTime.now(),
+      ).add(Duration(days: 7 * _weekOffset));
     });
     _loadWeekSchedule();
   }
@@ -528,7 +746,8 @@ class _InstructorAvailabilityScreenState
                                         strokeWidth: 2,
                                         valueColor:
                                             AlwaysStoppedAnimation<Color>(
-                                                Colors.white),
+                                          Colors.white,
+                                        ),
                                       ),
                                     )
                                   : const Icon(Icons.send),
@@ -597,10 +816,7 @@ class _InstructorAvailabilityScreenState
             ),
           ),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(color: Colors.grey[700], fontSize: 12),
-          ),
+          Text(label, style: TextStyle(color: Colors.grey[700], fontSize: 12)),
         ],
       );
     }
@@ -628,10 +844,7 @@ class _InstructorAvailabilityScreenState
         children: [
           Text(
             '$dayKey \u00B7 ${DateFormat('MMM d').format(day)}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -658,10 +871,14 @@ class _InstructorAvailabilityScreenState
     switch (snapshot.state) {
       case _SlotState.draft:
         final colors = snapshot.slot!.learnerColors;
-        background =
-            Color.alphaBlend(_draftBaseColor.withOpacity(0.10), colors.surface);
-        borderColor =
-            Color.alphaBlend(_draftBaseColor.withOpacity(0.22), colors.border);
+        background = Color.alphaBlend(
+          _draftBaseColor.withOpacity(0.10),
+          colors.surface,
+        );
+        borderColor = Color.alphaBlend(
+          _draftBaseColor.withOpacity(0.22),
+          colors.border,
+        );
         titleColor = colors.accentText;
         subtitleColor = colors.accent;
         badgeColor = _draftBaseColor;
@@ -672,9 +889,13 @@ class _InstructorAvailabilityScreenState
       case _SlotState.committed:
         final colors = snapshot.slot!.learnerColors;
         background = Color.alphaBlend(
-            _scheduledBaseColor.withOpacity(0.08), colors.surfaceStrong);
+          _scheduledBaseColor.withOpacity(0.08),
+          colors.surfaceStrong,
+        );
         borderColor = Color.alphaBlend(
-            _scheduledBaseColor.withOpacity(0.18), colors.border);
+          _scheduledBaseColor.withOpacity(0.18),
+          colors.border,
+        );
         titleColor = colors.accentText;
         subtitleColor = colors.accent;
         badgeColor = _scheduledBaseColor;
@@ -716,8 +937,10 @@ class _InstructorAvailabilityScreenState
                 ),
                 if (badgeColor != null && badgeLabel != null)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: badgeColor.withOpacity(0.14),
                       borderRadius: BorderRadius.circular(999),
@@ -749,10 +972,7 @@ class _InstructorAvailabilityScreenState
               const SizedBox(height: 4),
               Text(
                 _availabilityWindowForTime(slotStart)?.toUpperCase() ?? '',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: subtitleColor,
-                ),
+                style: TextStyle(fontSize: 12, color: subtitleColor),
               ),
             ],
           ],
@@ -868,8 +1088,10 @@ class _LearnerOption {
     final profile = map['learner'] as Map<String, dynamic>? ?? const {};
     final first = (profile['first_name'] as String?)?.trim() ?? '';
     final last = (profile['last_name'] as String?)?.trim() ?? '';
-    final displayName =
-        [first, last].where((v) => v.isNotEmpty).join(' ').trim();
+    final displayName = [
+      first,
+      last,
+    ].where((v) => v.isNotEmpty).join(' ').trim();
     final learnerId = clean(map['learner_id']) ??
         clean(profile['id']) ??
         clean(map['profile_id']);
@@ -945,7 +1167,11 @@ class _LearnerOption {
     return (hour * 60) + minute;
   }
 
-  bool isAvailableForSlot(String dayKey, DateTime slotStart, int durationMinutes) {
+  bool isAvailableForSlot(
+    String dayKey,
+    DateTime slotStart,
+    int durationMinutes,
+  ) {
     final slots = weeklyAvailability[dayKey];
     if (slots == null || slots.isEmpty) return false;
     final startMinutes = (slotStart.hour * 60) + slotStart.minute;
@@ -967,7 +1193,8 @@ class _LearnerOption {
         continue;
       }
 
-      final window = _InstructorAvailabilityScreenState._availabilityWindowForTime(
+      final window =
+          _InstructorAvailabilityScreenState._availabilityWindowForTime(
         slotStart,
       );
       if (window != null && normalized == window) {
@@ -1053,8 +1280,10 @@ class _ScheduledSlot {
     final learner = row['learner'] as Map<String, dynamic>? ?? const {};
     final first = (learner['first_name'] as String?)?.trim() ?? '';
     final last = (learner['last_name'] as String?)?.trim() ?? '';
-    final displayName =
-        [first, last].where((value) => value.isNotEmpty).join(' ').trim();
+    final displayName = [
+      first,
+      last,
+    ].where((value) => value.isNotEmpty).join(' ').trim();
     final learnerId = clean(row['learner_id']) ?? clean(learner['id']);
 
     return _ScheduledSlot(
@@ -1095,11 +1324,15 @@ class _SlotEditorSheet extends StatefulWidget {
   const _SlotEditorSheet({
     required this.slotStart,
     required this.learnerOptions,
+    this.title,
+    this.saveLabel = 'Save',
     this.existing,
   });
 
   final DateTime slotStart;
   final List<_LearnerOption> learnerOptions;
+  final String? title;
+  final String saveLabel;
   final _ScheduledSlot? existing;
 
   @override
@@ -1117,8 +1350,11 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
     final dayKey = DateFormat('EEEE').format(widget.slotStart).toLowerCase();
     return widget.learnerOptions
         .where(
-          (option) =>
-              option.isAvailableForSlot(dayKey, widget.slotStart, _selectedDuration),
+          (option) => option.isAvailableForSlot(
+            dayKey,
+            widget.slotStart,
+            _selectedDuration,
+          ),
         )
         .toList()
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
@@ -1131,25 +1367,16 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
       return options;
     }
     final matches = options
-        .where(
-          (option) => option.displayName.toLowerCase().contains(query),
-        )
+        .where((option) => option.displayName.toLowerCase().contains(query))
         .toList();
     if (_selectedLearnerId != null &&
         !matches.any((option) => option.id == _selectedLearnerId)) {
-      final selected = options.where((option) => option.id == _selectedLearnerId);
+      final selected = options.where(
+        (option) => option.id == _selectedLearnerId,
+      );
       matches.insertAll(0, selected);
     }
     return matches;
-  }
-
-  _LearnerOption? get _selectedLearner {
-    final learnerId = _selectedLearnerId;
-    if (learnerId == null) return null;
-    for (final option in _availableLearnersForDuration) {
-      if (option.id == learnerId) return option;
-    }
-    return null;
   }
 
   @override
@@ -1167,8 +1394,9 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
           : null;
     }
     _learnerSearchController = TextEditingController();
-    _notesController =
-        TextEditingController(text: widget.existing?.notes ?? '');
+    _notesController = TextEditingController(
+      text: widget.existing?.notes ?? '',
+    );
   }
 
   @override
@@ -1181,7 +1409,6 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final availableLearners = _filteredLearners;
-    final selectedLearner = _selectedLearner;
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom +
@@ -1196,11 +1423,9 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Schedule ${DateFormat('EEE, MMM d \u00B7 h:mm a').format(widget.slotStart)}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
+            widget.title ??
+                'Schedule ${DateFormat('EEE, MMM d \u00B7 h:mm a').format(widget.slotStart)}',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -1270,10 +1495,7 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
               padding: EdgeInsets.only(top: 8),
               child: Text(
                 'No learners are available for the selected duration at this time.',
-                style: TextStyle(
-                  color: Colors.black54,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: Colors.black54, fontSize: 12),
               ),
             ),
           const SizedBox(height: 16),
@@ -1322,9 +1544,9 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
               if (widget.existing != null)
                 TextButton.icon(
                   onPressed: () {
-                    Navigator.of(context).pop(
-                      const _SlotDraftResult(remove: true),
-                    );
+                    Navigator.of(
+                      context,
+                    ).pop(const _SlotDraftResult(remove: true));
                   },
                   style: TextButton.styleFrom(foregroundColor: AppColors.error),
                   icon: const Icon(Icons.delete_outline),
@@ -1348,7 +1570,7 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
                           ),
                         );
                       },
-                child: const Text('Save'),
+                child: Text(widget.saveLabel),
               ),
             ],
           ),
@@ -1377,10 +1599,14 @@ class _CommittedSlotSheet extends StatelessWidget {
   const _CommittedSlotSheet({
     required this.slot,
     required this.onCancel,
+    required this.onReplace,
+    required this.onMove,
   });
 
   final _ScheduledSlot slot;
   final VoidCallback onCancel;
+  final VoidCallback onReplace;
+  final VoidCallback onMove;
 
   @override
   Widget build(BuildContext context) {
@@ -1413,8 +1639,9 @@ class _CommittedSlotSheet extends StatelessWidget {
             children: [
               const Icon(Icons.schedule, size: 18, color: Colors.grey),
               const SizedBox(width: 8),
-              Text(_InstructorAvailabilityScreenState._formatDateTime(
-                  slot.start)),
+              Text(
+                _InstructorAvailabilityScreenState._formatDateTime(slot.start),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1426,14 +1653,27 @@ class _CommittedSlotSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
             children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onMove();
+                },
+                icon: const Icon(Icons.swap_horiz_rounded),
+                label: const Text('Move'),
               ),
-              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onReplace();
+                },
+                icon: const Icon(Icons.person_add_alt_1_rounded),
+                label: const Text('Replace'),
+              ),
               TextButton.icon(
                 onPressed: () {
                   Navigator.of(context).pop();
@@ -1441,9 +1681,95 @@ class _CommittedSlotSheet extends StatelessWidget {
                 },
                 style: TextButton.styleFrom(foregroundColor: AppColors.error),
                 icon: const Icon(Icons.cancel_outlined),
-                label: const Text('Cancel lesson'),
+                label: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoveSlotResult {
+  const _MoveSlotResult({required this.start});
+
+  final DateTime start;
+}
+
+class _MoveLessonSheet extends StatelessWidget {
+  const _MoveLessonSheet({
+    required this.learnerName,
+    required this.currentStart,
+    required this.candidateStarts,
+  });
+
+  final String learnerName;
+  final DateTime currentStart;
+  final List<DateTime> candidateStarts;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).padding.bottom + 16,
+        left: 16,
+        right: 16,
+        top: 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Move $learnerName',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Current slot: ${_InstructorAvailabilityScreenState._formatDateTime(currentStart)}',
+            style: TextStyle(color: Colors.grey[700]),
+          ),
+          const SizedBox(height: 16),
+          if (candidateStarts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'No open slots match this learner availability this week.',
+                style: TextStyle(color: Colors.black54),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: candidateStarts.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final start = candidateStarts[index];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.event_available_rounded),
+                    title: Text(DateFormat('EEE, MMM d').format(start)),
+                    subtitle: Text(DateFormat('h:mm a').format(start)),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(
+                      context,
+                    ).pop(_MoveSlotResult(start: start)),
+                  );
+                },
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
           ),
         ],
       ),
@@ -1466,10 +1792,7 @@ class _ScheduleErrorState extends StatelessWidget {
           const SizedBox(height: 12),
           const Text('Unable to load schedule right now.'),
           const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: onRetry,
-            child: const Text('Retry'),
-          ),
+          ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
         ],
       ),
     );
