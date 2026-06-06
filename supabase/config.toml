@@ -1,0 +1,23 @@
+[functions.begin-signup-flow]
+verify_jwt = false
+
+[functions.check-signup-confirmation]
+verify_jwt = false
+
+[functions.complete-signup-password]
+verify_jwt = false
+
+[functions.admin-list-review-queue]
+verify_jwt = true
+
+[functions.admin-get-review-documents]
+verify_jwt = true
+
+[functions.admin-update-review-status]
+verify_jwt = true
+
+[functions.create-instructor-checkout-session]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false

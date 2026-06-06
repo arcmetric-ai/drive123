@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Drive Tutor">
+  <rect width="64" height="64" rx="14" fill="#054ADA"/>
+  <path d="M14 18h22c13 0 22 7 22 14s-9 14-22 14H14" fill="none" stroke="#FFFFFF" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14 18h22c13 0 22 7 22 14s-9 14-22 14H14" fill="none" stroke="#054ADA" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 6"/>
+</svg>
