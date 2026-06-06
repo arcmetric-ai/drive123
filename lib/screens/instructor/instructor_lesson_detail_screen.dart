@@ -67,14 +67,18 @@ class _InstructorLessonDetailScreenState
           raw['vehicle_preference'],
         ]) ??
         'Not specified';
-    data['notes'] = _firstNonEmpty([
-          raw['notes'],
-          raw['message'],
-          raw['learner_notes'],
-          raw['additional_notes'],
-          raw['extra_details'],
-        ]) ??
-        'No additional notes provided.';
+    final notes = _firstNonEmpty([
+      raw['notes'],
+      raw['message'],
+      raw['learner_notes'],
+      raw['additional_notes'],
+      raw['extra_details'],
+    ]);
+    if (notes != null) {
+      data['notes'] = notes;
+    } else {
+      data.remove('notes');
+    }
     data['time'] = _resolveTimeLabel(raw);
 
     return data;
@@ -91,8 +95,7 @@ class _InstructorLessonDetailScreenState
         final focus = (profile['learning_focus'] ?? '').toString().trim();
         if (focus.isNotEmpty) return focus;
         if (profile['profile'] is Map) {
-          final nested =
-              Map<String, dynamic>.from(profile['profile'] as Map);
+          final nested = Map<String, dynamic>.from(profile['profile'] as Map);
           final nestedFocus =
               (nested['learning_focus'] ?? '').toString().trim();
           if (nestedFocus.isNotEmpty) return nestedFocus;
@@ -277,9 +280,8 @@ class _InstructorLessonDetailScreenState
     if (preferred != null) {
       for (final entry in preferred) {
         if (entry is Map) {
-          final label = (entry['label'] ?? entry['type'] ?? '')
-              .toString()
-              .trim();
+          final label =
+              (entry['label'] ?? entry['type'] ?? '').toString().trim();
           final address = (entry['address'] ?? '').toString().trim();
           if (label.isNotEmpty && address.isNotEmpty) {
             return '$label - $address';
@@ -304,7 +306,8 @@ class _InstructorLessonDetailScreenState
         }
       }
       if (raw['learner_profile'] is Map<String, dynamic>) {
-        final profile = Map<String, dynamic>.from(raw['learner_profile'] as Map);
+        final profile =
+            Map<String, dynamic>.from(raw['learner_profile'] as Map);
         final profileCity = (profile['city'] ?? '').toString().trim();
         if (profileCity.isNotEmpty) return profileCity;
         if (profile['profile'] is Map) {
@@ -497,12 +500,14 @@ class _InstructorLessonDetailScreenState
               _InfoRow(label: 'Meeting location', valueKey: 'location'),
             ],
           ),
-          const SizedBox(height: 20),
-          _InfoSection(
-            title: 'Notes for the lesson',
-            data: data,
-            contentKey: 'notes',
-          ),
+          if (((data['notes'] as String?) ?? '').isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _InfoSection(
+              title: 'Notes for the lesson',
+              data: data,
+              contentKey: 'notes',
+            ),
+          ],
         ],
       ),
     );

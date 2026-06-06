@@ -501,6 +501,7 @@ class _InstructorAvailabilityScreenState
     final focus = _resolveFocusForLearner(slot.learnerId);
     final pickup = _resolvePickupForLearner(slot.learnerId);
     final cost = _deriveRate(_instructorProfile, focus) * durationHours;
+    final notes = slot.notes?.trim();
 
     setState(() => _loading = true);
     try {
@@ -511,9 +512,7 @@ class _InstructorAvailabilityScreenState
         endTime: DateFormat('HH:mm').format(end),
         duration: durationHours,
         cost: cost,
-        notes: (slot.notes?.isNotEmpty ?? false)
-            ? slot.notes
-            : 'Moved via weekly planner',
+        notes: notes != null && notes.isNotEmpty ? notes : null,
         location: pickup,
         focus: focus,
         lessonDate: DateTime(start.year, start.month, start.day),
@@ -613,6 +612,7 @@ class _InstructorAvailabilityScreenState
     final pickup = _resolvePickupForLearner(draft.learnerId);
     final cost = _deriveRate(_instructorProfile, focus) * durationHours;
     final lessonDate = DateTime(start.year, start.month, start.day);
+    final notes = draft.notes?.trim();
     return SupabaseService.createLesson(
       learnerId: draft.learnerId,
       instructorId: instructorId,
@@ -621,9 +621,7 @@ class _InstructorAvailabilityScreenState
       endTime: DateFormat('HH:mm').format(end),
       duration: durationHours,
       cost: cost,
-      notes: (draft.notes?.isNotEmpty ?? false)
-          ? draft.notes
-          : 'Scheduled via weekly planner',
+      notes: notes != null && notes.isNotEmpty ? notes : null,
       location: pickup,
       focus: focus,
       lessonDate: lessonDate,
@@ -1305,7 +1303,7 @@ class _ScheduledSlot {
       ),
       lessonId: row['id']?.toString(),
       isDraft: false,
-      notes: (row['notes'] ?? '').toString(),
+      notes: clean(row['notes']),
     );
   }
 
@@ -1562,11 +1560,12 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
                 onPressed: _selectedLearnerId == null
                     ? null
                     : () {
+                        final notes = _notesController.text.trim();
                         Navigator.of(context).pop(
                           _SlotDraftResult(
                             learnerId: _selectedLearnerId,
                             durationMinutes: _selectedDuration,
-                            notes: _notesController.text.trim(),
+                            notes: notes.isEmpty ? null : notes,
                           ),
                         );
                       },

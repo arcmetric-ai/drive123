@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
@@ -83,9 +82,8 @@ class _InstructorLessonEditScreenState
   }
 
   String _readName(Map<String, dynamic> lesson) {
-    final direct = (lesson['learner'] ?? lesson['learner_name'] ?? '')
-        .toString()
-        .trim();
+    final direct =
+        (lesson['learner'] ?? lesson['learner_name'] ?? '').toString().trim();
     if (direct.isNotEmpty) return direct;
     final learner = lesson['learner'];
     if (learner is Map<String, dynamic>) {
@@ -119,7 +117,8 @@ class _InstructorLessonEditScreenState
       if (fromLearner != null) return fromLearner;
     }
     if (lesson['learner_profile'] is Map<String, dynamic>) {
-      final profile = Map<String, dynamic>.from(lesson['learner_profile'] as Map);
+      final profile =
+          Map<String, dynamic>.from(lesson['learner_profile'] as Map);
       final fromProfile = pick(profile);
       if (fromProfile != null) return fromProfile;
       if (profile['profile'] is Map) {
@@ -159,12 +158,12 @@ class _InstructorLessonEditScreenState
   }
 
   String _deriveFocus(Map<String, dynamic> lesson, {required String fallback}) {
-    final direct = (lesson['focus'] ?? lesson['learning_focus'] ?? '')
-        .toString()
-        .trim();
+    final direct =
+        (lesson['focus'] ?? lesson['learning_focus'] ?? '').toString().trim();
     if (direct.isNotEmpty) return direct;
     if (lesson['learner_profile'] is Map<String, dynamic>) {
-      final profile = Map<String, dynamic>.from(lesson['learner_profile'] as Map);
+      final profile =
+          Map<String, dynamic>.from(lesson['learner_profile'] as Map);
       final focus = (profile['learning_focus'] ?? '').toString().trim();
       if (focus.isNotEmpty) return focus;
     }
@@ -200,8 +199,10 @@ class _InstructorLessonEditScreenState
               ? Map<String, dynamic>.from(learner['profile'] as Map)
               : null);
     }
-    if (preferred == null && lesson['learner_profile'] is Map<String, dynamic>) {
-      final profile = Map<String, dynamic>.from(lesson['learner_profile'] as Map);
+    if (preferred == null &&
+        lesson['learner_profile'] is Map<String, dynamic>) {
+      final profile =
+          Map<String, dynamic>.from(lesson['learner_profile'] as Map);
       preferred = preferredFrom(profile) ??
           preferredFrom(profile['profile'] is Map
               ? Map<String, dynamic>.from(profile['profile'] as Map)
@@ -210,9 +211,8 @@ class _InstructorLessonEditScreenState
     if (preferred != null) {
       for (final entry in preferred) {
         if (entry is Map) {
-          final label = (entry['label'] ?? entry['type'] ?? '')
-              .toString()
-              .trim();
+          final label =
+              (entry['label'] ?? entry['type'] ?? '').toString().trim();
           final address = (entry['address'] ?? '').toString().trim();
           if (label.isNotEmpty && address.isNotEmpty) {
             return '$label - $address';
@@ -362,7 +362,7 @@ class _InstructorLessonEditScreenState
         endTime: end != null ? _to24h(end) : null,
         focus: focus.isNotEmpty ? focus : null,
         pickupLocation: pickup.isNotEmpty ? pickup : null,
-        notes: notes.isNotEmpty ? notes : null,
+        notes: notes,
         cost: cost,
       );
 

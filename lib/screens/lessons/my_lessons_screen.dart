@@ -939,7 +939,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
               ],
             ),
 
-            if (lesson.notes != null) ...[
+            if (lesson.notes != null && lesson.notes!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 'Notes: ${lesson.notes}',
