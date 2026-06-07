@@ -1970,9 +1970,9 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, learner:profiles(id, first_name, last_name, email, profile_image_url, city)')
+            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by, learner:profiles(id, first_name, last_name, email, profile_image_url, city)')
         .eq('instructor_id', userId)
-        .eq('status', 'scheduled')
+        .inFilter('status', ['scheduled', 'active', 'in_progress'])
         .gte('scheduled_at', startUtc.toIso8601String())
         .lt('scheduled_at', endUtc.toIso8601String())
         .order('scheduled_at', ascending: true);
@@ -2500,12 +2500,25 @@ class SupabaseService {
 
   static Future<LessonModel?> updateLessonStatus(
     String lessonId,
-    String status,
-  ) async {
+    String status, {
+    DateTime? startedAt,
+    DateTime? endedAt,
+    String? completedBy,
+  }) async {
     try {
+      final payload = <String, dynamic>{'status': status};
+      if (startedAt != null) {
+        payload['started_at'] = startedAt.toUtc().toIso8601String();
+      }
+      if (endedAt != null) {
+        payload['ended_at'] = endedAt.toUtc().toIso8601String();
+      }
+      if (completedBy != null) {
+        payload['completed_by'] = completedBy;
+      }
       final response = await _client
           .from('lessons')
-          .update({'status': status})
+          .update(payload)
           .eq('id', lessonId)
           .select('*, instructor:instructor_profiles(*, user:profiles(*))')
           .single();
@@ -2513,6 +2526,43 @@ class SupabaseService {
       return LessonModel.fromJson(response);
     } catch (e) {
       print('Error updating lesson status: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> updateInstructorLessonStatus({
+    required String lessonId,
+    required String status,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    String? completedBy,
+  }) async {
+    try {
+      final payload = <String, dynamic>{'status': status};
+      if (startedAt != null) {
+        payload['started_at'] = startedAt.toUtc().toIso8601String();
+      }
+      if (endedAt != null) {
+        payload['ended_at'] = endedAt.toUtc().toIso8601String();
+      }
+      if (completedBy != null) {
+        payload['completed_by'] = completedBy;
+      }
+
+      final response = await _client
+          .from('lessons')
+          .update(payload)
+          .eq('id', lessonId)
+          .select(
+              'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by, learner:profiles(id, first_name, last_name, email, profile_image_url, city)')
+          .single();
+
+      final rows = await _hydrateLessonLearners([
+        Map<String, dynamic>.from(response),
+      ]);
+      return rows.isEmpty ? Map<String, dynamic>.from(response) : rows.first;
+    } catch (e) {
+      print('Error updating instructor lesson status: $e');
       return null;
     }
   }

@@ -446,7 +446,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
             timeLabel: _lessonTimeLabel(primaryLesson, includeDuration: true),
             locationLabel: primaryLesson.location ?? 'Location to be confirmed',
             primaryLabel:
-                primaryLesson.isInProgress ? 'RESUME LESSON' : 'START LESSON',
+                primaryLesson.isInProgress ? 'LIVE LESSON' : 'VIEW LESSON',
             onPrimaryPressed: () => _startLesson(primaryLesson),
             onCallPressed: _callActionForLesson(primaryLesson),
           ),
@@ -986,7 +986,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: const Text('Start'),
+                      child: const Text('View'),
                     ),
                   ),
                 ],
@@ -1148,97 +1148,13 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
   }
 
   Future<void> _startLesson(LessonModel lesson) async {
-    if (lesson.status == LessonStatus.inProgress || lesson.isInProgress) {
-      final result = await Navigator.of(context).push<LessonModel?>(
-        MaterialPageRoute(
-          builder: (context) => OngoingLessonScreen(
-            lesson: lesson,
-            onMarkCompleted: () => _completeLesson(lesson),
-          ),
-        ),
-      );
-      if (!mounted) return;
-      if (result != null) {
-        _handleLessonCompletion(result);
-      }
-      return;
-    }
-
-    if (_ongoingLesson != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('There is already a live session in progress.'),
-        ),
-      );
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Start Lesson'),
-        content: Text(
-          'Start your session with ${lesson.instructor.user.firstName}? '
-          'We’ll open the live session view with all the details you need.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Not Yet'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Start'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true || _isProcessingAction) return;
-
-    setState(() => _isProcessingAction = true);
-
-    LessonModel? updated;
-    try {
-      updated = await SupabaseService.updateLessonStatus(
-        lesson.id,
-        LessonStatus.inProgress.name,
-      );
-    } catch (_) {
-      updated = null;
-    }
-
-    updated ??= lesson.copyWith(
-      status: LessonStatus.inProgress,
-      updatedAt: DateTime.now(),
-    );
-
-    setState(() {
-      _upcomingLessons.removeWhere((l) => l.id == lesson.id);
-      _ongoingLesson = updated;
-      _selectedUpcomingDate = _resolveSelectedUpcomingDate(
-        upcomingLessons: _upcomingLessons,
-        ongoingLesson: updated,
-        previousSelection: _selectedUpcomingDate,
-      );
-      _isProcessingAction = false;
-    });
-
-    if (!mounted) return;
-
-    final result = await Navigator.of(context).push<LessonModel?>(
+    await Navigator.of(context).push<LessonModel?>(
       MaterialPageRoute(
         builder: (context) => OngoingLessonScreen(
-          lesson: updated!,
-          onMarkCompleted: () => _completeLesson(updated!),
+          lesson: lesson,
         ),
       ),
     );
-
-    if (!mounted) return;
-    if (result != null) {
-      _handleLessonCompletion(result);
-    }
   }
 
   Future<void> _cancelLesson(LessonModel lesson) async {
@@ -1302,50 +1218,6 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Lesson cancelled. You can book another time anytime.'),
-        backgroundColor: AppColors.success,
-      ),
-    );
-  }
-
-  Future<LessonModel?> _completeLesson(LessonModel lesson) async {
-    LessonModel? updated;
-    try {
-      updated = await SupabaseService.updateLessonStatus(
-        lesson.id,
-        LessonStatus.completed.name,
-      );
-    } catch (_) {
-      updated = null;
-    }
-
-    updated ??= lesson.copyWith(
-      status: LessonStatus.completed,
-      updatedAt: DateTime.now(),
-    );
-
-    setState(() {
-      if (_ongoingLesson?.id == lesson.id) {
-        _ongoingLesson = null;
-      }
-      _completedLessons.insert(0, updated!);
-      _selectedUpcomingDate = _resolveSelectedUpcomingDate(
-        upcomingLessons: _upcomingLessons,
-        ongoingLesson: _ongoingLesson,
-        previousSelection: _selectedUpcomingDate,
-      );
-    });
-
-    return updated;
-  }
-
-  void _handleLessonCompletion(LessonModel lesson) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Great work! Lesson with ${lesson.instructor.user.firstName} wrapped up.',
-        ),
         backgroundColor: AppColors.success,
       ),
     );

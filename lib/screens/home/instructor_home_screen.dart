@@ -164,7 +164,8 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) return;
     try {
-      final hasBilling = await SupabaseService.hasActiveInstructorBilling(userId);
+      final hasBilling =
+          await SupabaseService.hasActiveInstructorBilling(userId);
       if (!mounted) return;
       setState(() {
         _hasActiveBilling = hasBilling;
@@ -315,9 +316,7 @@ class _ActivationRequiredOverlay extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        isOpening
-                            ? 'Opening...'
-                            : 'Activate your account',
+                        isOpening ? 'Opening...' : 'Activate your account',
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),
@@ -1925,6 +1924,7 @@ class _BookingsTabState extends State<_BookingsTab>
   bool _error = false;
   DateTime _currentMonth = DateTime.now();
   final Map<DateTime, List<_LessonSlot>> _slotsByDay = {};
+  final Set<String> _updatingLessonIds = {};
   late final Timer _bgTimer;
   bool _bgShift = false;
 
@@ -2024,10 +2024,12 @@ class _BookingsTabState extends State<_BookingsTab>
         final dayKey = _normalizeDate(localStart);
         map.putIfAbsent(dayKey, () => <_LessonSlot>[]).add(
               _LessonSlot(
+                id: (lesson['id'] ?? '').toString(),
                 start: startTime,
                 end: endTime,
                 learner: learnerName,
                 focus: (lesson['focus'] ?? 'Driving lesson').toString(),
+                status: status,
                 learnerColors: learnerColors,
               ),
             );
@@ -2375,6 +2377,7 @@ class _BookingsTabState extends State<_BookingsTab>
 
   Widget _buildLessonTile(_LessonSlot slot) {
     final colors = slot.learnerColors;
+    final isUpdating = _updatingLessonIds.contains(slot.id);
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Container(
@@ -2402,14 +2405,20 @@ class _BookingsTabState extends State<_BookingsTab>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: colors.pillBackground,
+                    color: slot.status == LessonStatus.inProgress
+                        ? AppColors.warning.withOpacity(0.14)
+                        : colors.pillBackground,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    slot.learner,
+                    slot.status == LessonStatus.inProgress
+                        ? 'IN PROGRESS'
+                        : slot.learner,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: colors.accent,
+                      color: slot.status == LessonStatus.inProgress
+                          ? AppColors.warning
+                          : colors.accent,
                     ),
                   ),
                 ),
@@ -2419,6 +2428,55 @@ class _BookingsTabState extends State<_BookingsTab>
             Text(
               slot.focus,
               style: TextStyle(color: colors.accentText.withOpacity(0.8)),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: isUpdating
+                        ? null
+                        : () => _showLessonSummary(context, slot),
+                    icon: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('View'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: isUpdating
+                        ? null
+                        : slot.status == LessonStatus.inProgress
+                            ? () => _completeInstructorLesson(slot)
+                            : () => _startInstructorLesson(slot),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: slot.status == LessonStatus.inProgress
+                          ? AppColors.success
+                          : AppColors.primaryBlue,
+                    ),
+                    icon: isUpdating
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            slot.status == LessonStatus.inProgress
+                                ? Icons.check_circle_outline
+                                : Icons.play_arrow_rounded,
+                            size: 18,
+                          ),
+                    label: Text(
+                      slot.status == LessonStatus.inProgress
+                          ? 'Complete'
+                          : 'Start',
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -2597,6 +2655,132 @@ class _BookingsTabState extends State<_BookingsTab>
       },
     );
   }
+
+  Future<void> _startInstructorLesson(_LessonSlot slot) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Start lesson?'),
+        content: Text('Start the lesson with ${slot.learner}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Start'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await _updateInstructorLesson(slot, LessonStatus.inProgress);
+  }
+
+  Future<void> _completeInstructorLesson(_LessonSlot slot) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Complete lesson?'),
+        content: Text(
+          'Mark the lesson with ${slot.learner} as complete? You can update learner progress from their profile after this.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Complete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await _updateInstructorLesson(slot, LessonStatus.completed);
+  }
+
+  Future<void> _updateInstructorLesson(
+    _LessonSlot slot,
+    LessonStatus status,
+  ) async {
+    final instructorId = SupabaseService.currentUser?.id;
+    if (instructorId == null || slot.id.isEmpty) return;
+
+    setState(() => _updatingLessonIds.add(slot.id));
+    final now = DateTime.now().toUtc();
+    final updated = await SupabaseService.updateInstructorLessonStatus(
+      lessonId: slot.id,
+      status: status == LessonStatus.completed ? 'completed' : 'in_progress',
+      startedAt: status == LessonStatus.inProgress ? now : null,
+      endedAt: status == LessonStatus.completed ? now : null,
+      completedBy: status == LessonStatus.completed ? instructorId : null,
+    );
+
+    if (!mounted) return;
+    setState(() => _updatingLessonIds.remove(slot.id));
+
+    if (updated == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to update lesson. Please try again.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    await _loadLessons();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          status == LessonStatus.completed
+              ? 'Lesson completed.'
+              : 'Lesson started.',
+        ),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  void _showLessonSummary(BuildContext context, _LessonSlot slot) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                slot.learner,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryBlue,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(slot.timeLabel),
+              const SizedBox(height: 8),
+              Text(slot.focus),
+              const SizedBox(height: 16),
+              Text(
+                slot.status == LessonStatus.inProgress
+                    ? 'This lesson is currently in progress.'
+                    : 'This lesson is scheduled.',
+                style: const TextStyle(color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MonthDayCell extends StatelessWidget {
@@ -2657,7 +2841,8 @@ class _MonthDayCell extends StatelessWidget {
                     style: TextStyle(
                       fontSize: compact ? 15 : 16,
                       fontWeight: FontWeight.w600,
-                      color: hasLessons ? AppColors.primaryBlue : Colors.black87,
+                      color:
+                          hasLessons ? AppColors.primaryBlue : Colors.black87,
                     ),
                   ),
                   if (hasLessons)
@@ -2709,17 +2894,21 @@ class _MonthDayCell extends StatelessWidget {
 
 class _LessonSlot {
   _LessonSlot({
+    required this.id,
     required this.start,
     required this.end,
     required this.learner,
     required this.focus,
+    required this.status,
     required this.learnerColors,
   });
 
+  final String id;
   final DateTime start;
   final DateTime end;
   final String learner;
   final String focus;
+  final LessonStatus status;
   final LearnerColorSet learnerColors;
 
   String get timeLabel =>

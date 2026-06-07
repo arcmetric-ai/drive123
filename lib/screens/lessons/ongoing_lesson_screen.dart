@@ -25,7 +25,7 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
 
   Future<void> _handleComplete() async {
     if (widget.onMarkCompleted == null || _isCompleting) {
-      Navigator.pop(context);
+      Navigator.pop(context, null);
       return;
     }
 
@@ -70,7 +70,9 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ongoing Lesson'),
+        title: Text(
+          widget.onMarkCompleted == null ? 'Lesson Details' : 'Ongoing Lesson',
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -168,9 +170,11 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text(
-                            'Mark Lesson Complete',
-                            style: TextStyle(
+                        : Text(
+                            widget.onMarkCompleted == null
+                                ? 'Close'
+                                : 'Mark Lesson Complete',
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -279,4 +283,3 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
     );
   }
 }
-
