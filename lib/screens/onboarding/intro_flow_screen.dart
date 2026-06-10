@@ -26,7 +26,7 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
       title: 'Discover lessons',
       subtitle:
           'Browse lesson types, compare instructors, and book what best fits your goals.',
-      imageAsset: 'assets/images/lesson.svg',
+      imageAsset: 'assets/images/l2.svg',
     ),
     _IntroPageData(
       title: 'Welcome to Drive Tutor',
@@ -86,7 +86,6 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -125,6 +124,7 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
                 children: [
                   _NavCircleButton(
                     icon: Icons.arrow_back_ios_new_rounded,
+                    semanticLabel: 'Previous',
                     background: Colors.white,
                     iconColor: AppColors.ocean,
                     onPressed: _currentPage == 0 ? null : _handlePrevious,
@@ -132,6 +132,7 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
                   const Spacer(),
                   _NavCircleButton(
                     icon: Icons.arrow_forward_ios_rounded,
+                    semanticLabel: 'Next',
                     background: AppColors.ocean,
                     iconColor: Colors.white,
                     onPressed: _handleNext,
@@ -220,12 +221,14 @@ class _IntroSlide extends StatelessWidget {
 class _NavCircleButton extends StatelessWidget {
   const _NavCircleButton({
     required this.icon,
+    required this.semanticLabel,
     required this.background,
     required this.iconColor,
     required this.onPressed,
   });
 
   final IconData icon;
+  final String semanticLabel;
   final Color background;
   final Color iconColor;
   final VoidCallback? onPressed;
@@ -233,29 +236,35 @@ class _NavCircleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = onPressed == null;
-    return GestureDetector(
+    return Semantics(
+      button: true,
+      enabled: !disabled,
+      label: semanticLabel,
       onTap: disabled ? null : onPressed,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 200),
-        opacity: disabled ? 0.3 : 1,
-        child: Container(
-          height: 56,
-          width: 56,
-          decoration: BoxDecoration(
-            color: background,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Icon(
-            icon,
-            color: iconColor,
-            size: 22,
+      child: GestureDetector(
+        onTap: disabled ? null : onPressed,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: disabled ? 0.3 : 1,
+          child: Container(
+            height: 56,
+            width: 56,
+            decoration: BoxDecoration(
+              color: background,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              color: iconColor,
+              size: 22,
+            ),
           ),
         ),
       ),
