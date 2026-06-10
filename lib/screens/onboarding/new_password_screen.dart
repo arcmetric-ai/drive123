@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../constants/app_spacing.dart';
+import '../../models/learner_onboarding_draft.dart';
 import '../../models/signup_flow_state.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/app_primary_button.dart';
@@ -16,12 +17,16 @@ class NewPasswordScreen extends StatefulWidget {
     this.email,
     this.authUserId,
     this.flowToken,
+    this.role,
+    this.learnerAccountType,
     this.flow = 'recovery',
   });
 
   final String? email;
   final String? authUserId;
   final String? flowToken;
+  final String? role;
+  final String? learnerAccountType;
   final String flow;
 
   @override
@@ -65,6 +70,8 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
           email: email,
           authUserId: authUserId,
           flowToken: flowToken,
+          role: widget.role ?? 'learner',
+          learnerAccountType: widget.learnerAccountType ?? 'learner',
         );
 
         await SupabaseService.completeSignUpPassword(
@@ -77,14 +84,34 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
         );
         if (!mounted) return;
         await SupabaseService.ensureCurrentProfile();
+        final signedInUser = SupabaseService.currentUser;
+        if (signedInUser == null) {
+          throw Exception('Unable to finish sign up. Please sign in again.');
+        }
+        await SupabaseService.assignUserRole(
+          userId: signedInUser.id,
+          role: flowState.role,
+          learnerAccountType: flowState.learnerAccountType,
+        );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Password created. Choose your role to continue.'),
+            content: Text('Password created. Continue account setup.'),
             backgroundColor: AppColors.success,
           ),
         );
-        context.go(AppRoutes.roleSelection);
+        if (flowState.role == 'learner') {
+          context.go(
+            AppRoutes.learnerQuestionnaire,
+            extra: LearnerOnboardingDraft(
+              role: flowState.role,
+              learnerAccountType: flowState.learnerAccountType,
+            ),
+          );
+        } else {
+          context.go(AppRoutes.identityVerificationIntro,
+              extra: flowState.role);
+        }
       } else {
         await SupabaseService.updatePassword(_passwordController.text);
         if (!mounted) return;

@@ -45,20 +45,17 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       final user = SupabaseService.currentUser;
       if (user == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please sign in first to continue account setup.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        context.go(AppRoutes.auth);
+        context.go(AppRoutes.learnerAccountType);
         return;
       }
 
-      await SupabaseService.assignUserRole(userId: user.id, role: role);
+      await SupabaseService.assignUserRole(
+        userId: user.id,
+        role: role,
+      );
       if (!mounted) return;
 
-      context.go(AppRoutes.identityVerificationIntro, extra: role);
+      context.go(AppRoutes.learnerQuestionnaire, extra: role);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

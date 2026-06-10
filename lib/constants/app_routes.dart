@@ -23,7 +23,10 @@ import '../screens/lessons/my_lessons_screen.dart';
 import '../screens/location/location_setup_screen.dart';
 import '../screens/onboarding/auth_screen.dart';
 import '../screens/onboarding/auth_redirect_screen.dart';
+import '../screens/onboarding/account_entry_screen.dart';
 import '../screens/onboarding/forgot_password_screen.dart';
+import '../screens/onboarding/guardian_license_capture_screen.dart';
+import '../screens/onboarding/guardian_selfie_capture_screen.dart';
 import '../screens/onboarding/identity_license_capture_screen.dart';
 import '../screens/onboarding/identity_pending_review_screen.dart';
 import '../screens/onboarding/identity_selfie_capture_screen.dart';
@@ -33,6 +36,7 @@ import '../screens/onboarding/instructor_credentials_portal_screen.dart';
 import '../screens/onboarding/instructor_document_upload_screen.dart';
 import '../screens/onboarding/learner_pickup_address_screen.dart';
 import '../screens/onboarding/learner_questionnaire_screen.dart';
+import '../screens/onboarding/learner_account_type_screen.dart';
 import '../screens/onboarding/learner_weekly_availability_screen.dart';
 import '../screens/onboarding/instructor_questionnaire_screen.dart';
 import '../screens/onboarding/learning_focus_screen.dart';
@@ -53,7 +57,9 @@ import '../screens/splash_screen.dart';
 class AppRoutes {
   static const String splash = '/';
   static const String intro = '/intro';
+  static const String accountEntry = '/account-entry';
   static const String roleSelection = '/role-selection';
+  static const String learnerAccountType = '/learner-account-type';
   static const String auth = '/auth';
   static const String authRedirect = '/auth-redirect';
   static const String verification = '/verification';
@@ -65,6 +71,8 @@ class AppRoutes {
   static const String identityVerificationIntro = '/identity-verification';
   static const String identityLicenseCapture = '/identity-license-capture';
   static const String identitySelfieCapture = '/identity-selfie-capture';
+  static const String guardianLicenseCapture = '/guardian-license-capture';
+  static const String guardianSelfieCapture = '/guardian-selfie-capture';
   static const String identityPendingReview = '/identity-pending-review';
   static const String learnerQuestionnaire = '/learner-questionnaire';
   static const String learnerPickupAddress = '/learner-pickup-address';
@@ -111,8 +119,16 @@ class AppRoutes {
         builder: (context, state) => const IntroFlowScreen(),
       ),
       GoRoute(
+        path: accountEntry,
+        builder: (context, state) => const AccountEntryScreen(),
+      ),
+      GoRoute(
         path: roleSelection,
         builder: (context, state) => const RoleSelectionScreen(),
+      ),
+      GoRoute(
+        path: learnerAccountType,
+        builder: (context, state) => const LearnerAccountTypeScreen(),
       ),
       GoRoute(
         path: auth,
@@ -147,7 +163,15 @@ class AppRoutes {
           final initialEmail = extra is String
               ? extra
               : (extra is Map ? extra['email'] as String? : null);
-          return SignUpEmailScreen(initialEmail: initialEmail);
+          return SignUpEmailScreen(
+            initialEmail: initialEmail,
+            role: extra is Map
+                ? (extra['role'] as String? ?? 'learner')
+                : 'learner',
+            learnerAccountType: extra is Map
+                ? (extra['learnerAccountType'] as String? ?? 'learner')
+                : 'learner',
+          );
         },
       ),
       GoRoute(
@@ -184,6 +208,9 @@ class AppRoutes {
           final authUserId =
               extra is Map ? extra['authUserId'] as String? : null;
           final flowToken = extra is Map ? extra['flowToken'] as String? : null;
+          final role = extra is Map ? extra['role'] as String? : null;
+          final learnerAccountType =
+              extra is Map ? extra['learnerAccountType'] as String? : null;
           final flow = extra is Map
               ? (extra['flow'] as String? ?? 'recovery')
               : 'recovery';
@@ -191,6 +218,8 @@ class AppRoutes {
             email: email,
             authUserId: authUserId,
             flowToken: flowToken,
+            role: role,
+            learnerAccountType: learnerAccountType,
             flow: flow,
           );
         },
@@ -227,11 +256,43 @@ class AppRoutes {
         },
       ),
       GoRoute(
-        path: identityPendingReview,
+        path: guardianLicenseCapture,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? const {};
-          return IdentityPendingReviewScreen(
+          return GuardianLicenseCaptureScreen(
             role: (extra['role'] as String?) ?? 'learner',
+            licenseImagePath: extra['licenseImagePath'] as String? ?? '',
+            selfieImagePath: extra['selfieImagePath'] as String? ?? '',
+            guardianLicenseImagePath:
+                extra['guardianLicenseImagePath'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: guardianSelfieCapture,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? const {};
+          return GuardianSelfieCaptureScreen(
+            role: (extra['role'] as String?) ?? 'learner',
+            licenseImagePath: extra['licenseImagePath'] as String? ?? '',
+            selfieImagePath: extra['selfieImagePath'] as String? ?? '',
+            guardianLicenseImagePath:
+                extra['guardianLicenseImagePath'] as String? ?? '',
+            guardianSelfieImagePath:
+                extra['guardianSelfieImagePath'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: identityPendingReview,
+        builder: (context, state) {
+          final rawExtra = state.extra;
+          final extra = rawExtra is Map<String, dynamic> ? rawExtra : const {};
+          final role = rawExtra is String
+              ? rawExtra
+              : (extra['role'] as String?) ?? 'learner';
+          return IdentityPendingReviewScreen(
+            role: role,
             licenseImagePath: extra['licenseImagePath'] as String?,
             selfieImagePath: extra['selfieImagePath'] as String?,
           );
@@ -318,9 +379,16 @@ class AppRoutes {
         path: learnerQuestionnaire,
         builder: (context, state) {
           final extra = state.extra;
+          final queryAccountType =
+              state.uri.queryParameters['accountType']?.trim();
           final draft = extra is LearnerOnboardingDraft
               ? extra
-              : LearnerOnboardingDraft(role: extra as String? ?? 'learner');
+              : LearnerOnboardingDraft(
+                  role: extra as String? ?? 'learner',
+                  learnerAccountType: queryAccountType?.isNotEmpty == true
+                      ? queryAccountType!
+                      : 'learner',
+                );
           return LearnerQuestionnaireScreen(initialDraft: draft);
         },
       ),

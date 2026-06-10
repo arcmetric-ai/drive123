@@ -9,6 +9,18 @@ String cleanDisplayString(dynamic value) {
 }
 
 String formatLessonRequestLearnerName(Map<String, dynamic> request) {
+  final learnerProfileValue = request['learner_profile'];
+  if (learnerProfileValue is Map<String, dynamic> &&
+      cleanDisplayString(learnerProfileValue['account_type']) == 'guardian') {
+    final wardName = [
+      cleanDisplayString(learnerProfileValue['ward_first_name']),
+      cleanDisplayString(learnerProfileValue['ward_last_name']),
+    ].where((value) => value.isNotEmpty).join(' ');
+    if (wardName.isNotEmpty) {
+      return wardName;
+    }
+  }
+
   Map<String, dynamic>? learner;
   final learnerValue = request['learner'];
   if (learnerValue is Map<String, dynamic>) {

@@ -11,6 +11,10 @@ class IdentityVerificationState {
     this.verificationApprovedAt,
     this.identityLicensePath,
     this.identitySelfiePath,
+    this.guardianIdentityLicensePath,
+    this.guardianIdentitySelfiePath,
+    this.guardianConsentSubmittedAt,
+    this.age,
     this.onboardingStage,
   });
 
@@ -45,6 +49,15 @@ class IdentityVerificationState {
       verificationApprovedAt: parseDate(json['verification_approved_at']),
       identityLicensePath: stringOrNull(json['identity_license_path']),
       identitySelfiePath: stringOrNull(json['identity_selfie_path']),
+      guardianIdentityLicensePath:
+          stringOrNull(json['guardian_identity_license_path']),
+      guardianIdentitySelfiePath:
+          stringOrNull(json['guardian_identity_selfie_path']),
+      guardianConsentSubmittedAt:
+          parseDate(json['guardian_consent_submitted_at']),
+      age: json['age'] is int
+          ? json['age'] as int
+          : int.tryParse(stringOrNull(json['age']) ?? ''),
       onboardingStage: stringOrNull(json['onboarding_stage']),
     );
   }
@@ -60,7 +73,25 @@ class IdentityVerificationState {
   final DateTime? verificationApprovedAt;
   final String? identityLicensePath;
   final String? identitySelfiePath;
+  final String? guardianIdentityLicensePath;
+  final String? guardianIdentitySelfiePath;
+  final DateTime? guardianConsentSubmittedAt;
+  final int? age;
   final String? onboardingStage;
+
+  bool get requiresGuardianConsent => age == 16 || age == 17;
+
+  bool get hasIdentityDocuments =>
+      identityLicensePath?.trim().isNotEmpty == true &&
+      identitySelfiePath?.trim().isNotEmpty == true;
+
+  bool get hasGuardianDocuments =>
+      guardianIdentityLicensePath?.trim().isNotEmpty == true &&
+      guardianIdentitySelfiePath?.trim().isNotEmpty == true;
+
+  bool get hasRequiredIdentityDocuments =>
+      hasIdentityDocuments &&
+      (!requiresGuardianConsent || hasGuardianDocuments);
 
   bool get isApproved =>
       isVerified ||

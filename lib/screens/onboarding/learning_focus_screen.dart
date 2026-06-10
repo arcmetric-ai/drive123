@@ -97,7 +97,7 @@ class _LearningFocusScreenState extends State<LearningFocusScreen> {
         learningFocus: _selectedFocus,
       );
       if (!mounted) return;
-      context.go(AppRoutes.home, extra: {'focus': _selectedFocus});
+      context.go(AppRoutes.identityVerificationIntro, extra: widget.role);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

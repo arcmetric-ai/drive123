@@ -3,9 +3,12 @@ import 'saved_pickup_location.dart';
 class LearnerOnboardingDraft {
   const LearnerOnboardingDraft({
     this.role = 'learner',
+    this.learnerAccountType = 'learner',
     this.firstName,
     this.lastName,
     this.phone,
+    this.wardFirstName,
+    this.wardLastName,
     this.g1LicenceNumber,
     this.g1ExpiryDate,
     this.city,
@@ -21,9 +24,12 @@ class LearnerOnboardingDraft {
   });
 
   final String role;
+  final String learnerAccountType;
   final String? firstName;
   final String? lastName;
   final String? phone;
+  final String? wardFirstName;
+  final String? wardLastName;
   final String? g1LicenceNumber;
   final DateTime? g1ExpiryDate;
   final String? city;
@@ -39,9 +45,12 @@ class LearnerOnboardingDraft {
 
   LearnerOnboardingDraft copyWith({
     String? role,
+    String? learnerAccountType,
     String? firstName,
     String? lastName,
     String? phone,
+    String? wardFirstName,
+    String? wardLastName,
     String? g1LicenceNumber,
     DateTime? g1ExpiryDate,
     String? city,
@@ -57,9 +66,12 @@ class LearnerOnboardingDraft {
   }) {
     return LearnerOnboardingDraft(
       role: role ?? this.role,
+      learnerAccountType: learnerAccountType ?? this.learnerAccountType,
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
       phone: phone ?? this.phone,
+      wardFirstName: wardFirstName ?? this.wardFirstName,
+      wardLastName: wardLastName ?? this.wardLastName,
       g1LicenceNumber: g1LicenceNumber ?? this.g1LicenceNumber,
       g1ExpiryDate: g1ExpiryDate ?? this.g1ExpiryDate,
       city: city ?? this.city,

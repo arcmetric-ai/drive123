@@ -97,7 +97,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       final session = Supabase.instance.client.auth.currentSession;
       if (session == null) {
-        context.go(AppRoutes.auth);
+        context.go(AppRoutes.accountEntry);
         return;
       }
       final user = session.user;
@@ -112,7 +112,7 @@ class _SplashScreenState extends State<SplashScreen>
     } catch (error) {
       debugPrint('Splash navigation failed: $error');
       if (!mounted) return;
-      context.go(AppRoutes.auth);
+      context.go(AppRoutes.accountEntry);
     }
   }
 

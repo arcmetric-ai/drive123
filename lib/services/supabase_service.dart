@@ -44,6 +44,13 @@ class SupabaseService {
     return null;
   }
 
+  static String _normalizeLearnerAccountType(dynamic value) {
+    if (value is String && value.trim().toLowerCase() == 'guardian') {
+      return 'guardian';
+    }
+    return 'learner';
+  }
+
   // Auth Methods
   static Future<AuthResponse> signUp({
     required String email,
@@ -126,6 +133,8 @@ class SupabaseService {
 
   static Future<SignupFlowState> startSignUpFlow({
     required String email,
+    String role = 'learner',
+    String learnerAccountType = 'learner',
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
     final tempPassword = _generateTemporaryPassword();
@@ -144,6 +153,8 @@ class SupabaseService {
       email: normalizedEmail,
       authUserId: user.id,
       flowToken: _generateFlowToken(),
+      role: _normalizeRole(role) ?? 'learner',
+      learnerAccountType: _normalizeLearnerAccountType(learnerAccountType),
     );
 
     try {
@@ -229,6 +240,7 @@ class SupabaseService {
   static Future<void> assignUserRole({
     required String userId,
     required String role,
+    String learnerAccountType = 'learner',
   }) async {
     final normalizedRole = _normalizeRole(role);
     if (normalizedRole == null) {
@@ -251,7 +263,10 @@ class SupabaseService {
       );
     } else {
       await _client.from('learner_profiles').upsert(
-        {'profile_id': userId},
+        {
+          'profile_id': userId,
+          'account_type': _normalizeLearnerAccountType(learnerAccountType),
+        },
         onConflict: 'profile_id',
       );
     }
@@ -261,7 +276,12 @@ class SupabaseService {
     if (currentUser?.id == userId) {
       try {
         await _client.auth.updateUser(
-          UserAttributes(data: {'role': normalizedRole}),
+          UserAttributes(data: {
+            'role': normalizedRole,
+            if (normalizedRole == 'learner')
+              'learnerAccountType':
+                  _normalizeLearnerAccountType(learnerAccountType),
+          }),
         );
       } catch (e) {
         print('Warning: unable to update auth role metadata: $e');
@@ -360,7 +380,7 @@ class SupabaseService {
       final response = await _client
           .from('profiles')
           .select(
-            'id, role, first_name, created_at, is_verified, verification_status, verification_submitted_at, verification_review_started_at, verification_approved_at, identity_license_path, identity_selfie_path, onboarding_stage',
+            'id, role, first_name, age, created_at, is_verified, verification_status, verification_submitted_at, verification_review_started_at, verification_approved_at, identity_license_path, identity_selfie_path, guardian_identity_license_path, guardian_identity_selfie_path, guardian_consent_submitted_at, onboarding_stage',
           )
           .eq('id', userId)
           .maybeSingle();
@@ -388,12 +408,41 @@ class SupabaseService {
     }
 
     if (role == 'learner') {
-      if (verificationState?.isPendingReview == true) {
+      if (verificationState?.onboardingStage !=
+          onboardingStageQuestionnaireComplete) {
+        final learnerDetail = await getLearnerProfileDetail(userId);
+        final accountType = _normalizeLearnerAccountType(
+          learnerDetail?['account_type'],
+        );
+        if (accountType == 'guardian') {
+          return '${AppRoutes.learnerQuestionnaire}?accountType=guardian';
+        }
+        return AppRoutes.learnerQuestionnaire;
+      }
+
+      try {
+        final learnerDetail = await getLearnerProfileDetail(userId);
+        final focus = (learnerDetail?['learning_focus'] as String?)?.trim();
+        if (focus == null || focus.isEmpty) {
+          return AppRoutes.learningFocus;
+        }
+      } catch (_) {
+        return AppRoutes.learningFocus;
+      }
+
+      final identityStatus =
+          verificationState?.verificationStatus?.trim().toLowerCase();
+      if (verificationState?.hasRequiredIdentityDocuments != true ||
+          identityStatus == 'rejected') {
+        return AppRoutes.identityVerificationIntro;
+      }
+      if (identityStatus == 'pending') {
         return AppRoutes.identityPendingReview;
       }
       if (!(verificationState?.isApproved ?? false)) {
-        return AppRoutes.identityVerificationIntro;
+        return AppRoutes.identityPendingReview;
       }
+
       final approvalToken = verificationState?.verificationApprovedAt
               ?.toUtc()
               .toIso8601String() ??
@@ -406,20 +455,6 @@ class SupabaseService {
       );
       if (shouldShowSuccess) {
         return AppRoutes.learnerApprovalSuccess;
-      }
-
-      if (verificationState?.onboardingStage !=
-          onboardingStageQuestionnaireComplete) {
-        return AppRoutes.learnerQuestionnaire;
-      }
-      try {
-        final learnerDetail = await getLearnerProfileDetail(userId);
-        final focus = (learnerDetail?['learning_focus'] as String?)?.trim();
-        if (focus == null || focus.isEmpty) {
-          return AppRoutes.learningFocus;
-        }
-      } catch (_) {
-        return AppRoutes.learningFocus;
       }
       return AppRoutes.home;
     }
@@ -463,6 +498,8 @@ class SupabaseService {
     required String role,
     required String licenseImagePath,
     required String selfieImagePath,
+    String? guardianLicenseImagePath,
+    String? guardianSelfieImagePath,
   }) async {
     final submittedAt = DateTime.now().toUtc().toIso8601String();
     final licensePath = await _uploadIdentityAsset(
@@ -476,7 +513,22 @@ class SupabaseService {
       filePrefix: 'selfie',
     );
 
-    await _client.from('profiles').update({
+    String? guardianLicensePath;
+    String? guardianSelfiePath;
+    if (guardianLicenseImagePath != null && guardianSelfieImagePath != null) {
+      guardianLicensePath = await _uploadIdentityAsset(
+        userId: userId,
+        file: File(guardianLicenseImagePath),
+        filePrefix: 'guardian-license',
+      );
+      guardianSelfiePath = await _uploadIdentityAsset(
+        userId: userId,
+        file: File(guardianSelfieImagePath),
+        filePrefix: 'guardian-selfie',
+      );
+    }
+
+    final updates = <String, dynamic>{
       'role': role,
       'verification_status': 'pending',
       'verification_submitted_at': submittedAt,
@@ -485,8 +537,18 @@ class SupabaseService {
       'identity_license_path': licensePath,
       'identity_selfie_path': selfiePath,
       'is_verified': false,
-      'onboarding_stage': onboardingStageVerificationPending,
-    }).eq('id', userId);
+      'onboarding_stage': role == 'learner'
+          ? onboardingStageQuestionnaireComplete
+          : onboardingStageVerificationPending,
+    };
+
+    if (guardianLicensePath != null && guardianSelfiePath != null) {
+      updates['guardian_identity_license_path'] = guardianLicensePath;
+      updates['guardian_identity_selfie_path'] = guardianSelfiePath;
+      updates['guardian_consent_submitted_at'] = submittedAt;
+    }
+
+    await _client.from('profiles').update(updates).eq('id', userId);
   }
 
   static Future<void> approveIdentityVerificationForTesting({
@@ -502,6 +564,9 @@ class SupabaseService {
       'verification_approved_at': timestamp,
       'identity_license_path': 'testing://license-skip',
       'identity_selfie_path': 'testing://selfie-skip',
+      'guardian_identity_license_path': 'testing://guardian-license-skip',
+      'guardian_identity_selfie_path': 'testing://guardian-selfie-skip',
+      'guardian_consent_submitted_at': timestamp,
       'is_verified': role == 'learner',
     }).eq('id', userId);
   }
@@ -861,6 +926,11 @@ class SupabaseService {
     DateTime? targetTestDate,
     String? targetTestCentre,
     String? notes,
+    String? accountType,
+    String? wardFirstName,
+    String? wardLastName,
+    int? wardAge,
+    String? wardGender,
     int? classesTakenSoFar,
     DateTime? lastClassDate,
     List<Map<String, dynamic>>? preferredLocations,
@@ -893,6 +963,25 @@ class SupabaseService {
     }
     if (classesTakenSoFar != null) {
       data['classes_taken_sofar'] = classesTakenSoFar;
+    }
+    final cleanedAccountType = cleanString(accountType);
+    if (cleanedAccountType != null) {
+      data['account_type'] = _normalizeLearnerAccountType(cleanedAccountType);
+    }
+    final cleanedWardFirst = cleanString(wardFirstName);
+    if (cleanedWardFirst != null) {
+      data['ward_first_name'] = cleanedWardFirst;
+    }
+    final cleanedWardLast = cleanString(wardLastName);
+    if (cleanedWardLast != null) {
+      data['ward_last_name'] = cleanedWardLast;
+    }
+    if (wardAge != null) {
+      data['ward_age'] = wardAge;
+    }
+    final cleanedWardGender = cleanString(wardGender);
+    if (cleanedWardGender != null) {
+      data['ward_gender'] = cleanedWardGender;
     }
     if (lastClassDate != null) {
       data['last_class_date'] = lastClassDate.toIso8601String();
@@ -958,11 +1047,13 @@ class SupabaseService {
     if (city != null && city.isNotEmpty) {
       profileUpdates['city'] = city;
     }
-    if (draft.age != null) {
+    if (draft.age != null && draft.learnerAccountType != 'guardian') {
       profileUpdates['age'] = draft.age;
     }
     final gender = draft.gender?.trim();
-    if (gender != null && gender.isNotEmpty) {
+    if (gender != null &&
+        gender.isNotEmpty &&
+        draft.learnerAccountType != 'guardian') {
       profileUpdates['gender'] = gender;
     }
 
@@ -972,6 +1063,11 @@ class SupabaseService {
 
     await upsertLearnerProfile(
       userId: userId,
+      accountType: draft.learnerAccountType,
+      wardFirstName: draft.wardFirstName,
+      wardLastName: draft.wardLastName,
+      wardAge: draft.learnerAccountType == 'guardian' ? draft.age : null,
+      wardGender: draft.learnerAccountType == 'guardian' ? draft.gender : null,
       classesTakenSoFar: draft.classesTakenSoFar,
       lastClassDate: draft.lastClassDate,
       preferredLocations: draft.preferredLocationsPayload,
@@ -1221,7 +1317,7 @@ class SupabaseService {
     final results = await _client
         .from('learner_requests')
         .select(
-            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name,phone, profile_image_url, city, gender, age))')
+            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(account_type, ward_first_name, ward_last_name, ward_age, ward_gender, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name,phone, profile_image_url, city, gender, age))')
         .eq('instructor_id', userId)
         .order('created_at', ascending: false);
     final requests = List<Map<String, dynamic>>.from(results);
@@ -1281,7 +1377,7 @@ class SupabaseService {
     final rows = await _client
         .from('learner_profiles')
         .select(
-            'profile_id, learning_focus, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)')
+            'profile_id, account_type, ward_first_name, ward_last_name, ward_age, ward_gender, learning_focus, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)')
         .inFilter('profile_id', ids.toList());
 
     final map = <String, Map<String, dynamic>>{};
@@ -1326,6 +1422,11 @@ class SupabaseService {
       'target_test_date',
       'target_test_centre',
       'notes',
+      'account_type',
+      'ward_first_name',
+      'ward_last_name',
+      'ward_age',
+      'ward_gender',
       'classes_taken_sofar',
       'last_class_date',
       'preferred_locations',
@@ -1704,7 +1805,7 @@ class SupabaseService {
         .update({'status': status})
         .eq('id', requestId)
         .select(
-            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, profile_image_url, city, gender, age))')
+            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(account_type, ward_first_name, ward_last_name, ward_age, ward_gender, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, profile_image_url, city, gender, age))')
         .maybeSingle();
     if (result == null) return null;
     final hydrated = await _hydrateLessonRequests(
@@ -1815,7 +1916,7 @@ class SupabaseService {
     final result = await _client
         .from('learner_requests')
         .select(
-            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age))')
+            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(account_type, ward_first_name, ward_last_name, ward_age, ward_gender, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age))')
         .eq('id', requestId)
         .maybeSingle();
     if (result == null) return null;
@@ -1889,7 +1990,7 @@ class SupabaseService {
     final results = await _client
         .from('learner_requests')
         .select(
-            'learner_id, status, requested_first_name, requested_last_name, requested_profile_url, learner_profile:learner_profiles!learner_requests_learner_id_fkey(weekly_availability, availability_recurring, learning_focus, preferred_locations, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age))')
+            'learner_id, status, requested_first_name, requested_last_name, requested_profile_url, learner_profile:learner_profiles!learner_requests_learner_id_fkey(account_type, ward_first_name, ward_last_name, ward_age, ward_gender, weekly_availability, availability_recurring, learning_focus, preferred_locations, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age))')
         .eq('instructor_id', instructorId)
         .inFilter('status', ['accepted', 'active', 'in_progress']).order(
             'created_at',
@@ -1950,7 +2051,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, start_time, end_time, duration_hours, focus, pickup_location, notes, status, learner_id, learner:profiles(id, first_name, last_name, email, profile_image_url, city)')
+            'id, scheduled_at, start_time, end_time, duration_hours, focus, pickup_location, notes, status, learner_id, learner:profiles!lessons_learner_id_fkey(id, first_name, last_name, email, profile_image_url, city)')
         .eq('instructor_id', userId)
         .inFilter('status', ['scheduled', 'active', 'in_progress'])
         .gte('scheduled_at', windowStart.toIso8601String())
@@ -1970,7 +2071,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by, learner:profiles(id, first_name, last_name, email, profile_image_url, city)')
+            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by, learner:profiles!lessons_learner_id_fkey(id, first_name, last_name, email, profile_image_url, city)')
         .eq('instructor_id', userId)
         .inFilter('status', ['scheduled', 'active', 'in_progress'])
         .gte('scheduled_at', startUtc.toIso8601String())
@@ -1988,7 +2089,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, learner:profiles(id, first_name, last_name, email, profile_image_url, city)')
+            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, learner:profiles!lessons_learner_id_fkey(id, first_name, last_name, email, profile_image_url, city)')
         .eq('instructor_id', userId)
         .lt('scheduled_at', nowUtc)
         .order('scheduled_at', ascending: false)
@@ -2554,7 +2655,7 @@ class SupabaseService {
           .update(payload)
           .eq('id', lessonId)
           .select(
-              'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by, learner:profiles(id, first_name, last_name, email, profile_image_url, city)')
+              'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by, learner:profiles!lessons_learner_id_fkey(id, first_name, last_name, email, profile_image_url, city)')
           .single();
 
       final rows = await _hydrateLessonLearners([
@@ -2675,7 +2776,7 @@ class SupabaseService {
           .from('lessons')
           .update(payload)
           .eq('id', lessonId)
-          .select('*, learner:profiles(*)')
+          .select('*, learner:profiles!lessons_learner_id_fkey(*)')
           .maybeSingle();
       if (response == null) return null;
       return Map<String, dynamic>.from(response);

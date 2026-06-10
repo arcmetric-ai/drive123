@@ -89,6 +89,13 @@ function normalizeIdentityReview(row: Row) {
     hasSelfieDocument:
       typeof row.identity_selfie_path === 'string' &&
       row.identity_selfie_path.trim().length > 0,
+    hasGuardianLicenseDocument:
+      typeof row.guardian_identity_license_path === 'string' &&
+      row.guardian_identity_license_path.trim().length > 0,
+    hasGuardianSelfieDocument:
+      typeof row.guardian_identity_selfie_path === 'string' &&
+      row.guardian_identity_selfie_path.trim().length > 0,
+    guardianConsentSubmittedAt: row.guardian_consent_submitted_at,
     isVerified: row.is_verified === true,
   };
 }
@@ -456,6 +463,9 @@ serve(async (request) => {
           verification_review_notes,
           identity_license_path,
           identity_selfie_path,
+          guardian_identity_license_path,
+          guardian_identity_selfie_path,
+          guardian_consent_submitted_at,
           is_verified
         `,
       )
@@ -519,7 +529,7 @@ serve(async (request) => {
           updated_at,
           learner_id,
           instructor_id,
-          learner:profiles(
+          learner:profiles!lessons_learner_id_fkey(
             id,
             email,
             phone,

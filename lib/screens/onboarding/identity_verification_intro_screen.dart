@@ -53,7 +53,7 @@ class IdentityVerificationIntroScreen extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               const Text(
-                "To keep our community safe, we need to verify your driver's license.",
+                "To keep our community safe, we need to verify the account holder's driver's license before lessons can be requested.",
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w500,

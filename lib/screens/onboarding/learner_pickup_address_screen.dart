@@ -188,6 +188,7 @@ class _LearnerPickupAddressScreenState
   @override
   Widget build(BuildContext context) {
     final city = widget.draft.city?.trim();
+    final isGuardianAccount = widget.draft.learnerAccountType == 'guardian';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -223,8 +224,12 @@ class _LearnerPickupAddressScreenState
                         const SizedBox(height: 6),
                         Text(
                           city == null || city.isEmpty
-                              ? 'Save up to three pickup spots. Instructors will use these to understand where lessons can start.'
-                              : 'Save up to three pickup spots in $city. Choose one default location for lesson requests.',
+                              ? isGuardianAccount
+                                  ? 'Save up to three pickup spots for your ward. Instructors will use these to understand where lessons can start.'
+                                  : 'Save up to three pickup spots. Instructors will use these to understand where lessons can start.'
+                              : isGuardianAccount
+                                  ? 'Save up to three pickup spots for your ward in $city. Choose one default location for lesson requests.'
+                                  : 'Save up to three pickup spots in $city. Choose one default location for lesson requests.',
                           style: const TextStyle(
                             fontSize: 17,
                             height: 1.45,

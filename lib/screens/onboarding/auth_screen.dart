@@ -161,8 +161,7 @@ class _AuthScreenState extends State<AuthScreen> {
               extra: _signInEmailController.text.trim(),
             ),
             onSwitchToSignUp: () => context.go(
-              AppRoutes.signUpEmail,
-              extra: {'email': _signInEmailController.text.trim()},
+              AppRoutes.roleSelection,
             ),
           ),
         ),

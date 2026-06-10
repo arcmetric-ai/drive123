@@ -13,9 +13,13 @@ class SignUpEmailScreen extends StatefulWidget {
   const SignUpEmailScreen({
     super.key,
     this.initialEmail,
+    this.role = 'learner',
+    this.learnerAccountType = 'learner',
   });
 
   final String? initialEmail;
+  final String role;
+  final String learnerAccountType;
 
   @override
   State<SignUpEmailScreen> createState() => _SignUpEmailScreenState();
@@ -44,7 +48,11 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
 
     try {
       final email = _emailController.text.trim();
-      final flowState = await SupabaseService.startSignUpFlow(email: email);
+      final flowState = await SupabaseService.startSignUpFlow(
+        email: email,
+        role: widget.role,
+        learnerAccountType: widget.learnerAccountType,
+      );
       if (!mounted) return;
 
       context.go(
@@ -85,7 +93,9 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                AuthBackButton(onPressed: () => context.go(AppRoutes.auth)),
+                AuthBackButton(
+                  onPressed: () => context.go(AppRoutes.learnerAccountType),
+                ),
                 const SizedBox(height: 44),
                 const Text(
                   'Create Account',

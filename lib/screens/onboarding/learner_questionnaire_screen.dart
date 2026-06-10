@@ -28,6 +28,8 @@ class _LearnerQuestionnaireScreenState
   late final TextEditingController _firstNameController;
   late final TextEditingController _lastNameController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _wardFirstNameController;
+  late final TextEditingController _wardLastNameController;
   late final TextEditingController _g1NumberController;
   late final TextEditingController _g1ExpiryController;
   late final TextEditingController _ageController;
@@ -38,6 +40,8 @@ class _LearnerQuestionnaireScreenState
   DateTime? _lastClassDate;
   String? _selectedCity;
   String? _selectedGender;
+  bool get _isGuardianAccount =>
+      widget.initialDraft.learnerAccountType == 'guardian';
 
   @override
   void initState() {
@@ -46,6 +50,10 @@ class _LearnerQuestionnaireScreenState
     _firstNameController = TextEditingController(text: draft.firstName ?? '');
     _lastNameController = TextEditingController(text: draft.lastName ?? '');
     _phoneController = TextEditingController(text: draft.phone ?? '');
+    _wardFirstNameController =
+        TextEditingController(text: draft.wardFirstName ?? '');
+    _wardLastNameController =
+        TextEditingController(text: draft.wardLastName ?? '');
     _g1NumberController =
         TextEditingController(text: draft.g1LicenceNumber ?? '');
     _g1ExpiryDate = draft.g1ExpiryDate;
@@ -70,6 +78,8 @@ class _LearnerQuestionnaireScreenState
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
+    _wardFirstNameController.dispose();
+    _wardLastNameController.dispose();
     _g1NumberController.dispose();
     _g1ExpiryController.dispose();
     _ageController.dispose();
@@ -153,6 +163,21 @@ class _LearnerQuestionnaireScreenState
       _showError('Enter a valid age.');
       return;
     }
+    if (_isGuardianAccount) {
+      if (age < 16) {
+        _showError('Ward learners must be at least 16 years old to continue.');
+        return;
+      }
+    } else if (age < 18) {
+      _showError(
+        'Learners under 18 need a guardian to create and manage the account.',
+      );
+      return;
+    }
+    if (age > 100) {
+      _showError('Enter a valid age.');
+      return;
+    }
 
     final classesTakenText = _classesTakenController.text.trim();
     final classesTaken =
@@ -164,9 +189,14 @@ class _LearnerQuestionnaireScreenState
 
     final draft = widget.initialDraft.copyWith(
       role: widget.initialDraft.role,
+      learnerAccountType: widget.initialDraft.learnerAccountType,
       firstName: _firstNameController.text.trim(),
       lastName: _lastNameController.text.trim(),
       phone: _phoneController.text.trim(),
+      wardFirstName:
+          _isGuardianAccount ? _wardFirstNameController.text.trim() : null,
+      wardLastName:
+          _isGuardianAccount ? _wardLastNameController.text.trim() : null,
       g1LicenceNumber: _g1NumberController.text.trim().toUpperCase(),
       g1ExpiryDate: _g1ExpiryDate,
       city: _selectedCity!.trim(),
@@ -327,18 +357,22 @@ class _LearnerQuestionnaireScreenState
                         ],
                       ),
                       const SizedBox(height: 28),
-                      const Text(
-                        'Tell us about you',
-                        style: TextStyle(
+                      Text(
+                        _isGuardianAccount
+                            ? 'Guardian and learner details'
+                            : 'Tell us about you',
+                        style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
                           color: AppColors.foreground,
                         ),
                       ),
                       const SizedBox(height: 10),
-                      const Text(
-                        'We need a few learner details before we set your pickup and weekly schedule.',
-                        style: TextStyle(
+                      Text(
+                        _isGuardianAccount
+                            ? "We'll use your guardian account for notifications and your ward's details for lessons."
+                            : 'We need a few learner details before we set your pickup and weekly schedule.',
+                        style: const TextStyle(
                           fontSize: 18,
                           height: 1.45,
                           color: AppColors.mutedForeground,
@@ -346,9 +380,12 @@ class _LearnerQuestionnaireScreenState
                       ),
                       const SizedBox(height: 24),
                       _sectionCard(
-                        title: 'Personal information',
-                        subtitle:
-                            'These details are required before you can continue.',
+                        title: _isGuardianAccount
+                            ? 'Guardian information'
+                            : 'Personal information',
+                        subtitle: _isGuardianAccount
+                            ? 'This account belongs to the guardian responsible for the learner.'
+                            : 'These details are required before you can continue.',
                         children: [
                           TextFormField(
                             controller: _firstNameController,
@@ -383,20 +420,62 @@ class _LearnerQuestionnaireScreenState
                         ],
                       ),
                       const SizedBox(height: 20),
+                      if (_isGuardianAccount) ...[
+                        _sectionCard(
+                          title: 'Ward information',
+                          subtitle:
+                              'Instructors will see that this is a guardian-managed learner request.',
+                          children: [
+                            TextFormField(
+                              controller: _wardFirstNameController,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: _fieldDecoration(
+                                label: 'Ward first name',
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return "Enter the learner's first name";
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _wardLastNameController,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: _fieldDecoration(
+                                label: 'Ward last name',
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return "Enter the learner's last name";
+                                }
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                       _sectionCard(
                         title: 'G1/G2/G Licence',
-                        subtitle:
-                            'Enter the learner licence details you will use for lessons.',
+                        subtitle: _isGuardianAccount
+                            ? "Enter the ward learner's licence details."
+                            : 'Enter the learner licence details you will use for lessons.',
                         children: [
                           TextFormField(
                             controller: _g1NumberController,
                             textCapitalization: TextCapitalization.characters,
                             decoration: _fieldDecoration(
-                              label: 'G1/G2/G licence number',
+                              label: _isGuardianAccount
+                                  ? 'Ward G1/G2/G licence number'
+                                  : 'G1/G2/G licence number',
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Enter your G1 licence number';
+                                return _isGuardianAccount
+                                    ? "Enter the ward learner's licence number"
+                                    : 'Enter your G1 licence number';
                               }
                               return null;
                             },
@@ -406,7 +485,9 @@ class _LearnerQuestionnaireScreenState
                             controller: _g1ExpiryController,
                             readOnly: true,
                             decoration: _fieldDecoration(
-                              label: 'G1/G2/G expiry date',
+                              label: _isGuardianAccount
+                                  ? 'Ward G1/G2/G expiry date'
+                                  : 'G1/G2/G expiry date',
                               suffixIcon: IconButton(
                                 onPressed: () => _pickDate(
                                   controller: _g1ExpiryController,
@@ -424,9 +505,12 @@ class _LearnerQuestionnaireScreenState
                       ),
                       const SizedBox(height: 20),
                       _sectionCard(
-                        title: 'Basic details',
-                        subtitle:
-                            'This helps match you with the right instructors and lesson options.',
+                        title: _isGuardianAccount
+                            ? 'Ward learner details'
+                            : 'Basic details',
+                        subtitle: _isGuardianAccount
+                            ? 'This helps match your ward with the right instructors and lesson options.'
+                            : 'This helps match you with the right instructors and lesson options.',
                         children: [
                           DropdownButtonFormField<String>(
                             initialValue: _selectedCity,
@@ -449,10 +533,14 @@ class _LearnerQuestionnaireScreenState
                           TextFormField(
                             controller: _ageController,
                             keyboardType: TextInputType.number,
-                            decoration: _fieldDecoration(label: 'Age'),
+                            decoration: _fieldDecoration(
+                              label: _isGuardianAccount ? 'Ward age' : 'Age',
+                            ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Enter your age';
+                                return _isGuardianAccount
+                                    ? "Enter the ward learner's age"
+                                    : 'Enter your age';
                               }
                               if (int.tryParse(value.trim()) == null) {
                                 return 'Enter a valid age';
@@ -492,7 +580,9 @@ class _LearnerQuestionnaireScreenState
                       ),
                       const SizedBox(height: 20),
                       _sectionCard(
-                        title: 'Lesson history',
+                        title: _isGuardianAccount
+                            ? "Ward's lesson history"
+                            : 'Lesson history',
                         subtitle:
                             'Keep this accurate so the app can reflect your current progress.',
                         children: [

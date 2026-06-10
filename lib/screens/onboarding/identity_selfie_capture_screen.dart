@@ -110,7 +110,7 @@ class _IdentitySelfieCaptureScreenState
         widget.role == 'instructor'
             ? AppRoutes.instructorQuestionnaire
             : AppRoutes.identityPendingReview,
-        extra: widget.role,
+        extra: {'role': widget.role},
       );
     } catch (error) {
       if (!mounted) return;
@@ -145,11 +145,16 @@ class _IdentitySelfieCaptureScreenState
         role: widget.role,
       );
       if (!mounted) return;
+      final state = await SupabaseService.getCurrentIdentityVerificationState();
+      if (!mounted) return;
       context.go(
         widget.role == 'instructor'
             ? AppRoutes.instructorQuestionnaire
-            : AppRoutes.learnerQuestionnaire,
-        extra: widget.role,
+            : state?.onboardingStage ==
+                    SupabaseService.onboardingStageQuestionnaireComplete
+                ? AppRoutes.home
+                : AppRoutes.learnerQuestionnaire,
+        extra: {'role': widget.role},
       );
     } catch (error) {
       if (!mounted) return;
@@ -174,8 +179,7 @@ class _IdentitySelfieCaptureScreenState
       onAction: _captureSelfie,
       onCapture: _captureSelfie,
       isBusy: _isSubmitting,
-      secondaryActionLabel:
-          _testingBypassEnabled ? 'Skip for testing' : null,
+      secondaryActionLabel: _testingBypassEnabled ? 'Skip for testing' : null,
       onSecondaryAction: _testingBypassEnabled ? _skipForTesting : null,
     );
   }

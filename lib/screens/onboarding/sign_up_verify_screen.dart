@@ -84,6 +84,8 @@ class _SignUpVerifyScreenState extends State<SignUpVerifyScreen> {
     try {
       final refreshedFlow = await SupabaseService.startSignUpFlow(
         email: widget.flowState.email,
+        role: widget.flowState.role,
+        learnerAccountType: widget.flowState.learnerAccountType,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

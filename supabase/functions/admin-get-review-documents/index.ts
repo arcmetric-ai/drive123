@@ -52,7 +52,10 @@ serve(async (request) => {
             last_name,
             verification_status,
             identity_license_path,
-            identity_selfie_path
+            identity_selfie_path,
+            guardian_identity_license_path,
+            guardian_identity_selfie_path,
+            guardian_consent_submitted_at
           `,
         )
         .eq('id', userId)
@@ -76,6 +79,16 @@ serve(async (request) => {
         'identity-verification',
         profile.identity_selfie_path as string | null | undefined,
       );
+      const guardianLicenseUrl = await createSignedDocumentUrl(
+        admin,
+        'identity-verification',
+        profile.guardian_identity_license_path as string | null | undefined,
+      );
+      const guardianSelfieUrl = await createSignedDocumentUrl(
+        admin,
+        'identity-verification',
+        profile.guardian_identity_selfie_path as string | null | undefined,
+      );
 
       const documents = [
         {
@@ -90,6 +103,18 @@ serve(async (request) => {
           path: profile.identity_selfie_path,
           signedUrl: selfieUrl,
         },
+        {
+          key: 'guardian_identity_license',
+          label: 'Guardian Government ID',
+          path: profile.guardian_identity_license_path,
+          signedUrl: guardianLicenseUrl,
+        },
+        {
+          key: 'guardian_identity_selfie',
+          label: 'Guardian Selfie',
+          path: profile.guardian_identity_selfie_path,
+          signedUrl: guardianSelfieUrl,
+        },
       ].filter((item) => item.path != null);
 
       return jsonResponse({
@@ -101,6 +126,7 @@ serve(async (request) => {
           firstName: profile.first_name,
           lastName: profile.last_name,
           verificationStatus: profile.verification_status,
+          guardianConsentSubmittedAt: profile.guardian_consent_submitted_at,
         },
         documents,
       });

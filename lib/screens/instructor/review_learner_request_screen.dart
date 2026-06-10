@@ -307,6 +307,12 @@ class _ReviewLearnerRequestScreenState
   }
 
   int? _deriveAge(Map<String, dynamic> learner, Map<String, dynamic>? request) {
+    final learnerProfile = request?['learner_profile'];
+    if (learnerProfile is Map) {
+      final wardAge = _parseAge(learnerProfile['ward_age']);
+      if (wardAge != null) return wardAge;
+    }
+
     final ageSources = [
       learner['age'],
       request?['age'],
@@ -410,6 +416,16 @@ class _ReviewLearnerRequestScreenState
         _stringValue(request?['requested_city']) ??
         _stringValue(request?['city']);
     final age = _deriveAge(learner, request);
+    final accountType = _stringValue(learnerProfile?['account_type']);
+    final isGuardianAccount = accountType == 'guardian';
+    final guardianName = _displayName(request ?? const {});
+    final wardFirst = _stringValue(learnerProfile?['ward_first_name']);
+    final wardLast = _stringValue(learnerProfile?['ward_last_name']);
+    final wardName = [
+      if (wardFirst != null) wardFirst,
+      if (wardLast != null) wardLast,
+    ].join(' ').trim();
+    final wardGender = _stringValue(learnerProfile?['ward_gender']);
     final availabilitySummary = _formatWeeklyAvailability(
       learner['weekly_availability'] ??
           request?['weekly_availability'] ??
@@ -517,6 +533,16 @@ class _ReviewLearnerRequestScreenState
                               requestedVehicle,
                               icon: Icons.directions_car_outlined,
                             ),
+                          if (isGuardianAccount)
+                            _infoTile(
+                              'Guardian-managed request',
+                              [
+                                'Guardian: $guardianName',
+                                if (wardName.isNotEmpty) 'Learner: $wardName',
+                                if (age != null) 'Learner age: $age years',
+                              ].join('\n'),
+                              icon: Icons.supervisor_account_outlined,
+                            ),
                           _infoTile(
                             'Message',
                             message?.isNotEmpty == true
@@ -537,7 +563,9 @@ class _ReviewLearnerRequestScreenState
                           ),
                           _infoTile(
                             'Gender',
-                            gender ?? 'Not provided',
+                            isGuardianAccount
+                                ? wardGender ?? 'Not provided'
+                                : gender ?? 'Not provided',
                             icon: Icons.wc_outlined,
                           ),
                           _infoTile(

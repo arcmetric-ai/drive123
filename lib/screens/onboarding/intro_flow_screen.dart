@@ -47,7 +47,7 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
   Future<void> _completeIntro() async {
     await LaunchPreferences.markIntroSeen();
     if (!mounted) return;
-    context.go(AppRoutes.auth);
+    context.go(AppRoutes.accountEntry);
   }
 
   void _handleNext() {

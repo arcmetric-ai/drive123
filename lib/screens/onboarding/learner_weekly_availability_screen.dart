@@ -177,6 +177,7 @@ class _LearnerWeeklyAvailabilityScreenState
   @override
   Widget build(BuildContext context) {
     final selectedSlots = _availability[_selectedDay] ?? const <String>[];
+    final isGuardianAccount = widget.draft.learnerAccountType == 'guardian';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -219,9 +220,11 @@ class _LearnerWeeklyAvailabilityScreenState
                       ],
                     ),
                     const SizedBox(height: 28),
-                    const Text(
-                      'Set different lesson times for each day of the week to match your schedule.',
-                      style: TextStyle(
+                    Text(
+                      isGuardianAccount
+                          ? 'Set the times your ward is available for lessons.'
+                          : 'Set different lesson times for each day of the week to match your schedule.',
+                      style: const TextStyle(
                         fontSize: 18,
                         height: 1.45,
                         color: AppColors.mutedForeground,
