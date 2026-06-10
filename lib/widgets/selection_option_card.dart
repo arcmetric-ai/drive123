@@ -46,87 +46,95 @@ class SelectionOptionCard extends StatelessWidget {
     final subtitleColor = isEnabled
         ? AppColors.mutedForeground
         : AppColors.mutedForeground.withValues(alpha: 0.7);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(32),
-        onTap: isEnabled ? onTap : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: cardPadding,
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(
-              color: cardBorderColor,
-              width: isSelected ? 2.4 : 1.2,
-            ),
-            boxShadow: AppShadows.subtle,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: illustrationSize,
-                height: illustrationSize,
-                decoration: BoxDecoration(
-                  color: illustrationBackgroundColor ?? AppColors.secondary,
-                  borderRadius: BorderRadius.circular(AppRadii.lg),
-                ),
-                padding: const EdgeInsets.all(10),
-                child: illustration,
+    return Semantics(
+      button: true,
+      enabled: isEnabled,
+      selected: isSelected,
+      label: title,
+      hint: subtitle,
+      onTap: isEnabled ? onTap : null,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(32),
+          onTap: isEnabled ? onTap : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: cardPadding,
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(
+                color: cardBorderColor,
+                width: isSelected ? 2.4 : 1.2,
               ),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(top: titleTopPadding),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: titleFontSize,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.4,
-                          height: 1.15,
-                          color: titleColor,
+              boxShadow: AppShadows.subtle,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: illustrationSize,
+                  height: illustrationSize,
+                  decoration: BoxDecoration(
+                    color: illustrationBackgroundColor ?? AppColors.secondary,
+                    borderRadius: BorderRadius.circular(AppRadii.lg),
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  child: illustration,
+                ),
+                const SizedBox(width: AppSpacing.lg),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: titleTopPadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: titleFontSize,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
+                            height: 1.15,
+                            color: titleColor,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: subtitleFontSize,
-                          fontWeight: FontWeight.w500,
-                          height: 1.45,
-                          color: subtitleColor,
+                        const SizedBox(height: AppSpacing.md),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: subtitleFontSize,
+                            fontWeight: FontWeight.w500,
+                            height: 1.45,
+                            color: subtitleColor,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              SizedBox(
-                width: 36,
-                height: 36,
-                child: isSelected
-                    ? const DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: AppColors.accent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.check_rounded,
-                          color: AppColors.accentForeground,
-                          size: 20,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
+                const SizedBox(width: AppSpacing.sm),
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: isSelected
+                      ? const DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.check_rounded,
+                            color: AppColors.accentForeground,
+                            size: 20,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
