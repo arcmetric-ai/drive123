@@ -58,23 +58,23 @@ class _AppSummary extends StatelessWidget {
       children: [
         _SummaryItem(
           icon: Icons.verified_user_rounded,
-          title: 'Learn with verified instructors',
+          title: 'For learners',
           description:
-              'Find certified driving instructors and request lessons that fit your schedule.',
+              'Find certified driving instructors, request lessons, and track your progress toward your G2 or G license.',
         ),
         SizedBox(height: AppSpacing.lg),
         _SummaryItem(
-          icon: Icons.event_available_rounded,
-          title: 'Keep every lesson organized',
+          icon: Icons.school_rounded,
+          title: 'For instructors',
           description:
-              'Track requests, lesson times, progress updates, and account notifications in one place.',
+              'Receive lesson requests, review learner details, manage availability, and keep your schedule organized.',
         ),
         SizedBox(height: AppSpacing.lg),
         _SummaryItem(
           icon: Icons.family_restroom_rounded,
-          title: 'Guardian-managed accounts',
+          title: 'For guardians',
           description:
-              'Parents and guardians can manage young learner accounts and receive important updates.',
+              'Create and manage accounts for young learners while receiving lesson updates and notifications directly.',
         ),
       ],
     );
