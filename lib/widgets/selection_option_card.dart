@@ -71,68 +71,78 @@ class SelectionOptionCard extends StatelessWidget {
               ),
               boxShadow: AppShadows.subtle,
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Stack(
               children: [
-                Container(
-                  width: illustrationSize,
-                  height: illustrationSize,
-                  decoration: BoxDecoration(
-                    color: illustrationBackgroundColor ?? AppColors.secondary,
-                    borderRadius: BorderRadius.circular(AppRadii.lg),
-                  ),
-                  padding: const EdgeInsets.all(10),
-                  child: illustration,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: illustrationSize,
+                      height: illustrationSize,
+                      decoration: BoxDecoration(
+                        color:
+                            illustrationBackgroundColor ?? AppColors.secondary,
+                        borderRadius: BorderRadius.circular(AppRadii.lg),
+                      ),
+                      padding: const EdgeInsets.all(10),
+                      child: illustration,
+                    ),
+                    const SizedBox(width: AppSpacing.lg),
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: titleTopPadding,
+                          right: isSelected ? 44 : 0,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: titleFontSize,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.4,
+                                height: 1.15,
+                                color: titleColor,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                            Text(
+                              subtitle,
+                              style: TextStyle(
+                                fontSize: subtitleFontSize,
+                                fontWeight: FontWeight.w500,
+                                height: 1.45,
+                                color: subtitleColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: AppSpacing.lg),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: titleTopPadding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: titleFontSize,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.4,
-                            height: 1.15,
-                            color: titleColor,
-                          ),
+                if (isSelected)
+                  const Positioned(
+                    top: 0,
+                    right: 0,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Icon(
+                          Icons.check_rounded,
+                          color: AppColors.accentForeground,
+                          size: 20,
                         ),
-                        const SizedBox(height: AppSpacing.md),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: subtitleFontSize,
-                            fontWeight: FontWeight.w500,
-                            height: 1.45,
-                            color: subtitleColor,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: isSelected
-                      ? const DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: AppColors.accent,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.check_rounded,
-                            color: AppColors.accentForeground,
-                            size: 20,
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
               ],
             ),
           ),

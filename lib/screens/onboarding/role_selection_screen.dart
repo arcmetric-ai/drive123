@@ -8,6 +8,7 @@ import '../../constants/app_routes.dart';
 import '../../constants/app_spacing.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/app_primary_button.dart';
+import '../../widgets/auth_back_button.dart';
 import '../../widgets/selection_option_card.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
@@ -83,7 +84,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 20),
+                    AuthBackButton(
+                      onPressed: () => context.go(AppRoutes.accountEntry),
+                    ),
+                    const SizedBox(height: 34),
                     const Text(
                       'How will you use\nDrive Tutor?',
                       style: TextStyle(
