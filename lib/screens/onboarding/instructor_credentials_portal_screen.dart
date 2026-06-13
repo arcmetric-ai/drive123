@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
@@ -50,6 +51,19 @@ class _InstructorCredentialsPortalScreenState
       case InstructorDocumentType.municipalLicense:
         return Icons.location_city_outlined;
     }
+  }
+
+  String? _expiryStatusFor(
+    Map<String, dynamic> profile,
+    InstructorDocumentType type,
+  ) {
+    final columnName = type.expiryColumnName;
+    if (columnName == null) return null;
+    final raw = profile[columnName]?.toString();
+    if (raw == null || raw.trim().isEmpty) return null;
+    final parsed = DateTime.tryParse(raw)?.toLocal();
+    if (parsed == null) return null;
+    return 'EXPIRES ${DateFormat('MMM d, yyyy').format(parsed).toUpperCase()}';
   }
 
   Future<void> _openUpload(InstructorDocumentType type) async {
@@ -179,12 +193,13 @@ class _InstructorCredentialsPortalScreenState
                   ...InstructorDocumentType.values.map((type) {
                     final path = profile[type.columnName] as String?;
                     final hasUpload = path != null && path.trim().isNotEmpty;
+                    final expiryStatus = _expiryStatusFor(profile, type);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 18),
                       child: InstructorDocumentStatusTile(
                         title: type.title,
                         statusLabel: hasUpload
-                            ? 'UPLOADED'
+                            ? (expiryStatus ?? 'UPLOADED')
                             : (type.isRequired ? 'REQUIRED' : 'OPTIONAL'),
                         statusColor: hasUpload
                             ? AppColors.primary

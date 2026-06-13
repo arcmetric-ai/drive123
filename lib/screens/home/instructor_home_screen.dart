@@ -296,7 +296,7 @@ class _ActivationRequiredOverlay extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      'Your instructor profile is approved. Choose a pass on DriveTutor.ca, then return here. We will unlock the dashboard automatically once payment is confirmed.',
+                      'Your instructor profile is approved. Choose a pass on DriveTutor.ca, then return here. We will unlock the dashboard automatically once your pass is active.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: AppColors.mutedForeground,

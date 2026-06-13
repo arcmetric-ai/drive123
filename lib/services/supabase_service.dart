@@ -12,6 +12,7 @@ import '../services/launch_preferences.dart';
 import '../models/user_model.dart';
 import '../models/instructor_model.dart';
 import '../models/lesson_model.dart';
+import '../utils/lesson_request_utils.dart';
 
 class AccountAlreadyExistsException implements Exception {
   const AccountAlreadyExistsException(this.email);
@@ -575,6 +576,7 @@ class SupabaseService {
     required String userId,
     required InstructorDocumentType documentType,
     required File file,
+    DateTime? expiresAt,
   }) async {
     final bytes = await file.readAsBytes();
     final extension = file.path.split('.').last.toLowerCase();
@@ -587,11 +589,27 @@ class SupabaseService {
           fileOptions: const FileOptions(upsert: true),
         );
 
-    await _client.from('instructor_profiles').upsert({
+    final updates = <String, dynamic>{
       'profile_id': userId,
       documentType.columnName: storagePath,
       'credentials_status': 'not_started',
-    }, onConflict: 'profile_id');
+    };
+    final expiryColumn = documentType.expiryColumnName;
+    if (expiryColumn != null && expiresAt != null) {
+      final endOfDay = DateTime.utc(
+        expiresAt.year,
+        expiresAt.month,
+        expiresAt.day,
+        23,
+        59,
+        59,
+      );
+      updates[expiryColumn] = endOfDay.toIso8601String();
+    }
+
+    await _client
+        .from('instructor_profiles')
+        .upsert(updates, onConflict: 'profile_id');
   }
 
   static Future<void> submitInstructorCredentialsForReview({
@@ -1760,8 +1778,8 @@ class SupabaseService {
       }
       if (learnerMap != null) {
         lesson['learner'] = learnerMap;
-        final displayName = _formatProfileName(learnerMap);
-        if (displayName != null && displayName.isNotEmpty) {
+        final displayName = formatLessonRequestLearnerName(lesson);
+        if (displayName.isNotEmpty) {
           lesson['learner_name'] = displayName;
           learnerMap.putIfAbsent('name', () => displayName);
         } else {
@@ -1780,20 +1798,6 @@ class SupabaseService {
     }
 
     return lessons;
-  }
-
-  static String? _formatProfileName(Map<String, dynamic> profile) {
-    final first = (profile['first_name'] as String?)?.trim();
-    final last = (profile['last_name'] as String?)?.trim();
-    final parts = <String>[];
-    if (first != null && first.isNotEmpty) parts.add(first);
-    if (last != null && last.isNotEmpty) parts.add(last);
-    if (parts.isNotEmpty) {
-      return parts.join(' ');
-    }
-    final email = (profile['email'] as String?)?.trim();
-    if (email != null && email.isNotEmpty) return email;
-    return null;
   }
 
   static Future<Map<String, dynamic>?> respondToLessonRequest({

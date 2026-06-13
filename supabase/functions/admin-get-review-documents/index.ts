@@ -140,9 +140,12 @@ serve(async (request) => {
             profile_id,
             credentials_status,
             instructor_license_path,
+            instructor_license_expires_at,
             insurance_document_path,
+            insurance_document_expires_at,
             background_check_path,
             municipal_license_path,
+            municipal_license_expires_at,
             profile:profiles!instructor_profiles_profile_id_fkey(
               id,
               email,
@@ -194,12 +197,14 @@ serve(async (request) => {
           key: 'instructor_license',
           label: 'Instructor License',
           path: instructorProfile.instructor_license_path,
+          expiresAt: instructorProfile.instructor_license_expires_at,
           signedUrl: instructorLicenseUrl,
         },
         {
           key: 'insurance_document',
           label: 'Insurance Document',
           path: instructorProfile.insurance_document_path,
+          expiresAt: instructorProfile.insurance_document_expires_at,
           signedUrl: insuranceUrl,
         },
         {
@@ -212,6 +217,7 @@ serve(async (request) => {
           key: 'municipal_license',
           label: 'Municipal License',
           path: instructorProfile.municipal_license_path,
+          expiresAt: instructorProfile.municipal_license_expires_at,
           signedUrl: municipalLicenseUrl,
         },
       ].filter((item) => item.path != null);

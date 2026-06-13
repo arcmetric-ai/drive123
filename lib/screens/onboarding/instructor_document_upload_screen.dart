@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
 import '../../models/instructor_document_type.dart';
@@ -27,8 +28,16 @@ class InstructorDocumentUploadScreen extends StatefulWidget {
 class _InstructorDocumentUploadScreenState
     extends State<InstructorDocumentUploadScreen> {
   final _imagePicker = ImagePicker();
+  final _expiryController = TextEditingController();
   String? _selectedFilePath;
+  DateTime? _expiryDate;
   bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _expiryController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     final picked = await _imagePicker.pickImage(
@@ -50,6 +59,21 @@ class _InstructorDocumentUploadScreenState
     setState(() => _selectedFilePath = path);
   }
 
+  Future<void> _pickExpiryDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _expiryDate ?? now,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 10),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _expiryDate = picked;
+      _expiryController.text = DateFormat('MMM d, yyyy').format(picked);
+    });
+  }
+
   Future<void> _submit() async {
     final filePath = _selectedFilePath;
     final userId = SupabaseService.currentUser?.id;
@@ -62,6 +86,15 @@ class _InstructorDocumentUploadScreenState
       );
       return;
     }
+    if (widget.documentType.requiresExpiry && _expiryDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Select the ${widget.documentType.title} expiry date.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     try {
@@ -69,6 +102,7 @@ class _InstructorDocumentUploadScreenState
         userId: userId,
         documentType: widget.documentType,
         file: File(filePath),
+        expiresAt: _expiryDate,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -217,6 +251,36 @@ class _InstructorDocumentUploadScreenState
                 ),
               ),
               const SizedBox(height: 28),
+              if (widget.documentType.requiresExpiry) ...[
+                TextField(
+                  controller: _expiryController,
+                  readOnly: true,
+                  onTap: _pickExpiryDate,
+                  decoration: InputDecoration(
+                    labelText: '${widget.documentType.title} expiry date',
+                    hintText: 'Select expiry date',
+                    suffixIcon: const Icon(Icons.calendar_today_outlined),
+                    filled: true,
+                    fillColor: AppColors.card,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(
+                        color: AppColors.primary,
+                        width: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 28),
+              ],
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),

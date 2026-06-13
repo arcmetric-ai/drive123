@@ -31,13 +31,14 @@ class HelpSupportScreen extends StatelessWidget {
           _SupportTile(
             icon: Icons.question_answer_outlined,
             title: 'FAQ',
-            description: 'Common questions about booking, payments, and lessons.',
+            description: 'Common questions about booking, passes, and lessons.',
             onTap: () {
               showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
                   title: const Text('Coming soon'),
-                  content: const Text('We\'re preparing a detailed FAQ for you.'),
+                  content:
+                      const Text('We\'re preparing a detailed FAQ for you.'),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
@@ -52,7 +53,8 @@ class HelpSupportScreen extends StatelessWidget {
           _SupportTile(
             icon: Icons.email_outlined,
             title: 'Email Support',
-            description: 'Send us a message and we\'ll respond within 1 business day.',
+            description:
+                'Send us a message and we\'ll respond within 1 business day.',
             onTap: () {
               showDialog(
                 context: context,
@@ -125,4 +127,3 @@ class _SupportTile extends StatelessWidget {
     );
   }
 }
-

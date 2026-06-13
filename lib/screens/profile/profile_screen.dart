@@ -1597,7 +1597,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'This submits an account deletion request. Drive Tutor may retain records required for safety, fraud prevention, legal compliance, billing, disputes, or law-enforcement requests.',
+                      'This submits an account deletion request. Drive Tutor may retain records required for safety, fraud prevention, legal compliance, pass records, disputes, or law-enforcement requests.',
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(

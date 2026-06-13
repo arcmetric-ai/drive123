@@ -141,10 +141,10 @@ class _InstructorQuestionnaireScreenState
     _vehiclePlateController.clear();
   }
 
-  Future<void> _pickVehicleImage() async {
+  Future<void> _pickVehicleImage(ImageSource source) async {
     try {
       final picked = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
+        source: source,
         imageQuality: 85,
       );
       if (picked != null) {
@@ -159,6 +159,47 @@ class _InstructorQuestionnaireScreenState
         ),
       );
     }
+  }
+
+  Future<void> _chooseVehicleImageSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Add vehicle photo',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: _qText,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Take a photo'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('Choose from photos'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (source == null) return;
+    await _pickVehicleImage(source);
   }
 
   Widget _buildVehiclePhotoChip(_VehicleEntry vehicle) {
@@ -907,7 +948,7 @@ class _InstructorQuestionnaireScreenState
                                 runSpacing: 8,
                                 children: [
                                   OutlinedButton.icon(
-                                    onPressed: _pickVehicleImage,
+                                    onPressed: _chooseVehicleImageSource,
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: _qPrimary,
                                       side: const BorderSide(color: _qPrimary),

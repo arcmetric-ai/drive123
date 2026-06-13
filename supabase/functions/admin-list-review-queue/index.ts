@@ -57,6 +57,8 @@ function normalizeProfile(row: Row) {
     email: row.email,
     phone: row.phone,
     role: row.role,
+    age: row.age,
+    licenceNumber: row.licence_number,
     firstName: row.first_name,
     lastName: row.last_name,
     city: row.city,
@@ -72,6 +74,8 @@ function normalizeIdentityReview(row: Row) {
     email: row.email,
     phone: row.phone,
     role: row.role,
+    age: row.age,
+    childLicenceNumber: row.licence_number,
     firstName: row.first_name,
     lastName: row.last_name,
     city: row.city,
@@ -100,6 +104,26 @@ function normalizeIdentityReview(row: Row) {
   };
 }
 
+function isGuardianIdentityRow(row: Row): boolean {
+  const role = stringValue(row.role)?.toLowerCase();
+  if (role === 'guardian') return true;
+  if (row.guardian_consent_submitted_at != null) return true;
+  if (
+    typeof row.guardian_identity_license_path === 'string' &&
+    row.guardian_identity_license_path.trim().length > 0
+  ) {
+    return true;
+  }
+  if (
+    typeof row.guardian_identity_selfie_path === 'string' &&
+    row.guardian_identity_selfie_path.trim().length > 0
+  ) {
+    return true;
+  }
+  const age = numberValue(row.age, 0);
+  return age === 16 || age === 17;
+}
+
 function normalizeCredentialReview(row: Row) {
   const profile = asRow(row.profile);
 
@@ -115,15 +139,18 @@ function normalizeCredentialReview(row: Row) {
     hasInstructorLicense:
       typeof row.instructor_license_path === 'string' &&
       row.instructor_license_path.trim().length > 0,
+    instructorLicenseExpiresAt: row.instructor_license_expires_at,
     hasInsuranceDocument:
       typeof row.insurance_document_path === 'string' &&
       row.insurance_document_path.trim().length > 0,
+    insuranceDocumentExpiresAt: row.insurance_document_expires_at,
     hasBackgroundCheck:
       typeof row.background_check_path === 'string' &&
       row.background_check_path.trim().length > 0,
     hasMunicipalLicense:
       typeof row.municipal_license_path === 'string' &&
       row.municipal_license_path.trim().length > 0,
+    municipalLicenseExpiresAt: row.municipal_license_expires_at,
     profile: normalizeProfile(profile),
   };
 }
@@ -350,6 +377,7 @@ function buildInstructorUsage(instructorRows: Row[], lessonHistory: ReturnType<t
 function buildLessonMetrics(
   lessonHistory: ReturnType<typeof normalizeLessonHistory>,
   identityReviews: ReturnType<typeof splitIdentityReviews>,
+  guardianReviews: ReturnType<typeof splitIdentityReviews>,
   instructorReviews: ReturnType<typeof splitCredentialReviews>,
 ) {
   let completedLessons = 0;
@@ -419,6 +447,9 @@ function buildLessonMetrics(
     pendingIdentityReviews: identityReviews.pending.length,
     approvedLearners: identityReviews.approved.length,
     rejectedLearners: identityReviews.rejected.length,
+    pendingGuardianReviews: guardianReviews.pending.length,
+    approvedGuardians: guardianReviews.approved.length,
+    rejectedGuardians: guardianReviews.rejected.length,
     pendingInstructorCredentials: instructorReviews.pending.length,
     approvedInstructors: instructorReviews.approved.length,
     rejectedInstructors: instructorReviews.rejected.length,
@@ -450,6 +481,8 @@ serve(async (request) => {
           email,
           phone,
           role,
+          age,
+          licence_number,
           first_name,
           last_name,
           city,
@@ -488,9 +521,12 @@ serve(async (request) => {
           credentials_rejection_reason,
           credentials_review_notes,
           instructor_license_path,
+          instructor_license_expires_at,
           insurance_document_path,
+          insurance_document_expires_at,
           background_check_path,
           municipal_license_path,
+          municipal_license_expires_at,
           profile:profiles!instructor_profiles_profile_id_fkey(
             id,
             email,
@@ -591,7 +627,13 @@ serve(async (request) => {
       return jsonResponse({ error: instructorError.message }, 400);
     }
 
-    const identityReviews = splitIdentityReviews((identityRows ?? []) as Row[]);
+    const identitySourceRows = (identityRows ?? []) as Row[];
+    const guardianRows = identitySourceRows.filter(isGuardianIdentityRow);
+    const learnerRows = identitySourceRows.filter(
+      (row) => !isGuardianIdentityRow(row),
+    );
+    const identityReviews = splitIdentityReviews(learnerRows);
+    const guardianReviews = splitIdentityReviews(guardianRows);
     const instructorCredentialReviews = splitCredentialReviews(
       (credentialRows ?? []) as Row[],
     );
@@ -603,11 +645,13 @@ serve(async (request) => {
     const lessonMetrics = buildLessonMetrics(
       normalizedLessonHistory,
       identityReviews,
+      guardianReviews,
       instructorCredentialReviews,
     );
 
     return jsonResponse({
       identityReviews,
+      guardianReviews,
       instructorCredentialReviews,
       lessonHistory: normalizedLessonHistory.slice(0, 200),
       instructorUsage,

@@ -214,6 +214,41 @@ class _InstructorLearnerDetailScreenState
       _learner['availability_recurring'] =
           profileMap?['availability_recurring'];
     }
+
+    final accountType = _asNullableString(_learner['account_type']) ??
+        _asNullableString(profileMap?['account_type']);
+    if (accountType?.toLowerCase() == 'guardian') {
+      final wardFirst = _pickString([
+        _learner['ward_first_name'],
+        profileMap?['ward_first_name'],
+      ]);
+      final wardLast = _pickString([
+        _learner['ward_last_name'],
+        profileMap?['ward_last_name'],
+      ]);
+      final wardName = [wardFirst, wardLast]
+          .whereType<String>()
+          .where((value) => value.trim().isNotEmpty)
+          .join(' ')
+          .trim();
+      if (wardName.isNotEmpty) {
+        _learner['name'] = wardName;
+      }
+      final wardAge = _pickInt([
+        _learner['ward_age'],
+        profileMap?['ward_age'],
+      ]);
+      if (wardAge != null) {
+        _learner['age'] = wardAge;
+      }
+      final wardGender = _pickString([
+        _learner['ward_gender'],
+        profileMap?['ward_gender'],
+      ]);
+      if (wardGender != null) {
+        _learner['gender'] = wardGender;
+      }
+    }
   }
 
   String? _asNullableString(dynamic value) {

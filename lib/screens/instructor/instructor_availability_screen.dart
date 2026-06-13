@@ -5,6 +5,7 @@ import '../../constants/app_colors.dart';
 import '../../services/app_notifier.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/learner_color_utils.dart';
+import '../../utils/lesson_request_utils.dart';
 
 class InstructorAvailabilityScreen extends StatefulWidget {
   const InstructorAvailabilityScreen({super.key});
@@ -1086,10 +1087,11 @@ class _LearnerOption {
     final profile = map['learner'] as Map<String, dynamic>? ?? const {};
     final first = (profile['first_name'] as String?)?.trim() ?? '';
     final last = (profile['last_name'] as String?)?.trim() ?? '';
-    final displayName = [
+    final fallbackDisplayName = [
       first,
       last,
     ].where((v) => v.isNotEmpty).join(' ').trim();
+    final displayName = formatLessonRequestLearnerName(map);
     final learnerId = clean(map['learner_id']) ??
         clean(profile['id']) ??
         clean(map['profile_id']);
@@ -1133,7 +1135,7 @@ class _LearnerOption {
     return _LearnerOption(
       id: learnerId ?? 'learner',
       displayName: (() {
-        if (displayName.isNotEmpty) {
+        if (displayName.isNotEmpty && displayName != 'Learner') {
           return displayName;
         }
         final email = clean(profile['email']);
@@ -1145,7 +1147,7 @@ class _LearnerOption {
       weeklyAvailability: availability,
       recurring: map['availability_recurring'] == true,
       colors: learnerColorForKey(
-        learnerId ?? clean(profile['email']) ?? displayName,
+        learnerId ?? clean(profile['email']) ?? fallbackDisplayName,
       ),
       avatarUrl: avatarUrl,
       learningFocus:
@@ -1278,6 +1280,7 @@ class _ScheduledSlot {
     final learner = row['learner'] as Map<String, dynamic>? ?? const {};
     final first = (learner['first_name'] as String?)?.trim() ?? '';
     final last = (learner['last_name'] as String?)?.trim() ?? '';
+    final rowDisplayName = clean(row['learner_name']);
     final displayName = [
       first,
       last,
@@ -1289,6 +1292,9 @@ class _ScheduledSlot {
       durationMinutes: durationMinutes,
       learnerId: learnerId ?? 'learner',
       learnerName: (() {
+        if (rowDisplayName != null && rowDisplayName.isNotEmpty) {
+          return rowDisplayName;
+        }
         if (displayName.isNotEmpty) {
           return displayName;
         }

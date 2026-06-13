@@ -368,7 +368,7 @@ class _PassCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             const _FeatureRow(label: 'Lesson requests, roster, and scheduling'),
             const SizedBox(height: AppSpacing.sm),
-            const _FeatureRow(label: 'Billing checked server-side'),
+            const _FeatureRow(label: 'Pass checked securely'),
             const SizedBox(height: AppSpacing.lg),
             AppPrimaryButton(
               label: 'Activate on website',
