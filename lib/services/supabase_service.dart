@@ -46,6 +46,27 @@ class SupabaseService {
     return null;
   }
 
+  static Future<void> _queueAppNotification({
+    required String eventKey,
+    required String entityId,
+    Map<String, dynamic>? data,
+  }) async {
+    if (entityId.trim().isEmpty || currentUser == null) return;
+    try {
+      await _client.functions.invoke(
+        'queue-app-notification',
+        body: {
+          'eventKey': eventKey,
+          'entityId': entityId,
+          if (data != null) 'data': data,
+        },
+      );
+    } catch (error) {
+      // Notifications must never block the core app action.
+      print('Warning: unable to queue notification $eventKey: $error');
+    }
+  }
+
   static String _normalizeLearnerAccountType(dynamic value) {
     if (value is String && value.trim().toLowerCase() == 'guardian') {
       return 'guardian';
@@ -161,14 +182,11 @@ class SupabaseService {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
 
-    var query = _client
-        .from('device_tokens')
-        .update({
-          'is_active': false,
-          'revoked_at': DateTime.now().toUtc().toIso8601String(),
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('profile_id', userId);
+    var query = _client.from('device_tokens').update({
+      'is_active': false,
+      'revoked_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('profile_id', userId);
 
     final token = fcmToken?.trim();
     if (token != null && token.isNotEmpty) {
@@ -662,6 +680,15 @@ class SupabaseService {
     await _client
         .from('instructor_profiles')
         .upsert(updates, onConflict: 'profile_id');
+
+    await _queueAppNotification(
+      eventKey: 'instructor.document.uploaded',
+      entityId: userId,
+      data: {
+        'documentName': documentType.title,
+        'documentType': documentType.name,
+      },
+    );
   }
 
   static Future<void> submitInstructorCredentialsForReview({
@@ -1866,7 +1893,23 @@ class SupabaseService {
     if (result == null) return null;
     final hydrated = await _hydrateLessonRequests(
         [Map<String, dynamic>.from(result as Map)]);
-    return hydrated.isNotEmpty ? hydrated.first : null;
+    final request = hydrated.isNotEmpty ? hydrated.first : null;
+    if (request != null) {
+      final normalizedStatus = status.trim().toLowerCase();
+      if (normalizedStatus == 'accepted') {
+        await _queueAppNotification(
+          eventKey: 'learner.request.accepted',
+          entityId: requestId,
+        );
+      } else if (normalizedStatus == 'rejected' ||
+          normalizedStatus == 'declined') {
+        await _queueAppNotification(
+          eventKey: 'learner.request.rejected',
+          entityId: requestId,
+        );
+      }
+    }
+    return request;
   }
 
   static Future<void> createLessonRequest({
@@ -1944,27 +1987,42 @@ class SupabaseService {
     final normalizedVehicleLabel = _clean(requestedVehicleLabel)?.trim();
     final normalizedVehicleType = _clean(requestedVehicleType)?.trim();
 
-    await _client.from('learner_requests').insert({
-      'instructor_id': instructorId,
-      'learner_id': learnerId,
-      'focus': normalizedFocus?.isNotEmpty == true ? normalizedFocus : null,
-      'message':
-          normalizedMessage?.isNotEmpty == true ? normalizedMessage : null,
-      'requested_vehicle_label': normalizedVehicleLabel?.isNotEmpty == true
-          ? normalizedVehicleLabel
-          : null,
-      'requested_vehicle_type': normalizedVehicleType?.isNotEmpty == true
-          ? normalizedVehicleType
-          : null,
-      'status': 'pending',
-      'requested_first_name': requestedFirst,
-      'requested_last_name': requestedLast,
-      'requested_profile_url': requestedProfileUrl,
-      'requested_phone': requestedPhone,
-      'requested_gender': requestedGender,
-      'requested_city': requestedCity,
-      'requested_age': requestedAge,
-    });
+    final inserted = await _client
+        .from('learner_requests')
+        .insert({
+          'instructor_id': instructorId,
+          'learner_id': learnerId,
+          'focus': normalizedFocus?.isNotEmpty == true ? normalizedFocus : null,
+          'message':
+              normalizedMessage?.isNotEmpty == true ? normalizedMessage : null,
+          'requested_vehicle_label': normalizedVehicleLabel?.isNotEmpty == true
+              ? normalizedVehicleLabel
+              : null,
+          'requested_vehicle_type': normalizedVehicleType?.isNotEmpty == true
+              ? normalizedVehicleType
+              : null,
+          'status': 'pending',
+          'requested_first_name': requestedFirst,
+          'requested_last_name': requestedLast,
+          'requested_profile_url': requestedProfileUrl,
+          'requested_phone': requestedPhone,
+          'requested_gender': requestedGender,
+          'requested_city': requestedCity,
+          'requested_age': requestedAge,
+        })
+        .select('id')
+        .maybeSingle();
+
+    final requestId = inserted?['id']?.toString();
+    if (requestId != null && requestId.isNotEmpty) {
+      await _queueAppNotification(
+        eventKey: 'learner.request.created',
+        entityId: requestId,
+        data: {
+          if (normalizedFocus?.isNotEmpty == true) 'focus': normalizedFocus,
+        },
+      );
+    }
   }
 
   static Future<Map<String, dynamic>?> getLearnerRequestById(
@@ -2013,6 +2071,10 @@ class SupabaseService {
     await _client
         .from('learner_requests')
         .update({'status': 'cancelled'}).eq('id', requestId);
+    await _queueAppNotification(
+      eventKey: 'learner.request.cancelled',
+      entityId: requestId,
+    );
   }
 
   static Future<void> createLessonFromRequest({
@@ -2031,14 +2093,26 @@ class SupabaseService {
         ? 1.0
         : durationHours.toDouble();
 
-    await _client.from('lessons').insert({
-      'learner_id': request['learner_id'],
-      'instructor_id': request['instructor_id'],
-      'scheduled_at': scheduledAt.toIso8601String(),
-      'duration_hours': _durationHoursToInt(normalizedDuration),
-      'focus': request['focus'],
-      'status': 'scheduled',
-    });
+    final inserted = await _client
+        .from('lessons')
+        .insert({
+          'learner_id': request['learner_id'],
+          'instructor_id': request['instructor_id'],
+          'scheduled_at': scheduledAt.toIso8601String(),
+          'duration_hours': _durationHoursToInt(normalizedDuration),
+          'focus': request['focus'],
+          'status': 'scheduled',
+        })
+        .select('id')
+        .maybeSingle();
+
+    final lessonId = inserted?['id']?.toString();
+    if (lessonId != null && lessonId.isNotEmpty) {
+      await _queueAppNotification(
+        eventKey: 'lesson.booked',
+        entityId: lessonId,
+      );
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getActiveLearnersWithAvailability(
@@ -2648,7 +2722,12 @@ class SupabaseService {
           .select('*, instructor:instructor_profiles(*, user:profiles(*))')
           .single();
 
-      return LessonModel.fromJson(response);
+      final lesson = LessonModel.fromJson(response);
+      await _queueAppNotification(
+        eventKey: 'lesson.booked',
+        entityId: lesson.id,
+      );
+      return lesson;
     } catch (e) {
       print('Error creating lesson: $e');
       return null;
@@ -2680,7 +2759,32 @@ class SupabaseService {
           .select('*, instructor:instructor_profiles(*, user:profiles(*))')
           .single();
 
-      return LessonModel.fromJson(response);
+      final lesson = LessonModel.fromJson(response);
+      final normalizedStatus = status.trim().toLowerCase();
+      if (normalizedStatus == 'cancelled' || normalizedStatus == 'canceled') {
+        await _queueAppNotification(
+          eventKey: 'lesson.cancelled',
+          entityId: lessonId,
+        );
+      } else if (normalizedStatus == 'active' ||
+          normalizedStatus == 'in_progress') {
+        await _queueAppNotification(
+          eventKey: 'lesson.started',
+          entityId: lessonId,
+        );
+      } else if (normalizedStatus == 'completed' ||
+          normalizedStatus == 'done' ||
+          normalizedStatus == 'finished') {
+        await _queueAppNotification(
+          eventKey: 'lesson.ended',
+          entityId: lessonId,
+        );
+        await _queueAppNotification(
+          eventKey: 'lesson.review.requested',
+          entityId: lessonId,
+        );
+      }
+      return lesson;
     } catch (e) {
       print('Error updating lesson status: $e');
       return null;
@@ -2717,6 +2821,30 @@ class SupabaseService {
       final rows = await _hydrateLessonLearners([
         Map<String, dynamic>.from(response),
       ]);
+      final normalizedStatus = status.trim().toLowerCase();
+      if (normalizedStatus == 'cancelled' || normalizedStatus == 'canceled') {
+        await _queueAppNotification(
+          eventKey: 'lesson.cancelled',
+          entityId: lessonId,
+        );
+      } else if (normalizedStatus == 'active' ||
+          normalizedStatus == 'in_progress') {
+        await _queueAppNotification(
+          eventKey: 'lesson.started',
+          entityId: lessonId,
+        );
+      } else if (normalizedStatus == 'completed' ||
+          normalizedStatus == 'done' ||
+          normalizedStatus == 'finished') {
+        await _queueAppNotification(
+          eventKey: 'lesson.ended',
+          entityId: lessonId,
+        );
+        await _queueAppNotification(
+          eventKey: 'lesson.review.requested',
+          entityId: lessonId,
+        );
+      }
       return rows.isEmpty ? Map<String, dynamic>.from(response) : rows.first;
     } catch (e) {
       print('Error updating instructor lesson status: $e');
@@ -2761,7 +2889,12 @@ class SupabaseService {
           .select('*, instructor:instructor_profiles(*, user:profiles(*))')
           .single();
 
-      return LessonModel.fromJson(response);
+      final lesson = LessonModel.fromJson(response);
+      await _queueAppNotification(
+        eventKey: 'lesson.rescheduled',
+        entityId: lesson.id,
+      );
+      return lesson;
     } catch (e) {
       print('Error updating scheduled lesson: $e');
       return null;
@@ -2835,6 +2968,12 @@ class SupabaseService {
           .select('*, learner:profiles!lessons_learner_id_fkey(*)')
           .maybeSingle();
       if (response == null) return null;
+      if (scheduledAt != null || startTime != null || endTime != null) {
+        await _queueAppNotification(
+          eventKey: 'lesson.rescheduled',
+          entityId: lessonId,
+        );
+      }
       return Map<String, dynamic>.from(response);
     } catch (e) {
       print('Error updating lesson details: $e');

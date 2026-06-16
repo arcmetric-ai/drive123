@@ -91,6 +91,63 @@ function notificationDataForFcm(data: JsonRow) {
   );
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function brandedEmailHtml(subject: string, text: string) {
+  const safeSubject = escapeHtml(subject);
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0)
+    .map((paragraph) => `<p style="margin:0 0 16px;color:#334155;font-size:16px;line-height:1.65;">${escapeHtml(paragraph)}</p>`)
+    .join('');
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${safeSubject}</title>
+  </head>
+  <body style="margin:0;background:#f6f8fc;font-family:Inter,Arial,sans-serif;color:#102347;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f8fc;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;">
+            <tr>
+              <td style="padding:28px 28px 18px;background:#ffffff;border-bottom:1px solid #eef2f7;">
+                <div style="font-size:22px;font-weight:800;color:#054ada;letter-spacing:0;">Drive Tutor</div>
+                <div style="margin-top:6px;font-size:13px;color:#64748b;">Ontario driver education, organized.</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 28px;">
+                <h1 style="margin:0 0 16px;color:#102347;font-size:26px;line-height:1.25;font-weight:800;">${safeSubject}</h1>
+                ${paragraphs}
+                <a href="https://www.drivetutor.ca" style="display:inline-block;margin-top:8px;background:#0b5fff;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:13px 18px;border-radius:12px;">Open Drive Tutor</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 28px;background:#f8fafc;border-top:1px solid #eef2f7;color:#64748b;font-size:12px;line-height:1.6;">
+                You are receiving this because there was an update on your Drive Tutor account.
+                Replies go to the Drive Tutor support team when a reply-to address is configured.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
 async function createFirebaseJwt(clientEmail: string, privateKey: string) {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const header = { alg: 'RS256', typ: 'JWT' };
@@ -208,7 +265,7 @@ async function sendEmail(email: string, event: JsonRow) {
   const text = String(emailData.text ?? event.body);
   const html = typeof emailData.html === 'string' && emailData.html.trim().length > 0
     ? String(emailData.html)
-    : undefined;
+    : brandedEmailHtml(subject, text);
 
   const resendPayload: JsonRow = {
     from: resendFromEmail,
@@ -223,9 +280,7 @@ async function sendEmail(email: string, event: JsonRow) {
     ],
   };
 
-  if (html != null) {
-    resendPayload.html = html;
-  }
+  resendPayload.html = html;
 
   if (resendReplyToEmail.trim().length > 0) {
     resendPayload.reply_to = [resendReplyToEmail];

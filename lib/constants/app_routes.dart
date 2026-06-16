@@ -55,6 +55,9 @@ import '../screens/progress/progress_tracker_screen.dart';
 import '../screens/splash_screen.dart';
 
 class AppRoutes {
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   static const String splash = '/';
   static const String intro = '/intro';
   static const String accountEntry = '/account-entry';
@@ -108,6 +111,7 @@ class AppRoutes {
   static const String locationSetup = '/location-setup';
 
   static final GoRouter router = GoRouter(
+    navigatorKey: navigatorKey,
     initialLocation: splash,
     routes: [
       GoRoute(
