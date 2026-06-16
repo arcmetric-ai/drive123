@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+import { queueNotificationEvent } from '../_shared/notifications.ts';
+
 type StripeObject = Record<string, unknown> & {
   id: string;
   metadata?: Record<string, string>;
@@ -154,6 +156,8 @@ async function handleCheckoutCompleted(
 
   if (mode === 'subscription' && typeof session.subscription === 'string') {
     const subscription = await stripeGet(`subscriptions/${session.subscription}`);
+    const accessExpiresAt =
+      isoFromUnix(subscription.current_period_end) ?? addDaysIso(30);
     await upsertEntitlement(admin, {
       profile_id: profileId,
       plan_key: planKey,
@@ -164,15 +168,16 @@ async function handleCheckoutCompleted(
       current_period_start: isoFromUnix(subscription.current_period_start),
       current_period_end: isoFromUnix(subscription.current_period_end),
       access_starts_at: isoFromUnix(subscription.current_period_start) ?? nowIso,
-      access_expires_at:
-        isoFromUnix(subscription.current_period_end) ?? addDaysIso(30),
+      access_expires_at: accessExpiresAt,
       cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
       last_stripe_event_id: eventId,
     });
+    await notifyPassActivated(admin, profileId, planKey, accessExpiresAt, session.id);
     return;
   }
 
   const accessDays = await planAccessDays(admin, planKey);
+  const accessExpiresAt = addDaysIso(accessDays);
   await upsertEntitlement(admin, {
     profile_id: profileId,
     plan_key: planKey,
@@ -182,9 +187,10 @@ async function handleCheckoutCompleted(
     stripe_payment_intent_id:
       typeof session.payment_intent === 'string' ? session.payment_intent : null,
     access_starts_at: nowIso,
-    access_expires_at: addDaysIso(accessDays),
+    access_expires_at: accessExpiresAt,
     last_stripe_event_id: eventId,
   });
+  await notifyPassActivated(admin, profileId, planKey, accessExpiresAt, session.id);
 }
 
 async function handleSubscriptionEvent(
@@ -226,6 +232,106 @@ async function handleSubscriptionEvent(
     access_expires_at: forceCanceled ? nowIso : periodEnd,
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
     last_stripe_event_id: eventId,
+  });
+
+  if (forceCanceled) {
+    await notifyPassExpired(admin, profileId, planKey, periodEnd, subscription.id);
+  }
+}
+
+async function planDisplayName(
+  admin: ReturnType<typeof createServiceClient>,
+  planKey: string,
+) {
+  const { data, error } = await admin
+    .from('instructor_billing_plans')
+    .select('display_name')
+    .eq('plan_key', planKey)
+    .maybeSingle();
+  if (error != null) throw new Error(error.message);
+  return String(data?.display_name ?? planKey);
+}
+
+function dateLabel(iso: string | null | undefined) {
+  if (!iso) return 'the current access window';
+  return new Intl.DateTimeFormat('en-CA', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'America/Toronto',
+  }).format(new Date(iso));
+}
+
+async function notifyPassActivated(
+  admin: ReturnType<typeof createServiceClient>,
+  profileId: string,
+  planKey: string,
+  accessExpiresAt: string,
+  checkoutSessionId: string,
+) {
+  const displayName = await planDisplayName(admin, planKey);
+  const expiryText = `Active until ${dateLabel(accessExpiresAt)}`;
+  const title = 'Instructor access activated';
+  const body =
+    `Your ${displayName} is active. Instructor tools are now available in the Drive Tutor app.`;
+
+  await queueNotificationEvent(admin, {
+    recipientProfileId: profileId,
+    eventKey: 'instructor.pass.activated',
+    title,
+    body,
+    channels: ['fcm', 'email'],
+    priority: 'high',
+    entityType: 'stripe_checkout_session',
+    entityId: null,
+    dedupeKey: `instructor.pass.activated:${checkoutSessionId}`,
+    data: {
+      screen: 'instructor_dashboard',
+      plan_key: planKey,
+      plan_name: displayName,
+      expiry_text: expiryText,
+      checkout_session_id: checkoutSessionId,
+      email: {
+        subject: title,
+        text: body,
+      },
+    },
+  });
+}
+
+async function notifyPassExpired(
+  admin: ReturnType<typeof createServiceClient>,
+  profileId: string,
+  planKey: string,
+  accessExpiresAt: string,
+  subscriptionId: string,
+) {
+  const displayName = await planDisplayName(admin, planKey);
+  const expiryText = `Expired on ${dateLabel(accessExpiresAt)}`;
+  const title = 'Instructor access expired';
+  const body =
+    `Your ${displayName} has expired. Activate a new pass on the website to unlock instructor tools again.`;
+
+  await queueNotificationEvent(admin, {
+    recipientProfileId: profileId,
+    eventKey: 'instructor.pass.expired',
+    title,
+    body,
+    channels: ['fcm', 'email'],
+    priority: 'high',
+    entityType: 'stripe_subscription',
+    entityId: null,
+    dedupeKey: `instructor.pass.expired:${subscriptionId}`,
+    data: {
+      screen: 'instructor_activation',
+      plan_key: planKey,
+      plan_name: displayName,
+      expiry_text: expiryText,
+      stripe_subscription_id: subscriptionId,
+      email: {
+        subject: title,
+        text: body,
+      },
+    },
   });
 }
 

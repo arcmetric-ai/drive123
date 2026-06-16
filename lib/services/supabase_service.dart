@@ -13,6 +13,7 @@ import '../models/user_model.dart';
 import '../models/instructor_model.dart';
 import '../models/lesson_model.dart';
 import '../utils/lesson_request_utils.dart';
+import 'push_notification_service.dart';
 
 class AccountAlreadyExistsException implements Exception {
   const AccountAlreadyExistsException(this.email);
@@ -123,7 +124,58 @@ class SupabaseService {
   }
 
   static Future<void> signOut() async {
+    try {
+      await PushNotificationService.revokeCurrentDevice();
+    } catch (error) {
+      print('Warning: unable to revoke device token before sign out: $error');
+    }
     await _client.auth.signOut();
+  }
+
+  static Future<void> registerDeviceToken({
+    required String fcmToken,
+    required String platform,
+    String? appVersion,
+    String? deviceLabel,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null || fcmToken.trim().isEmpty) return;
+
+    await _client.from('device_tokens').upsert(
+      {
+        'profile_id': userId,
+        'fcm_token': fcmToken.trim(),
+        'platform': platform,
+        'app_version': appVersion,
+        'device_label': deviceLabel,
+        'is_active': true,
+        'revoked_at': null,
+        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      onConflict: 'fcm_token',
+    );
+  }
+
+  static Future<void> revokeCurrentDeviceToken({String? fcmToken}) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    var query = _client
+        .from('device_tokens')
+        .update({
+          'is_active': false,
+          'revoked_at': DateTime.now().toUtc().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('profile_id', userId);
+
+    final token = fcmToken?.trim();
+    if (token != null && token.isNotEmpty) {
+      query = query.eq('fcm_token', token);
+    }
+
+    await query;
   }
 
   static Future<void> requestPasswordRecoveryCode({

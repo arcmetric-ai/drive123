@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 
 import { requireAdmin } from '../_shared/admin.ts';
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { displayName, queueNotificationEvent } from '../_shared/notifications.ts';
 
 serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -53,7 +54,9 @@ serve(async (request) => {
     if (reviewType === 'identity_verification') {
       const { data: profile, error: profileError } = await admin
         .from('profiles')
-        .select('id, role, verification_status, verification_review_started_at')
+        .select(
+          'id, role, first_name, last_name, verification_status, verification_review_started_at',
+        )
         .eq('id', userId)
         .maybeSingle();
 
@@ -67,6 +70,23 @@ serve(async (request) => {
 
       const role = String(profile.role ?? '').trim().toLowerCase();
       const isLearner = role === 'learner';
+      let isGuardianReview = false;
+
+      if (isLearner) {
+        const { data: learnerProfile, error: learnerProfileError } = await admin
+          .from('learner_profiles')
+          .select('account_type, ward_first_name, ward_last_name')
+          .eq('profile_id', userId)
+          .maybeSingle();
+
+        if (learnerProfileError != null) {
+          return jsonResponse({ error: learnerProfileError.message }, 400);
+        }
+
+        isGuardianReview =
+          String(learnerProfile?.account_type ?? '').trim().toLowerCase() ===
+            'guardian';
+      }
 
       const update: Record<string, unknown> = {
         verification_status: status,
@@ -97,6 +117,47 @@ serve(async (request) => {
         return jsonResponse({ error: updateError.message }, 400);
       }
 
+      const reviewEventKey = isGuardianReview
+        ? status === 'approved'
+          ? 'guardian.review.approved'
+          : 'guardian.review.changes_required'
+        : status === 'approved'
+        ? 'learner.review.approved'
+        : 'learner.review.changes_required';
+      const reviewTitle = status === 'approved'
+        ? isGuardianReview
+          ? 'Guardian verification approved'
+          : 'Learner account approved'
+        : isGuardianReview
+        ? 'Guardian verification needs attention'
+        : 'Learner verification needs attention';
+      const reviewBody = status === 'approved'
+        ? 'Your Drive Tutor verification was approved. You can continue in the app.'
+        : `Drive Tutor needs an update before verification can continue: ${rejectionReason}`;
+
+      await queueNotificationEvent(admin, {
+        recipientProfileId: userId,
+        actorProfileId: adminUser.user_id,
+        eventKey: reviewEventKey,
+        title: reviewTitle,
+        body: reviewBody,
+        channels: ['fcm', 'email'],
+        priority: 'high',
+        entityType: 'profile',
+        entityId: userId,
+        dedupeKey: `${reviewEventKey}:${userId}:${status}:${nowIso}`,
+        data: {
+          screen: 'verification_status',
+          review_type: reviewType,
+          review_status: status,
+          review_reason: status === 'rejected' ? rejectionReason : null,
+          email: {
+            subject: reviewTitle,
+            text: reviewBody,
+          },
+        },
+      });
+
       return jsonResponse({
         success: true,
         reviewType,
@@ -116,6 +177,8 @@ serve(async (request) => {
             profile:profiles!instructor_profiles_profile_id_fkey(
               id,
               role,
+              first_name,
+              last_name,
               verification_status
             )
           `,
@@ -175,6 +238,41 @@ serve(async (request) => {
       if (profileUpdateError != null) {
         return jsonResponse({ error: profileUpdateError.message }, 400);
       }
+
+      const instructorName = displayName(profile);
+      const credentialEventKey = status === 'approved'
+        ? 'instructor.credentials.approved'
+        : 'instructor.credentials.changes_required';
+      const credentialTitle = status === 'approved'
+        ? 'Instructor credentials approved'
+        : 'Instructor credentials need attention';
+      const credentialBody = status === 'approved'
+        ? 'Your instructor credentials were approved. Activate your access pass on the website to unlock instructor tools in the app.'
+        : `Drive Tutor needs an update before instructor approval can continue: ${rejectionReason}`;
+
+      await queueNotificationEvent(admin, {
+        recipientProfileId: userId,
+        actorProfileId: adminUser.user_id,
+        eventKey: credentialEventKey,
+        title: credentialTitle,
+        body: credentialBody,
+        channels: ['fcm', 'email'],
+        priority: 'high',
+        entityType: 'instructor_profile',
+        entityId: userId,
+        dedupeKey: `${credentialEventKey}:${userId}:${status}:${nowIso}`,
+        data: {
+          screen: status === 'approved' ? 'instructor_activation' : 'instructor_credentials',
+          review_type: reviewType,
+          review_status: status,
+          review_reason: status === 'rejected' ? rejectionReason : null,
+          instructor_name: instructorName,
+          email: {
+            subject: credentialTitle,
+            text: credentialBody,
+          },
+        },
+      });
 
       return jsonResponse({
         success: true,

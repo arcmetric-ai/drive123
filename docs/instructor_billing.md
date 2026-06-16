@@ -4,13 +4,13 @@
 
 | Plan | Stripe mode | Price | Access window |
 | --- | --- | ---: | --- |
-| Day Pass | payment | $12.00 | 1 day |
-| Monthly Pass | subscription | $300.00 | 30 days |
-| Yearly Pass | subscription | $3,285.00 | 365 days |
+| Monthly Subscription | subscription | $360.00 | 30 days |
+| Annual Subscription | subscription | $3,600.00 | 365 days |
+
+The annual option is positioned as the same instructor subscription paid annually, with two months free compared with paying monthly for 12 months.
 
 The database seeds these plan keys:
 
-- `day_pass`
 - `monthly_pass`
 - `yearly_pass`
 
@@ -21,7 +21,6 @@ Set these secrets before deploying the Edge Functions:
 ```sh
 supabase secrets set STRIPE_SECRET_KEY=sk_live_...
 supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...
-supabase secrets set STRIPE_PRICE_DAY_PASS=price_...
 supabase secrets set STRIPE_PRICE_MONTHLY_PASS=price_...
 supabase secrets set STRIPE_PRICE_YEARLY_PASS=price_...
 supabase secrets set STRIPE_CHECKOUT_SUCCESS_URL=https://www.drivetutor.ca/auth-redirect
@@ -57,7 +56,6 @@ Billing entitlement writes are service-role only. The client can read its own en
 
 ## Pending Product Decisions
 
-- Confirm the exact Stripe Price IDs for all three plans.
-- Confirm whether Day Pass is a one-time Price and Monthly/Yearly are recurring Prices.
-- Decide whether Day/Monthly/Yearly have identical features or differentiated feature codes beyond `instructor_access`.
+- Confirm the exact Stripe Price IDs for monthly and annual recurring subscriptions.
+- Confirm whether monthly and annual options have identical features or differentiated feature codes beyond `instructor_access`.
 - Confirm cancellation/refund terms for App Store and Play Store metadata.

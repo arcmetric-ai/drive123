@@ -18,7 +18,7 @@ class InstructorBillingPlan {
       description: json['description'] as String?,
       amountCents: (json['amount_cents'] as num?)?.toInt() ?? 0,
       currency: json['currency'] as String? ?? 'cad',
-      billingInterval: json['billing_interval'] as String? ?? 'day',
+      billingInterval: json['billing_interval'] as String? ?? 'month',
       accessDays: (json['access_days'] as num?)?.toInt() ?? 1,
       featureCodes: rawFeatures is List
           ? rawFeatures.whereType<String>().toList(growable: false)
@@ -51,9 +51,9 @@ class InstructorBillingPlan {
       case 'month':
         return 'Monthly';
       case 'year':
-        return 'Yearly';
+        return 'Annual';
       default:
-        return 'Day';
+        return 'Monthly';
     }
   }
 }

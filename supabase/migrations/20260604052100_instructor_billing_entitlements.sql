@@ -205,21 +205,10 @@ insert into public.instructor_billing_plans (
 )
 values
   (
-    'day_pass',
-    'Day Pass',
-    'Access for one day.',
-    1200,
-    'cad',
-    'day',
-    1,
-    'STRIPE_PRICE_DAY_PASS',
-    array['instructor_access']
-  ),
-  (
     'monthly_pass',
-    'Monthly Pass',
-    'Access for one month.',
-    30000,
+    'Monthly Subscription',
+    'Recurring monthly instructor access.',
+    36000,
     'cad',
     'month',
     30,
@@ -228,9 +217,9 @@ values
   ),
   (
     'yearly_pass',
-    'Yearly Pass',
-    'Access for one year.',
-    328500,
+    'Annual Subscription',
+    'Recurring annual instructor access with two months free.',
+    360000,
     'cad',
     'year',
     365,
@@ -249,3 +238,9 @@ set
   feature_codes = excluded.feature_codes,
   is_active = true,
   updated_at = now();
+
+update public.instructor_billing_plans
+set
+  is_active = false,
+  updated_at = now()
+where plan_key = 'day_pass';

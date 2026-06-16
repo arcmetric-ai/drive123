@@ -121,26 +121,18 @@ class _InstructorBillingScreenState extends State<InstructorBillingScreen>
     }
   }
 
-  String _dailyRate(InstructorBillingPlan plan) {
-    final amountPerDay = (plan.amountCents / plan.accessDays) / 100;
-    final whole = amountPerDay == amountPerDay.roundToDouble();
-    final amount = whole
-        ? amountPerDay.toStringAsFixed(0)
-        : amountPerDay.toStringAsFixed(2);
-    final currency = plan.currency.trim().toUpperCase();
-    final prefix = currency == 'CAD'
-        ? 'CA\$'
-        : currency == 'USD'
-            ? 'US\$'
-            : '$currency ';
-    return '$prefix$amount/day';
+  String _billingValueLabel(InstructorBillingPlan plan) {
+    if (plan.billingInterval == 'year') {
+      return 'CA\$300/month effective';
+    }
+    return 'Monthly billing';
   }
 
   String _accessLabel(InstructorBillingPlan plan) {
-    if (plan.accessDays == 1) return '1 day of instructor access';
-    if (plan.billingInterval == 'month') return '30 days of instructor access';
-    if (plan.billingInterval == 'year') return '365 days of instructor access';
-    return '${plan.accessDays} days of instructor access';
+    if (plan.billingInterval == 'year') {
+      return 'Annual billing with two months free';
+    }
+    return 'Recurring monthly instructor access';
   }
 
   @override
@@ -191,7 +183,7 @@ class _InstructorBillingScreenState extends State<InstructorBillingScreen>
                             ),
                             const SizedBox(height: AppSpacing.sm),
                             const Text(
-                              'Choose a pass to unlock instructor tools after approval.',
+                              'Subscribe monthly, or pay annually and get two months free after approval.',
                               style: TextStyle(
                                 color: AppColors.mutedForeground,
                                 fontSize: 15,
@@ -222,7 +214,7 @@ class _InstructorBillingScreenState extends State<InstructorBillingScreen>
                   for (final plan in state.plans) ...[
                     _PassCard(
                       plan: plan,
-                      dailyRate: _dailyRate(plan),
+                      dailyRate: _billingValueLabel(plan),
                       accessLabel: _accessLabel(plan),
                       isLoading: _isOpeningActivation,
                       onPressed: _openActivationWebsite,

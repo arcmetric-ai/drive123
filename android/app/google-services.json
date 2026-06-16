@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "356402869273",
+    "project_id": "drive-tutor-efd22",
+    "storage_bucket": "drive-tutor-efd22.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:356402869273:android:045e6c13ae95d03acd2688",
+        "android_client_info": {
+          "package_name": "ca.drivetutor.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA24LuaontMja-NiOSjHH0wbHyNLJ7dgO4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
