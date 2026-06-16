@@ -1,8 +1,167 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
-import { requireAdmin } from '../_shared/admin.ts';
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
-import { displayName, queueNotificationEvent } from '../_shared/notifications.ts';
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type',
+};
+
+type NotificationChannel = 'fcm' | 'email';
+
+type QueueNotificationInput = {
+  recipientProfileId: string;
+  actorProfileId?: string | null;
+  eventKey: string;
+  title: string;
+  body: string;
+  channels?: NotificationChannel[];
+  priority?: 'low' | 'normal' | 'high';
+  entityType?: string | null;
+  entityId?: string | null;
+  dedupeKey?: string | null;
+  data?: Record<string, unknown>;
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
+function createServiceClient() {
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+function createRequestClient(request: Request) {
+  return createClient(supabaseUrl, anonKey, {
+    global: {
+      headers: {
+        Authorization: request.headers.get('Authorization') ?? '',
+      },
+    },
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+async function requireAdmin(request: Request) {
+  const authorization = request.headers.get('Authorization');
+  if (authorization == null || authorization.trim().length === 0) {
+    return {
+      error: jsonResponse({ error: 'Missing Authorization header.' }, 401),
+    };
+  }
+
+  const requestClient = createRequestClient(request);
+  const {
+    data: { user },
+    error: userError,
+  } = await requestClient.auth.getUser();
+
+  if (userError != null || user == null) {
+    return {
+      error: jsonResponse({ error: 'Unauthorized.' }, 401),
+    };
+  }
+
+  const admin = createServiceClient();
+  const { data: adminRow, error: adminError } = await admin
+    .from('admin_users')
+    .select('user_id, email')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (adminError != null) {
+    return {
+      error: jsonResponse({ error: adminError.message }, 500),
+    };
+  }
+
+  if (adminRow == null) {
+    return {
+      error: jsonResponse({ error: 'Forbidden.' }, 403),
+    };
+  }
+
+  return { admin, user, adminUser: adminRow };
+}
+
+async function queueNotificationEvent(
+  admin: ReturnType<typeof createServiceClient>,
+  input: QueueNotificationInput,
+) {
+  const { data, error } = await admin
+    .from('notification_events')
+    .insert({
+      event_key: input.eventKey,
+      recipient_profile_id: input.recipientProfileId,
+      actor_profile_id: input.actorProfileId ?? null,
+      entity_type: input.entityType ?? null,
+      entity_id: input.entityId ?? null,
+      title: input.title,
+      body: input.body,
+      channels: input.channels ?? ['fcm'],
+      priority: input.priority ?? 'normal',
+      data: input.data ?? {},
+      dedupe_key: input.dedupeKey ?? null,
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (error != null) {
+    throw new Error(error.message);
+  }
+
+  const eventId = String(data?.id ?? '');
+  if (eventId.length > 0) {
+    await dispatchNotificationEvent(eventId).catch((error) => {
+      console.error(
+        error instanceof Error ? error.message : 'Notification dispatch failed.',
+      );
+    });
+  }
+}
+
+async function dispatchNotificationEvent(eventId: string) {
+  if (!supabaseUrl || !serviceRoleKey) return;
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/send-notification-event`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ eventId }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`Notification dispatch failed: ${message}`);
+  }
+}
+
+function displayName(profile: Record<string, unknown> | null | undefined) {
+  const firstName = String(profile?.first_name ?? '').trim();
+  const lastName = String(profile?.last_name ?? '').trim();
+  const fullName = `${firstName} ${lastName}`.trim();
+  return fullName.length > 0 ? fullName : 'Drive Tutor user';
+}
 
 serve(async (request) => {
   if (request.method === 'OPTIONS') {

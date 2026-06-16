@@ -1,10 +1,24 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-import { queueNotificationEvent } from '../_shared/notifications.ts';
-
 type StripeObject = Record<string, unknown> & {
   id: string;
   metadata?: Record<string, string>;
+};
+
+type NotificationChannel = 'fcm' | 'email';
+
+type QueueNotificationInput = {
+  recipientProfileId: string;
+  actorProfileId?: string | null;
+  eventKey: string;
+  title: string;
+  body: string;
+  channels?: NotificationChannel[];
+  priority?: 'low' | 'normal' | 'high';
+  entityType?: string | null;
+  entityId?: string | null;
+  dedupeKey?: string | null;
+  data?: Record<string, unknown>;
 };
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -139,6 +153,60 @@ async function upsertEntitlement(
       { onConflict: 'profile_id' },
     );
   if (error != null) throw new Error(error.message);
+}
+
+async function queueNotificationEvent(
+  admin: ReturnType<typeof createServiceClient>,
+  input: QueueNotificationInput,
+) {
+  const { data, error } = await admin
+    .from('notification_events')
+    .insert({
+      event_key: input.eventKey,
+      recipient_profile_id: input.recipientProfileId,
+      actor_profile_id: input.actorProfileId ?? null,
+      entity_type: input.entityType ?? null,
+      entity_id: input.entityId ?? null,
+      title: input.title,
+      body: input.body,
+      channels: input.channels ?? ['fcm'],
+      priority: input.priority ?? 'normal',
+      data: input.data ?? {},
+      dedupe_key: input.dedupeKey ?? null,
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (error != null) {
+    throw new Error(error.message);
+  }
+
+  const eventId = String(data?.id ?? '');
+  if (eventId.length > 0) {
+    await dispatchNotificationEvent(eventId).catch((error) => {
+      console.error(
+        error instanceof Error ? error.message : 'Notification dispatch failed.',
+      );
+    });
+  }
+}
+
+async function dispatchNotificationEvent(eventId: string) {
+  if (!supabaseUrl || !serviceRoleKey) return;
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/send-notification-event`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ eventId }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`Notification dispatch failed: ${message}`);
+  }
 }
 
 async function handleCheckoutCompleted(
