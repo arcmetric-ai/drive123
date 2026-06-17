@@ -124,6 +124,10 @@ function isGuardianIdentityRow(row: Row): boolean {
   return age === 16 || age === 17;
 }
 
+function isInstructorIdentityRow(row: Row): boolean {
+  return stringValue(row.role)?.toLowerCase() === 'instructor';
+}
+
 function normalizeCredentialReview(row: Row) {
   const profile = asRow(row.profile);
 
@@ -627,11 +631,14 @@ serve(async (request) => {
       return jsonResponse({ error: instructorError.message }, 400);
     }
 
-    const identitySourceRows = (identityRows ?? []) as Row[];
-    const guardianRows = identitySourceRows.filter(isGuardianIdentityRow);
-    const learnerRows = identitySourceRows.filter(
-      (row) => !isGuardianIdentityRow(row),
+    const identitySourceRows = ((identityRows ?? []) as Row[]).filter(
+      (row) => !isInstructorIdentityRow(row),
     );
+    const guardianRows = identitySourceRows.filter(isGuardianIdentityRow);
+    const learnerRows = identitySourceRows.filter((row) => {
+      const role = stringValue(row.role)?.toLowerCase();
+      return role === 'learner' && !isGuardianIdentityRow(row);
+    });
     const identityReviews = splitIdentityReviews(learnerRows);
     const guardianReviews = splitIdentityReviews(guardianRows);
     const instructorCredentialReviews = splitCredentialReviews(

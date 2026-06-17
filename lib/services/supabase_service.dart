@@ -659,10 +659,21 @@ class SupabaseService {
           fileOptions: const FileOptions(upsert: true),
         );
 
+    final existingProfile = await _client
+        .from('instructor_profiles')
+        .select('credentials_status')
+        .eq('profile_id', userId)
+        .maybeSingle();
+    final currentStatus =
+        (existingProfile?['credentials_status'] as String?)?.trim();
+
     final updates = <String, dynamic>{
       'profile_id': userId,
       documentType.columnName: storagePath,
-      'credentials_status': 'not_started',
+      'credentials_status':
+          (currentStatus == 'approved' || currentStatus == 'pending')
+              ? currentStatus
+              : 'not_started',
     };
     final expiryColumn = documentType.expiryColumnName;
     if (expiryColumn != null && expiresAt != null) {
