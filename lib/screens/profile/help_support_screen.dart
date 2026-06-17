@@ -8,8 +8,15 @@ class HelpSupportScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Help & Support'),
+        title: const Text(
+          'Help & Support',
+          style: TextStyle(color: AppColors.foreground),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.primaryBlue,
+        elevation: 0,
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -25,7 +32,10 @@ class HelpSupportScreen extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             'Browse quick answers or reach out and we\'ll get back to you soon.',
-            style: TextStyle(fontSize: 16),
+            style: TextStyle(
+              fontSize: 16,
+              color: AppColors.foreground,
+            ),
           ),
           const SizedBox(height: 24),
           _SupportTile(
@@ -60,7 +70,7 @@ class HelpSupportScreen extends StatelessWidget {
                 context: context,
                 builder: (context) => AlertDialog(
                   title: const Text('Email support'),
-                  content: const Text('Email us at support@drivetapp.com'),
+                  content: const Text('Email us at info@drivetutor.ca'),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
@@ -119,10 +129,20 @@ class _SupportTile extends StatelessWidget {
       leading: Icon(icon, color: AppColors.ocean),
       title: Text(
         title,
-        style: const TextStyle(fontWeight: FontWeight.w600),
+        style: const TextStyle(
+          color: AppColors.foreground,
+          fontWeight: FontWeight.w600,
+        ),
       ),
-      subtitle: Text(description),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      subtitle: Text(
+        description,
+        style: const TextStyle(color: AppColors.mutedForeground),
+      ),
+      trailing: const Icon(
+        Icons.arrow_forward_ios,
+        color: AppColors.mutedForeground,
+        size: 16,
+      ),
       onTap: onTap,
     );
   }

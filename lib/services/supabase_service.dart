@@ -1026,6 +1026,16 @@ class SupabaseService {
     await _client
         .from('instructor_profiles')
         .upsert(data, onConflict: 'profile_id');
+
+    try {
+      await _client.from('profiles').update({'role': 'instructor'}).eq(
+        'id',
+        userId,
+      );
+      await _client.from('learner_profiles').delete().eq('profile_id', userId);
+    } catch (e) {
+      print('Warning: unable to clean conflicting learner profile: $e');
+    }
   }
 
   static Future<void> upsertLearnerProfile({
@@ -1424,8 +1434,7 @@ class SupabaseService {
       String userId) async {
     final results = await _client
         .from('learner_requests')
-        .select(
-            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(account_type, ward_first_name, ward_last_name, ward_age, ward_gender, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name,phone, profile_image_url, city, gender, age))')
+        .select('*')
         .eq('instructor_id', userId)
         .order('created_at', ascending: false);
     final requests = List<Map<String, dynamic>>.from(results);
@@ -1436,8 +1445,7 @@ class SupabaseService {
       String userId) async {
     final results = await _client
         .from('learner_requests')
-        .select(
-            '*, instructor_profile:instructor_profiles!lesson_requests_instructor_id_fkey(*, user:profiles!instructor_profiles_profile_id_fkey(*))')
+        .select('*')
         .eq('learner_id', userId)
         .order('created_at', ascending: false);
     final requests = List<Map<String, dynamic>>.from(results);
@@ -1898,8 +1906,7 @@ class SupabaseService {
         .from('learner_requests')
         .update({'status': status})
         .eq('id', requestId)
-        .select(
-            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(account_type, ward_first_name, ward_last_name, ward_age, ward_gender, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, profile_image_url, city, gender, age))')
+        .select('*')
         .maybeSingle();
     if (result == null) return null;
     final hydrated = await _hydrateLessonRequests(
@@ -2040,8 +2047,7 @@ class SupabaseService {
       String requestId) async {
     final result = await _client
         .from('learner_requests')
-        .select(
-            '*, learner_profile:learner_profiles!learner_requests_learner_id_fkey(account_type, ward_first_name, ward_last_name, ward_age, ward_gender, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age))')
+        .select('*')
         .eq('id', requestId)
         .maybeSingle();
     if (result == null) return null;
@@ -2130,8 +2136,7 @@ class SupabaseService {
       String instructorId) async {
     final results = await _client
         .from('learner_requests')
-        .select(
-            'learner_id, status, requested_first_name, requested_last_name, requested_profile_url, learner_profile:learner_profiles!learner_requests_learner_id_fkey(account_type, ward_first_name, ward_last_name, ward_age, ward_gender, weekly_availability, availability_recurring, learning_focus, preferred_locations, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age))')
+        .select('*')
         .eq('instructor_id', instructorId)
         .inFilter('status', ['accepted', 'active', 'in_progress']).order(
             'created_at',
@@ -2192,7 +2197,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, start_time, end_time, duration_hours, focus, pickup_location, notes, status, learner_id, learner:profiles!lessons_learner_id_fkey(id, first_name, last_name, email, profile_image_url, city)')
+            'id, scheduled_at, start_time, end_time, duration_hours, focus, pickup_location, notes, status, learner_id')
         .eq('instructor_id', userId)
         .inFilter('status', ['scheduled', 'active', 'in_progress'])
         .gte('scheduled_at', windowStart.toIso8601String())
@@ -2212,7 +2217,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by, learner:profiles!lessons_learner_id_fkey(id, first_name, last_name, email, profile_image_url, city)')
+            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by')
         .eq('instructor_id', userId)
         .inFilter('status', ['scheduled', 'active', 'in_progress'])
         .gte('scheduled_at', startUtc.toIso8601String())
@@ -2230,7 +2235,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, learner:profiles!lessons_learner_id_fkey(id, first_name, last_name, email, profile_image_url, city)')
+            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id')
         .eq('instructor_id', userId)
         .lt('scheduled_at', nowUtc)
         .order('scheduled_at', ascending: false)
@@ -2826,7 +2831,7 @@ class SupabaseService {
           .update(payload)
           .eq('id', lessonId)
           .select(
-              'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by, learner:profiles!lessons_learner_id_fkey(id, first_name, last_name, email, profile_image_url, city)')
+              'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by')
           .single();
 
       final rows = await _hydrateLessonLearners([
@@ -2976,7 +2981,7 @@ class SupabaseService {
           .from('lessons')
           .update(payload)
           .eq('id', lessonId)
-          .select('*, learner:profiles!lessons_learner_id_fkey(*)')
+          .select('*')
           .maybeSingle();
       if (response == null) return null;
       if (scheduledAt != null || startTime != null || endTime != null) {

@@ -1437,6 +1437,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       final profileUpdates = <String, dynamic>{
+        'role': 'instructor',
         'first_name': firstName,
         'last_name': lastName,
         'phone': phone.isNotEmpty ? phone : null,

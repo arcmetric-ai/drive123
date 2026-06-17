@@ -76,6 +76,7 @@ class _InstructorBookingsHistoryScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Bookings History'),
         backgroundColor: Colors.white,
@@ -100,7 +101,10 @@ class _InstructorBookingsHistoryScreenState
               Text(
                 _error!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16),
+                style: const TextStyle(
+                  color: AppColors.foreground,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 12),
               ElevatedButton(
@@ -131,6 +135,7 @@ class _InstructorBookingsHistoryScreenState
               const Text(
                 'No bookings yet',
                 style: TextStyle(
+                  color: AppColors.foreground,
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
@@ -139,6 +144,7 @@ class _InstructorBookingsHistoryScreenState
               const Text(
                 'Your completed or cancelled lessons will appear here.',
                 textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.mutedForeground),
               ),
             ],
           ),
@@ -203,6 +209,7 @@ class _BookingCard extends StatelessWidget {
                   child: Text(
                     booking.formattedDate,
                     style: const TextStyle(
+                      color: AppColors.foreground,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -211,7 +218,7 @@ class _BookingCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.15),
+                    color: statusColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -236,7 +243,7 @@ class _BookingCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               booking.focus,
-              style: const TextStyle(color: Colors.black87),
+              style: const TextStyle(color: AppColors.foreground),
             ),
             const SizedBox(height: 8),
             Row(
@@ -319,13 +326,13 @@ class _BookingHistoryItem {
       }
     } else if (map['duration_hours'] is num) {
       durationHours = (map['duration_hours'] as num).toDouble();
-      final durationMinutes =
-          (durationHours * 60).clamp(30, 240).round();
+      final durationMinutes = (durationHours * 60).clamp(30, 240).round();
       end = start.add(Duration(minutes: durationMinutes));
     } else if (map['duration_minutes'] is num) {
       durationHours = (map['duration_minutes'] as num).toDouble() / 60.0;
       end = start.add(
-        Duration(minutes: durationHours > 0 ? (durationHours * 60).round() : 60),
+        Duration(
+            minutes: durationHours > 0 ? (durationHours * 60).round() : 60),
       );
     }
 
@@ -339,7 +346,8 @@ class _BookingHistoryItem {
       if (profile == null) return '';
       final first = _clean(profile['first_name']);
       final last = _clean(profile['last_name']);
-      final combined = [first, last].where((v) => v.isNotEmpty).join(' ').trim();
+      final combined =
+          [first, last].where((v) => v.isNotEmpty).join(' ').trim();
       if (combined.isNotEmpty) return combined;
       final email = _clean(profile['email']);
       if (email.isNotEmpty) return email;
@@ -353,10 +361,10 @@ class _BookingHistoryItem {
     Map<String, dynamic>? learnerProfile = map['learner_profile'] is Map
         ? Map<String, dynamic>.from(map['learner_profile'] as Map)
         : null;
-    Map<String, dynamic>? nestedProfile = learnerProfile != null &&
-            learnerProfile['profile'] is Map
-        ? Map<String, dynamic>.from(learnerProfile['profile'] as Map)
-        : null;
+    Map<String, dynamic>? nestedProfile =
+        learnerProfile != null && learnerProfile['profile'] is Map
+            ? Map<String, dynamic>.from(learnerProfile['profile'] as Map)
+            : null;
 
     final learnerName = () {
       final fromLearner = _composeName(learnerMap);

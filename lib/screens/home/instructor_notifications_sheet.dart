@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
@@ -42,50 +42,57 @@ class InstructorNotificationsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 12,
-          bottom: 16 + media.viewInsets.bottom,
-        ),
-        child: SizedBox(
-          height: media.size.height * 0.65,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 12,
+            bottom: 16 + media.viewInsets.bottom,
+          ),
+          child: SizedBox(
+            height: media.size.height * 0.65,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Notifications',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                const SizedBox(height: 16),
+                const Text(
+                  'Notifications',
+                  style: TextStyle(
+                    color: AppColors.foreground,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              TextButton(
-                onPressed:
-                    isLoading || notifications.isEmpty ? null : onMarkRead,
-                child: const Text('Mark read'),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: onRefresh,
-                  child: _buildBody(context),
+                TextButton(
+                  onPressed:
+                      isLoading || notifications.isEmpty ? null : onMarkRead,
+                  child: const Text('Mark read'),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: onRefresh,
+                    child: _buildBody(context),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -166,7 +173,7 @@ class _NotificationTile extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: notification.color.withOpacity(0.16),
+              color: notification.color.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(notification.icon, color: notification.color),
@@ -179,6 +186,7 @@ class _NotificationTile extends StatelessWidget {
                 Text(
                   notification.title,
                   style: const TextStyle(
+                    color: AppColors.foreground,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -240,6 +248,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             title,
             style: const TextStyle(
+              color: AppColors.foreground,
               fontWeight: FontWeight.w600,
               fontSize: 16,
             ),
