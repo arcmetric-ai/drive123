@@ -126,7 +126,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: DecoratedBox(
-        decoration: const BoxDecoration(color: AppColors.brandPrimary),
+        decoration: const BoxDecoration(color: AppColors.background),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
@@ -146,7 +146,7 @@ class _SplashScreenState extends State<SplashScreen>
                               scale: _logoBounce,
                               child: const BrandBadge(
                                 size: 170,
-                                contentScale: 1.95,
+                                contentScale: 1.75,
                               ),
                             ),
                             const SizedBox(height: AppSpacing.xxxl),
@@ -155,7 +155,7 @@ class _SplashScreenState extends State<SplashScreen>
                               child: Text(
                                 'DRIVE TUTOR',
                                 style: TextStyle(
-                                  color: AppColors.brandPrimaryForeground,
+                                  color: AppColors.foreground,
                                   fontSize: 44,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 1.8,
@@ -192,12 +192,16 @@ class _SplashFooter extends StatelessWidget {
     return const Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AppLoadingIndicator(size: 40),
+        AppLoadingIndicator(
+          size: 40,
+          color: AppColors.brandPrimary,
+          trackColor: Color(0x1F054ADA),
+        ),
         SizedBox(height: AppSpacing.lg),
         Text(
           'LOADING JOURNEY...',
           style: TextStyle(
-            color: Color(0x99FFFFFF),
+            color: AppColors.mutedForeground,
             fontSize: 16,
             fontWeight: FontWeight.w500,
             letterSpacing: 3.2,

@@ -696,14 +696,17 @@ class _InstructorQuestionnaireScreenState
                                 height: 60,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(17),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF4D97F5),
-                                      Color(0xFF3A7FEA),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
+                                  color: Colors.white,
+                                  border: Border.all(
+                                    color: const Color(0xFFE4EBF7),
                                   ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x14054ADA),
+                                      blurRadius: 14,
+                                      offset: Offset(0, 8),
+                                    ),
+                                  ],
                                 ),
                                 padding: const EdgeInsets.all(9),
                                 child: SvgPicture.asset(
