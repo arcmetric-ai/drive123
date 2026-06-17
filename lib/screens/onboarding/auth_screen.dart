@@ -210,9 +210,7 @@ class _SignInView extends StatelessWidget {
           title: 'Welcome to\nDrive Tutor',
           subtitle: "Your journey to the driver's seat starts here.",
           badgeSize: 72,
-          badgeBackgroundColor: AppColors.primaryBlue,
-          badgePadding: EdgeInsets.all(9),
-          badgeContentScale: 1.35,
+          badgeContentScale: 1.12,
         ),
         const SizedBox(height: 36),
         Form(

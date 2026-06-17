@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../constants/app_colors.dart';
@@ -81,13 +82,9 @@ class _LearnerAccountTypeScreenState extends State<LearnerAccountTypeScreen> {
                         titleFontSize: 20,
                         subtitleFontSize: 14,
                         titleTopPadding: 4,
-                        illustrationBackgroundColor: const Color(0xFFFFF9E6),
-                        illustration: Icon(
-                          Icons.person_rounded,
-                          size: 42,
-                          color: _selectedType == 'learner'
-                              ? AppColors.primary
-                              : AppColors.mutedForeground,
+                        illustrationBackgroundColor: const Color(0xFFF2FBF7),
+                        illustration: SvgPicture.asset(
+                          'assets/images/role_learner.svg',
                         ),
                         isSelected: _selectedType == 'learner',
                         onTap: () => setState(() => _selectedType = 'learner'),
@@ -102,13 +99,9 @@ class _LearnerAccountTypeScreenState extends State<LearnerAccountTypeScreen> {
                         titleFontSize: 20,
                         subtitleFontSize: 14,
                         titleTopPadding: 4,
-                        illustrationBackgroundColor: const Color(0xFFF7F7FB),
-                        illustration: Icon(
-                          Icons.supervisor_account_rounded,
-                          size: 42,
-                          color: _selectedType == 'guardian'
-                              ? AppColors.primary
-                              : AppColors.mutedForeground,
+                        illustrationBackgroundColor: const Color(0xFFF3F7FF),
+                        illustration: SvgPicture.asset(
+                          'assets/images/role_guardian.svg',
                         ),
                         isSelected: _selectedType == 'guardian',
                         onTap: () => setState(() => _selectedType = 'guardian'),

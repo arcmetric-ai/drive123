@@ -25,8 +25,7 @@ class AccountEntryScreen extends StatelessWidget {
                 title: 'Drive Tutor',
                 subtitle: 'Manage lessons, requests, and your driving journey.',
                 badgeSize: 88,
-                badgeBackgroundColor: AppColors.primaryBlue,
-                badgeContentScale: 1.4,
+                badgeContentScale: 1.12,
               ),
               const Spacer(),
               const _AppSummary(),
@@ -67,7 +66,7 @@ class _AppSummary extends StatelessWidget {
           icon: Icons.school_rounded,
           title: 'For instructors',
           description:
-              'Receive lesson requests, review learner details, manage availability, and keep your schedule organized.',
+              'Receive lesson requests, review learner details, and keep your schedule organized.',
         ),
         SizedBox(height: AppSpacing.lg),
         _SummaryItem(

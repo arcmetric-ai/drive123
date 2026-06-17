@@ -113,9 +113,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       title: "I'm a Learner",
                       subtitle:
                           'I want to learn to drive and get my Ontario G2 or G license.',
-                      illustrationBackgroundColor: const Color(0xFFFFF9E6),
+                      illustrationBackgroundColor: const Color(0xFFF2FBF7),
                       illustration: SvgPicture.asset(
-                        'assets/icons/learner.svg',
+                        'assets/images/role_learner.svg',
                       ),
                       isSelected: _selectedRole == 'learner',
                       onTap: () => setState(() => _selectedRole = 'learner'),
@@ -126,9 +126,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       title: "I'm an Instructor",
                       subtitle:
                           'I am a certified driving instructor and will apply through the website.',
-                      illustrationBackgroundColor: const Color(0xFFF7F7FB),
+                      illustrationBackgroundColor: const Color(0xFFF3F7FF),
                       illustration: SvgPicture.asset(
-                        'assets/icons/instructor.svg',
+                        'assets/images/role_instructor.svg',
                       ),
                       isSelected: _selectedRole == 'instructor',
                       onTap: () => setState(() => _selectedRole = 'instructor'),
