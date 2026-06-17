@@ -10,6 +10,7 @@ import '../../constants/ontario_locations.dart';
 import '../../models/instructor_model.dart';
 import '../../models/lesson_model.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/drive_tutor_number.dart';
 import '../../widgets/discovery_filter_chip.dart';
 import '../../widgets/instructor_discovery_card.dart';
 
@@ -96,8 +97,8 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
   Widget build(BuildContext context) {
     final instructors = _filteredInstructors();
     final searchHint = _homeCity != null && _homeCity!.isNotEmpty
-        ? '$_homeCity, ON'
-        : 'Toronto, ON';
+        ? 'Name, number, or $_homeCity'
+        : 'Name, city, or Drive Tutor #';
 
     return Scaffold(
       backgroundColor: AppColors.grey50,
@@ -647,6 +648,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
       'serviceArea': instructor.serviceArea ?? instructor.address,
       'serviceAreaArea': instructor.serviceAreaArea,
       'serviceAreaCity': instructor.serviceAreaCity,
+      'driveTutorNumber': instructor.driveTutorNumber ?? '',
       'car': orderedVehicles.isNotEmpty
           ? orderedVehicles.first.summary()
           : 'Vehicle details not provided',
@@ -674,10 +676,21 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
 
   bool _matchesSearchTerm(InstructorModel instructor, String term) {
     final lowerTerm = term.toLowerCase();
+    final normalizedTerm = DriveTutorNumberGenerator.normalizeSearchText(term);
     final name = '${instructor.user.firstName} ${instructor.user.lastName}'
         .trim()
         .toLowerCase();
     if (name.contains(lowerTerm)) return true;
+    final driveTutorNumber = instructor.driveTutorNumber;
+    if (driveTutorNumber != null && driveTutorNumber.isNotEmpty) {
+      if (driveTutorNumber.toLowerCase().contains(lowerTerm)) return true;
+      final normalizedNumber =
+          DriveTutorNumberGenerator.normalizeSearchText(driveTutorNumber);
+      if (normalizedTerm.isNotEmpty &&
+          normalizedNumber.contains(normalizedTerm)) {
+        return true;
+      }
+    }
     if (instructor.user.email.toLowerCase().contains(lowerTerm)) return true;
     if ((instructor.serviceArea ?? '').toLowerCase().contains(lowerTerm)) {
       return true;

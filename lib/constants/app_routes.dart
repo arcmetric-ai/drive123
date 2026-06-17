@@ -32,6 +32,7 @@ import '../screens/onboarding/identity_pending_review_screen.dart';
 import '../screens/onboarding/identity_selfie_capture_screen.dart';
 import '../screens/onboarding/identity_verification_intro_screen.dart';
 import '../screens/onboarding/intro_flow_screen.dart';
+import '../screens/onboarding/instructor_invite_landing_screen.dart';
 import '../screens/onboarding/instructor_credentials_portal_screen.dart';
 import '../screens/onboarding/instructor_document_upload_screen.dart';
 import '../screens/onboarding/learner_pickup_address_screen.dart';
@@ -82,6 +83,7 @@ class AppRoutes {
   static const String learnerWeeklyAvailability =
       '/learner-weekly-availability';
   static const String learnerApprovalSuccess = '/learner-approval-success';
+  static const String instructorInvite = '/invite/instructor/:code';
   static const String instructorQuestionnaire = '/instructor-questionnaire';
   static const String instructorCredentialsPortal =
       '/instructor-credentials-portal';
@@ -424,6 +426,13 @@ class AppRoutes {
           return LearnerApprovalSuccessScreen(
             approvalToken: approvalToken,
           );
+        },
+      ),
+      GoRoute(
+        path: instructorInvite,
+        builder: (context, state) {
+          final code = state.pathParameters['code'] ?? '';
+          return InstructorInviteLandingScreen(code: code);
         },
       ),
       GoRoute(

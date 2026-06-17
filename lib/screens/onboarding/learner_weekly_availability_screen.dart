@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../models/learner_onboarding_draft.dart';
+import '../../services/instructor_referral_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/app_circle_icon_button.dart';
 import '../../widgets/app_primary_button.dart';
@@ -141,6 +142,11 @@ class _LearnerWeeklyAvailabilityScreenState
           userId: userId,
           stage: SupabaseService.onboardingStageQuestionnaireComplete,
         );
+        try {
+          await InstructorReferralService.claimPendingCodeIfAvailable();
+        } catch (error) {
+          debugPrint('Pending instructor referral was not claimed: $error');
+        }
         if (!mounted) return;
         context.go(AppRoutes.learningFocus, extra: widget.draft.role);
       }

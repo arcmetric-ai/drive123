@@ -1,9 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
@@ -45,6 +47,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<String> _instructorLanguages = [];
   List<String> _instructorOfferings = [];
   List<String> _instructorVehicles = [];
+  String? _instructorDriveTutorNumber;
   int? _instructorYearsExperience;
   bool? _instructorPickupPreference;
   List<String> _learnerLocations = [];
@@ -316,6 +319,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          if (isInstructor) ...[
+            _buildInstructorReferralCard(),
+            const SizedBox(height: 16),
+          ],
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -368,6 +375,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ? 'Loading availability...'
                       : 'Update Weekly Availability',
                 ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _showInstructorCodeSheet,
+                icon: const Icon(Icons.qr_code_2_rounded),
+                label: const Text('Enter Instructor Code'),
               ),
             ),
           ] else ...[
@@ -455,6 +471,238 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildInstructorReferralCard() {
+    final code = _instructorDriveTutorNumber?.trim();
+    final hasCode = code != null && code.isNotEmpty;
+    final inviteUrl =
+        hasCode ? 'https://www.drivetutor.ca/invite/instructor/$code' : null;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFFFFFFFF),
+            Color(0xFFF4F7FF),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 74,
+                height: 74,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.primaryBlue, width: 3),
+                  image: _avatarImage != null
+                      ? DecorationImage(
+                          image: _avatarImage!,
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: _avatarImage == null
+                    ? Center(
+                        child: Text(
+                          _initials,
+                          style: const TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 20,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.verified_user_outlined,
+                          color: AppColors.primaryBlue,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _isVerified
+                                ? 'Verified Instructor Card'
+                                : 'Instructor Referral Card',
+                            style: const TextStyle(
+                              color: AppColors.primaryBlue,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.foreground,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 22,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _instructorServiceArea?.isNotEmpty == true
+                          ? 'Serving $_instructorServiceArea'
+                          : 'Service area pending',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.mutedForeground,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppColors.primaryBlue.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'INSTRUCTOR ID',
+                  style: TextStyle(
+                    color: AppColors.mutedForeground,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  hasCode ? code : 'Generate your code',
+                  style: const TextStyle(
+                    color: AppColors.foreground,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 26,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (hasCode && inviteUrl != null)
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFE3E8F5)),
+                  ),
+                  child: QrImageView(
+                    data: inviteUrl,
+                    size: 118,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Scan to join you in Drive Tutor',
+                        style: TextStyle(
+                          color: AppColors.foreground,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Use this with learners you already know. They can also type your code after approval.',
+                        style: TextStyle(
+                          color: AppColors.mutedForeground,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextButton.icon(
+                        onPressed: () => _copyInstructorReferral(code),
+                        icon: const Icon(Icons.copy_rounded, size: 18),
+                        label: const Text('Copy code'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _generateInstructorReferralCode,
+                icon: const Icon(Icons.badge_outlined),
+                label: const Text('Generate Instructor Code'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyInstructorReferral(String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Instructor code copied.')),
+    );
+  }
+
+  Future<void> _generateInstructorReferralCode() async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final code = await SupabaseService.ensureInstructorDriveTutorNumber(
+          userId: userId);
+      if (!mounted) return;
+      setState(() => _instructorDriveTutorNumber = code);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Instructor code generated.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to generate code: $error')),
+      );
+    }
   }
 
   Widget _buildActionTile({
@@ -755,6 +1003,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _instructorLanguages = [];
     _instructorOfferings = [];
     _instructorVehicles = [];
+    _instructorDriveTutorNumber = null;
     _instructorYearsExperience = null;
     _instructorPickupPreference = null;
 
@@ -966,10 +1215,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       final expiry = _asString(profileMap['licence_expiry']);
       final profileCity = _asString(profileMap['city']);
+      final driveTutorNumber = _asString(detail['drive_tutor_number']);
 
       setState(() {
         _instructorYearsExperience = yearsExperience;
         _instructorPickupPreference = pickupPreference;
+        _instructorDriveTutorNumber = driveTutorNumber;
         _licenceNumber = _asString(profileMap['licence_number']);
         _licenceExpiry = expiry != null ? DateTime.tryParse(expiry) : null;
         _instructorServiceArea =
@@ -1319,6 +1570,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'pickupPreference': _instructorPickupPreference,
       'yearsOfExperience': _instructorYearsExperience,
       'isVerified': _isVerified,
+      'driveTutorNumber': clean(detailMap['drive_tutor_number']) ?? '',
       'licenseNumber': _licenceNumber ?? clean(profileMap['licence_number']),
       'licenseExpiry': _licenceExpiry?.toIso8601String() ??
           clean(profileMap['licence_expiry']),
@@ -1347,6 +1599,168 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() => _openingCredentialsPortal = false);
       }
     }
+  }
+
+  Future<void> _showInstructorCodeSheet() async {
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isSubmitting = false;
+    String? error;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final viewInsets = MediaQuery.of(context).viewInsets;
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  top: 24,
+                  bottom: 24 + viewInsets.bottom,
+                ),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Enter Instructor Code',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.foreground,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Use the code your instructor shared with you to connect directly after approval.',
+                        style: TextStyle(
+                          color: AppColors.mutedForeground,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        controller: controller,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          labelText: 'Instructor code',
+                          hintText: 'B3-387529',
+                          prefixIcon: Icon(Icons.badge_outlined),
+                        ),
+                        validator: (value) {
+                          final cleaned = (value ?? '')
+                              .replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+                          if (cleaned.length != 8) {
+                            return 'Enter the full instructor code.';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          error!,
+                          style: const TextStyle(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: isSubmitting
+                                  ? null
+                                  : () => Navigator.of(context).pop(),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: isSubmitting
+                                  ? null
+                                  : () async {
+                                      if (!formKey.currentState!.validate()) {
+                                        return;
+                                      }
+                                      setModalState(() {
+                                        isSubmitting = true;
+                                        error = null;
+                                      });
+                                      try {
+                                        await SupabaseService
+                                            .claimInstructorReferralCode(
+                                          controller.text,
+                                        );
+                                        if (!context.mounted) return;
+                                        Navigator.of(context).pop();
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Instructor connected. They can now manage lessons with you.',
+                                            ),
+                                          ),
+                                        );
+                                      } catch (exception) {
+                                        setModalState(() {
+                                          isSubmitting = false;
+                                          error =
+                                              _referralClaimError(exception);
+                                        });
+                                      }
+                                    },
+                              child: isSubmitting
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('Connect'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+  }
+
+  String _referralClaimError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('learner_not_approved')) {
+      return 'Your learner account must be approved before you can connect with an instructor code.';
+    }
+    if (message.contains('instructor_referral_not_found')) {
+      return 'No verified instructor was found for that code.';
+    }
+    if (message.contains('invalid_referral_code')) {
+      return 'Enter the full instructor code.';
+    }
+    if (message.contains('cannot_claim_own_referral')) {
+      return 'You cannot use your own instructor code.';
+    }
+    return 'Unable to connect with that instructor code. Please try again.';
   }
 
   Future<void> _showUpdatePasswordSheet() async {

@@ -399,6 +399,10 @@ class _InstructorProfilePreviewScreenState
     }
     final age = _readString('age', fallback: 'Add your age');
     final gender = _readString('gender', fallback: 'Add your gender');
+    final driveTutorNumber = _readString(
+      'driveTutorNumber',
+      fallback: 'Assigned after profile setup',
+    );
     final profileImageUrl = _readString('profileImageUrl');
     final vehiclePhotoUrl = _resolveVehiclePhotoUrl();
 
@@ -431,6 +435,11 @@ class _InstructorProfilePreviewScreenState
             title: 'Contact & credentials',
             rows: [
               _tile(icon: Icons.phone_outlined, label: 'Phone', value: phone),
+              _tile(
+                icon: Icons.confirmation_number_outlined,
+                label: 'Drive Tutor number',
+                value: driveTutorNumber,
+              ),
               _tile(
                   icon: Icons.calendar_today_outlined,
                   label: 'Age',

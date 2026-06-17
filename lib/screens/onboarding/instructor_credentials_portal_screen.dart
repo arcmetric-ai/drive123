@@ -96,7 +96,7 @@ class _InstructorCredentialsPortalScreenState
 
     if (missingRequired.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
             'Upload all required documents before submitting for review.',
           ),
@@ -160,24 +160,22 @@ class _InstructorCredentialsPortalScreenState
                   const Text(
                     'Credentials Portal',
                     style: TextStyle(
-                      fontSize: 34,
+                      fontSize: 28,
                       fontWeight: FontWeight.w800,
-                      height: 1.08,
-                      letterSpacing: -0.7,
+                      height: 1.12,
                       color: AppColors.foreground,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   const Text(
-                    'Verified instructors get 3x more students.',
+                    'Upload and manage the documents Drive Tutor needs to review your instructor account.',
                     style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 15,
                       height: 1.45,
                       color: AppColors.mutedForeground,
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 22),
                   InstructorDocumentStatusTile(
                     title: "Driver's License",
                     statusLabel: identityVerified ? 'VERIFIED' : 'REQUIRED',
@@ -207,21 +205,17 @@ class _InstructorCredentialsPortalScreenState
                                 ? AppColors.primary
                                 : AppColors.mutedForeground),
                         icon: _iconForType(type),
-                        isComplete: false,
                         onTap: () => _openUpload(type),
                       ),
                     );
                   }),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF4F8FF),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: AppColors.primary.withValues(alpha: 0.22),
-                        style: BorderStyle.solid,
-                      ),
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.border),
                     ),
                     child: const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -230,27 +224,26 @@ class _InstructorCredentialsPortalScreenState
                           children: [
                             Icon(
                               Icons.info_rounded,
-                              color: AppColors.primary,
-                              size: 24,
+                              color: AppColors.mutedForeground,
+                              size: 20,
                             ),
-                            SizedBox(width: 12),
+                            SizedBox(width: 10),
                             Text(
-                              'VERIFICATION PROCESS',
+                              'Review process',
                               style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.1,
-                                color: AppColors.primary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.foreground,
                               ),
                             ),
                           ],
                         ),
-                        SizedBox(height: 16),
+                        SizedBox(height: 10),
                         Text(
-                          'Our team reviews documents within 24 hours.\n\nKeep your physical documents ready for a quick photo upload.',
+                          'Our team reviews documents within 24 hours. Keep your physical documents ready for quick photo upload.',
                           style: TextStyle(
-                            fontSize: 17,
-                            height: 1.55,
+                            fontSize: 14,
+                            height: 1.45,
                             color: AppColors.mutedForeground,
                           ),
                         ),

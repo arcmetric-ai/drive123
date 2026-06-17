@@ -28,10 +28,10 @@ class InstructorDocumentStatusTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(28),
       onTap: onTap,
       child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
           color: AppColors.card,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppColors.border),
           boxShadow: const [
             BoxShadow(
@@ -44,15 +44,15 @@ class InstructorDocumentStatusTile extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 68,
-              height: 68,
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(icon, color: statusColor, size: 34),
+              child: Icon(icon, color: statusColor, size: 26),
             ),
-            const SizedBox(width: 18),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -60,18 +60,18 @@ class InstructorDocumentStatusTile extends StatelessWidget {
                   Text(
                     title,
                     style: const TextStyle(
-                      fontSize: 22,
+                      fontSize: 17,
                       fontWeight: FontWeight.w800,
                       color: AppColors.foreground,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     statusLabel,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 12,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: 1.3,
+                      letterSpacing: 0.8,
                       color: statusColor,
                     ),
                   ),
@@ -81,8 +81,8 @@ class InstructorDocumentStatusTile extends StatelessWidget {
             const SizedBox(width: 16),
             if (isComplete)
               Container(
-                width: 40,
-                height: 40,
+                width: 34,
+                height: 34,
                 decoration: const BoxDecoration(
                   color: AppColors.success,
                   shape: BoxShape.circle,
@@ -90,14 +90,14 @@ class InstructorDocumentStatusTile extends StatelessWidget {
                 child: const Icon(
                   Icons.check_rounded,
                   color: Colors.white,
-                  size: 24,
+                  size: 20,
                 ),
               )
             else if (showTrailingArrow)
               const Icon(
                 Icons.chevron_right_rounded,
                 color: AppColors.mutedForeground,
-                size: 36,
+                size: 30,
               ),
           ],
         ),

@@ -127,8 +127,7 @@ class _InstructorDocumentUploadScreenState
 
   @override
   Widget build(BuildContext context) {
-    final fileName =
-        _selectedFilePath == null ? null : _selectedFilePath!.split('/').last;
+    final fileName = _selectedFilePath?.split('/').last;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -149,7 +148,7 @@ class _InstructorDocumentUploadScreenState
                   const Text(
                     'Add Document',
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
                       color: AppColors.foreground,
                     ),
@@ -160,32 +159,30 @@ class _InstructorDocumentUploadScreenState
               Text(
                 widget.documentType.uploadTitle,
                 style: const TextStyle(
-                  fontSize: 32,
+                  fontSize: 26,
                   fontWeight: FontWeight.w800,
-                  height: 1.08,
-                  letterSpacing: -0.7,
+                  height: 1.12,
                   color: AppColors.foreground,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 widget.documentType.description,
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 15,
                   height: 1.45,
                   color: AppColors.mutedForeground,
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 22),
               InkWell(
                 borderRadius: BorderRadius.circular(28),
                 onTap: _pickDocument,
                 child: Ink(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 40,
+                    horizontal: 20,
+                    vertical: 28,
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.card,
@@ -198,8 +195,8 @@ class _InstructorDocumentUploadScreenState
                   child: Column(
                     children: [
                       Container(
-                        width: 120,
-                        height: 120,
+                        width: 88,
+                        height: 88,
                         decoration: BoxDecoration(
                           color: const Color(0xFFE4EDFF),
                           borderRadius: BorderRadius.circular(999),
@@ -207,15 +204,15 @@ class _InstructorDocumentUploadScreenState
                         child: const Icon(
                           Icons.upload_rounded,
                           color: AppColors.primary,
-                          size: 52,
+                          size: 40,
                         ),
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 20),
                       Text(
-                        fileName == null ? 'Tap to upload' : fileName,
+                        fileName ?? 'Tap to upload',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          fontSize: 26,
+                          fontSize: 20,
                           fontWeight: FontWeight.w800,
                           color: AppColors.foreground,
                         ),
@@ -224,7 +221,7 @@ class _InstructorDocumentUploadScreenState
                       const Text(
                         'or take a photo',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 14,
                           color: AppColors.mutedForeground,
                         ),
                       ),
@@ -283,32 +280,32 @@ class _InstructorDocumentUploadScreenState
               ],
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF6F8FD),
-                  borderRadius: BorderRadius.circular(28),
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.border),
                 ),
-                child: Column(
+                child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
                       'ACCEPTABLE FORMATS',
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 12,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: 1.1,
+                        letterSpacing: 0.8,
                         color: AppColors.mutedForeground,
                       ),
                     ),
-                    SizedBox(height: 20),
-                    Row(
-                      children: [
-                        _FormatChip(label: 'PDF', color: Color(0xFFFF3B30)),
-                        SizedBox(width: 14),
-                        _FormatChip(label: 'JPEG', color: Color(0xFF3478F6)),
-                        SizedBox(width: 14),
-                        _FormatChip(label: 'PNG', color: Color(0xFF00C853)),
-                      ],
+                    SizedBox(height: 8),
+                    Text(
+                      'PDF, JPEG, JPG, or PNG. Maximum file size is 10MB.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.4,
+                        color: AppColors.foreground,
+                      ),
                     ),
                   ],
                 ),
@@ -317,9 +314,9 @@ class _InstructorDocumentUploadScreenState
               const Text(
                 'UPLOAD GUIDELINES',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 12,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
+                  letterSpacing: 0.8,
                   color: AppColors.mutedForeground,
                 ),
               ),
@@ -327,11 +324,11 @@ class _InstructorDocumentUploadScreenState
               const _GuidelineRow(
                 label: 'Ensure all four corners of the document are visible',
               ),
-              SizedBox(height: 14),
+              const SizedBox(height: 14),
               const _GuidelineRow(
                 label: 'Text must be clear and easily legible',
               ),
-              SizedBox(height: 14),
+              const SizedBox(height: 14),
               const _GuidelineRow(
                 label: 'Maximum file size is 10MB',
               ),
@@ -345,60 +342,6 @@ class _InstructorDocumentUploadScreenState
           ),
         ),
       ),
-    );
-  }
-}
-
-class _FormatChip extends StatelessWidget {
-  const _FormatChip({
-    required this.label,
-    required this.color,
-  });
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.border),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0A111827),
-                blurRadius: 16,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: AppColors.mutedForeground,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -431,7 +374,7 @@ class _GuidelineRow extends StatelessWidget {
           child: Text(
             label,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 15,
               height: 1.45,
               color: AppColors.foreground,
             ),

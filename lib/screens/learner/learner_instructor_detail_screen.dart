@@ -157,6 +157,7 @@ class _LearnerInstructorDetailScreenState
           _profile['pickupPreference'] ??= detailMap['pickup_preference'];
           _profile['locationNotes'] ??= detailMap['preferred_location_notes'];
           _profile['yearsOfExperience'] ??= detailMap['years_of_experience'];
+          _profile['driveTutorNumber'] ??= detailMap['drive_tutor_number'];
           _profile['bio'] ??= detailMap['bio'];
         }
         if (profile is Map<String, dynamic>) {
@@ -661,6 +662,9 @@ class _LearnerInstructorDetailScreenState
     final int? yearsOfExperience = _asNullableInt(
       _profile['yearsOfExperience'] ?? detailMap?['years_of_experience'],
     );
+    final String? driveTutorNumber = _asNullableString(
+      _profile['driveTutorNumber'] ?? detailMap?['drive_tutor_number'],
+    );
     final String? locationNotes = _asNullableString(
       _profile['locationNotes'] ?? detailMap?['preferred_location_notes'],
     );
@@ -744,6 +748,27 @@ class _LearnerInstructorDetailScreenState
                             ?.copyWith(color: Colors.grey[700]),
                       ),
                     ],
+                    if (driveTutorNumber != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.ocean.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Drive Tutor #$driveTutorNumber',
+                          style:
+                              Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    color: AppColors.ocean,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -805,6 +830,13 @@ class _LearnerInstructorDetailScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _DetailRow(label: 'Service area', value: serviceArea),
+                    if (driveTutorNumber != null) ...[
+                      const SizedBox(height: 12),
+                      _DetailRow(
+                        label: 'Drive Tutor number',
+                        value: driveTutorNumber,
+                      ),
+                    ],
                     if (yearsOfExperience != null) ...[
                       const SizedBox(height: 12),
                       _DetailRow(

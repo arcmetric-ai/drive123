@@ -24,6 +24,7 @@ class InstructorModel {
     this.serviceArea,
     this.serviceAreaArea,
     this.serviceAreaCity,
+    this.driveTutorNumber,
     this.age,
     this.gender,
     this.vehiclePhotoUrl,
@@ -81,6 +82,7 @@ class InstructorModel {
       serviceArea: serviceAreaInfo.label,
       serviceAreaArea: serviceAreaInfo.area,
       serviceAreaCity: serviceAreaInfo.city,
+      driveTutorNumber: _cleanString(json['drive_tutor_number']),
       age: _parseAge(userJson['age']),
       gender: (userJson['gender'] as String?)?.trim().isNotEmpty == true
           ? (userJson['gender'] as String).trim()
@@ -120,6 +122,7 @@ class InstructorModel {
   final String? serviceArea;
   final String? serviceAreaArea;
   final String? serviceAreaCity;
+  final String? driveTutorNumber;
   final int? age;
   final String? gender;
   final String? vehiclePhotoUrl;
@@ -154,6 +157,7 @@ class InstructorModel {
           areasOfOperation.map((area) => area.toJson()).toList(),
       'pickup_preference': pickupPreference,
       'preferred_location_notes': locationNotes,
+      'drive_tutor_number': driveTutorNumber,
       'age': age,
       'gender': gender,
       'vehicle_photo_url': vehiclePhotoUrl,

@@ -12,6 +12,7 @@ import '../services/launch_preferences.dart';
 import '../models/user_model.dart';
 import '../models/instructor_model.dart';
 import '../models/lesson_model.dart';
+import '../utils/drive_tutor_number.dart';
 import '../utils/lesson_request_utils.dart';
 import 'push_notification_service.dart';
 
@@ -713,6 +714,7 @@ class SupabaseService {
       'credentials_review_started_at': null,
       'credentials_approved_at': null,
     }, onConflict: 'profile_id');
+    await ensureInstructorDriveTutorNumber(userId: userId);
     await updateProfileFields(userId, {'is_verified': false});
   }
 
@@ -891,6 +893,91 @@ class SupabaseService {
     }
   }
 
+  static Future<String?> ensureInstructorDriveTutorNumber({
+    required String userId,
+  }) async {
+    Map<String, dynamic>? existing;
+    try {
+      existing = await _client
+          .from('instructor_profiles')
+          .select(
+            'drive_tutor_number, preferred_locations, profile:profiles!instructor_profiles_profile_id_fkey(city)',
+          )
+          .eq('profile_id', userId)
+          .maybeSingle();
+    } on PostgrestException catch (error) {
+      if (error.code == '42703') {
+        return null;
+      }
+      rethrow;
+    }
+
+    if (existing == null) {
+      return null;
+    }
+
+    final current = existing['drive_tutor_number']?.toString().trim();
+    if (current != null && current.isNotEmpty) {
+      return current;
+    }
+
+    final profile = existing['profile'];
+    final city = profile is Map ? profile['city']?.toString() : null;
+    final preferredLocations = existing['preferred_locations'];
+    final serviceArea = _serviceAreaFromPreferredLocations(preferredLocations);
+
+    for (var attempt = 0; attempt < 10; attempt += 1) {
+      final candidate = DriveTutorNumberGenerator.generate(
+        city: city,
+        serviceArea: serviceArea,
+      );
+      try {
+        final updated = await _client
+            .from('instructor_profiles')
+            .update({'drive_tutor_number': candidate})
+            .eq('profile_id', userId)
+            .isFilter('drive_tutor_number', null)
+            .select('drive_tutor_number')
+            .maybeSingle();
+        final assigned = updated?['drive_tutor_number']?.toString().trim();
+        if (assigned != null && assigned.isNotEmpty) {
+          return assigned;
+        }
+
+        final refreshed = await _client
+            .from('instructor_profiles')
+            .select('drive_tutor_number')
+            .eq('profile_id', userId)
+            .maybeSingle();
+        final refreshedValue =
+            refreshed?['drive_tutor_number']?.toString().trim();
+        if (refreshedValue != null && refreshedValue.isNotEmpty) {
+          return refreshedValue;
+        }
+      } on PostgrestException catch (error) {
+        if (error.code != '23505') {
+          rethrow;
+        }
+      }
+    }
+
+    throw Exception('Unable to assign a unique Drive Tutor number.');
+  }
+
+  static String? _serviceAreaFromPreferredLocations(dynamic value) {
+    if (value is! List) return null;
+    for (final entry in value) {
+      if (entry is Map) {
+        final area = entry['areaName'] ?? entry['area'] ?? entry['city'];
+        final areaText = area?.toString().trim();
+        if (areaText != null && areaText.isNotEmpty) {
+          return areaText;
+        }
+      }
+    }
+    return null;
+  }
+
   static Future<List<InstructorBillingPlan>> getInstructorBillingPlans() async {
     final rows = await _client
         .from('instructor_billing_plans')
@@ -1026,6 +1113,8 @@ class SupabaseService {
     await _client
         .from('instructor_profiles')
         .upsert(data, onConflict: 'profile_id');
+
+    await ensureInstructorDriveTutorNumber(userId: userId);
 
     try {
       await _client.from('profiles').update({'role': 'instructor'}).eq(
@@ -2041,6 +2130,26 @@ class SupabaseService {
         },
       );
     }
+  }
+
+  static Future<Map<String, dynamic>> claimInstructorReferralCode(
+      String code) async {
+    final normalized = code.trim();
+    if (normalized.isEmpty) {
+      throw Exception('Enter an instructor code.');
+    }
+
+    final response = await _client.rpc(
+      'claim_instructor_referral_code',
+      params: {'entered_code': normalized},
+    );
+    if (response is Map<String, dynamic>) {
+      return response;
+    }
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+    return <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>?> getLearnerRequestById(

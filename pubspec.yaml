@@ -27,6 +27,7 @@ dependencies:
   
   # UI Components
   flutter_svg: ^2.2.2
+  qr_flutter: ^4.1.0
   flutter_staggered_animations: ^1.1.1
   fl_chart: ^1.1.1
   table_calendar: ^3.0.9
