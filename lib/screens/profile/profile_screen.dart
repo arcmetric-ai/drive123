@@ -468,10 +468,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       leading: Icon(icon, color: textColor ?? AppColors.primaryBlue),
       title: Text(
         title,
-        style: TextStyle(color: textColor),
+        style: TextStyle(
+          color: textColor ?? AppColors.foreground,
+          fontWeight: FontWeight.w700,
+        ),
       ),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(color: AppColors.mutedForeground),
+      ),
+      trailing: const Icon(
+        Icons.arrow_forward_ios,
+        size: 16,
+        color: AppColors.mutedForeground,
+      ),
       onTap: onTap,
     );
   }

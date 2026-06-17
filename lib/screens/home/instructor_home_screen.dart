@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -106,7 +105,12 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
       _DashboardTab(
         name: _instructorName,
         reduceMotion: _reduceMotion,
+        billingLoading: _billingLoading,
+        hasActiveBilling: _hasActiveBilling,
+        isOpeningActivation: _isOpeningActivation,
         onToggleMotion: _toggleMotion,
+        onActivate: _openActivationWebsite,
+        onRefreshBilling: _refreshBillingGate,
         onOpenBookings: () => _onTabTap(3),
         onOpenRequests: () => _onTabTap(1),
       ),
@@ -128,12 +132,6 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
               onTap: _onTabTap,
             ),
           ),
-          if (!_billingLoading && !_hasActiveBilling)
-            _ActivationRequiredOverlay(
-              isOpening: _isOpeningActivation,
-              onActivate: _openActivationWebsite,
-              onRefresh: _refreshBillingGate,
-            ),
         ],
       ),
     );
@@ -244,8 +242,8 @@ class _InstructorBillingLifecycleState
   Widget build(BuildContext context) => widget.child;
 }
 
-class _ActivationRequiredOverlay extends StatelessWidget {
-  const _ActivationRequiredOverlay({
+class _ActivationInlineCard extends StatelessWidget {
+  const _ActivationInlineCard({
     required this.isOpening,
     required this.onActivate,
     required this.onRefresh,
@@ -257,80 +255,75 @@ class _ActivationRequiredOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: Material(
-        color: AppColors.foreground.withValues(alpha: 0.18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: SafeArea(
-            child: Center(
-              child: Container(
-                width: double.infinity,
-                margin: const EdgeInsets.all(24),
-                padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: AppColors.border),
-                  boxShadow: AppShadows.subtle,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(
-                      Icons.lock_open_rounded,
-                      color: AppColors.primary,
-                      size: 42,
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Activate your account',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AppColors.foreground,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        height: 1.08,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Your instructor profile is approved. Choose a pass on DriveTutor.ca, then return here. We will unlock the dashboard automatically once your pass is active.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AppColors.mutedForeground,
-                        fontSize: 15,
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: isOpening ? null : onActivate,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(54),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: Text(
-                        isOpening ? 'Opening...' : 'Activate your account',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: onRefresh,
-                      child: const Text('I have already activated'),
-                    ),
-                  ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F8FF),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFD7E2FF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.lock_open_rounded,
+                color: AppColors.primary,
+                size: 28,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Activate instructor access',
+                  style: TextStyle(
+                    color: AppColors.foreground,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                  ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Choose a monthly or annual subscription on DriveTutor.ca, then return here and refresh access.',
+            style: TextStyle(
+              color: AppColors.mutedForeground,
+              fontSize: 14,
+              height: 1.35,
             ),
           ),
-        ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: isOpening ? null : onActivate,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Text(
+                    isOpening ? 'Opening...' : 'Activate',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              TextButton(
+                onPressed: onRefresh,
+                child: const Text('Refresh'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -339,14 +332,24 @@ class _ActivationRequiredOverlay extends StatelessWidget {
 class _DashboardTab extends StatefulWidget {
   final String name;
   final bool reduceMotion;
+  final bool billingLoading;
+  final bool hasActiveBilling;
+  final bool isOpeningActivation;
   final VoidCallback onToggleMotion;
+  final VoidCallback onActivate;
+  final Future<void> Function() onRefreshBilling;
   final VoidCallback onOpenBookings;
   final VoidCallback onOpenRequests;
 
   const _DashboardTab({
     required this.name,
     required this.reduceMotion,
+    required this.billingLoading,
+    required this.hasActiveBilling,
+    required this.isOpeningActivation,
     required this.onToggleMotion,
+    required this.onActivate,
+    required this.onRefreshBilling,
     required this.onOpenBookings,
     required this.onOpenRequests,
   });
@@ -968,6 +971,15 @@ class _DashboardTabState extends State<_DashboardTab> {
                                   ),
                                 ],
                               ),
+                              if (!widget.billingLoading &&
+                                  !widget.hasActiveBilling) ...[
+                                const SizedBox(height: 18),
+                                _ActivationInlineCard(
+                                  isOpening: widget.isOpeningActivation,
+                                  onActivate: widget.onActivate,
+                                  onRefresh: widget.onRefreshBilling,
+                                ),
+                              ],
                               const SizedBox(height: 22),
                               _RequestsCard(
                                 requests: _requests,
@@ -3004,6 +3016,7 @@ class _EmptyState extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
+                color: AppColors.foreground,
               ),
             ),
             const SizedBox(height: 10),
@@ -3018,6 +3031,7 @@ class _EmptyState extends StatelessWidget {
                 onPressed: onPrimaryAction,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryBlue,
+                  foregroundColor: Colors.white,
                 ),
                 child: Text(primaryActionText!),
               ),
@@ -3303,6 +3317,7 @@ class _UpcomingLessonsCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
+                      color: AppColors.foreground,
                     ),
                   ),
                 ),
@@ -3327,7 +3342,10 @@ class _UpcomingLessonsCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             if (lessons.isEmpty)
-              const Text('No lessons scheduled for today.')
+              const Text(
+                'No lessons scheduled for today.',
+                style: TextStyle(color: AppColors.mutedForeground),
+              )
             else
               ...lessons.map(
                 (lesson) => Padding(
