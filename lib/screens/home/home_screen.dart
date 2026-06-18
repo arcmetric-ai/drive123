@@ -15,6 +15,7 @@ import '../../services/supabase_service.dart';
 import '../../widgets/learner_action_tile.dart';
 import '../../widgets/learner_bottom_nav_bar.dart';
 import '../../widgets/lesson_spotlight_card.dart';
+import '../../widgets/verified_profile_badge.dart';
 import '../instructor/find_instructor_screen.dart';
 import '../lessons/my_lessons_screen.dart';
 import '../progress/progress_tracker_screen.dart';
@@ -63,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _selectedLocation;
   String? _profileFirstName;
   String? _profileImageUrl;
+  bool _isVerified = false;
   bool _lessonsLoading = true;
   String? _lessonsError;
   LessonModel? _ongoingLesson;
@@ -160,8 +162,9 @@ class _HomeScreenState extends State<HomeScreen> {
       extra: LocationSetupArgs(
         savedLocations: _savedLocations,
         initialSelectionKey: _selectedLocationKey,
-        initialManualAddress:
-            _selectedLocationKey == null ? _selectedLocation : null,
+        initialManualAddress: _selectedLocationKey == null
+            ? _selectedLocation
+            : null,
       ),
     );
     if (result == null) return;
@@ -212,8 +215,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final profile = await SupabaseService.getUserProfile(userId);
-      final learnerDetail =
-          await SupabaseService.getLearnerProfileDetail(userId);
+      final learnerDetail = await SupabaseService.getLearnerProfileDetail(
+        userId,
+      );
       if (!mounted) return;
       final parsedLocations = <PreferredLocation>[];
       final rawLocations = learnerDetail?['preferred_locations'];
@@ -232,8 +236,10 @@ class _HomeScreenState extends State<HomeScreen> {
         if (profile != null) {
           _profileFirstName = profile.firstName;
           _profileImageUrl = profile.profileImageUrl;
+          _isVerified = profile.isVerified;
         } else {
           _profileImageUrl = null;
+          _isVerified = false;
         }
         final focus = learnerDetail?['learning_focus'] as String?;
         if (focus != null && focus.isNotEmpty) {
@@ -241,8 +247,10 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         _savedLocations = parsedLocations;
         if (_selectedLocationKey != null) {
-          final matched =
-              _findLocationByKey(parsedLocations, _selectedLocationKey!);
+          final matched = _findLocationByKey(
+            parsedLocations,
+            _selectedLocationKey!,
+          );
           if (matched != null) {
             _selectedLocation = matched.displayText;
           }
@@ -340,9 +348,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      upcoming.sort(
-        (a, b) => a.scheduledDate.compareTo(b.scheduledDate),
-      );
+      upcoming.sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
 
       if (!mounted) return;
       setState(() {
@@ -371,8 +377,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _notifications = notifications;
-        _hasUnreadNotifications =
-            notifications.any((n) => _isNotificationUnread(n));
+        _hasUnreadNotifications = notifications.any(
+          (n) => _isNotificationUnread(n),
+        );
         _notificationsError = null;
       });
     } catch (_) {
@@ -412,8 +419,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isNotificationUnread(LearnerNotification notification) {
     final now = DateTime.now();
-    final effectiveTimestamp =
-        notification.timestamp.isAfter(now) ? now : notification.timestamp;
+    final effectiveTimestamp = notification.timestamp.isAfter(now)
+        ? now
+        : notification.timestamp;
     if (_notificationsLastViewedAt == null) return true;
     return effectiveTimestamp.isAfter(_notificationsLastViewedAt!);
   }
@@ -438,7 +446,8 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final request in requests) {
       final status = (request['status'] as String?)?.toLowerCase();
       if (status != 'accepted') continue;
-      final timestamp = _parseDateTime(request['updated_at']) ??
+      final timestamp =
+          _parseDateTime(request['updated_at']) ??
           _parseDateTime(request['created_at']) ??
           now;
       if (now.difference(timestamp).inDays > 30) continue;
@@ -458,10 +467,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final instructorName = _formatInstructorName(lesson.instructor.user);
       final createdAt = lesson.createdAt.toLocal();
       final updatedAt = lesson.updatedAt.toLocal();
-      final startDateTime =
-          _combineDateAndTime(lesson.scheduledDate, lesson.startTime);
-      final endDateTime =
-          _combineDateAndTime(lesson.scheduledDate, lesson.endTime);
+      final startDateTime = _combineDateAndTime(
+        lesson.scheduledDate,
+        lesson.startTime,
+      );
+      final endDateTime = _combineDateAndTime(
+        lesson.scheduledDate,
+        lesson.endTime,
+      );
 
       switch (status) {
         case LessonStatus.scheduled:
@@ -480,16 +493,18 @@ class _HomeScreenState extends State<HomeScreen> {
               startDateTime.isAfter(now) &&
               startDateTime.difference(now) <= const Duration(hours: 24)) {
             final reminderId = 'lesson-reminder-${lesson.id}';
-            final reminderTimestamp =
-                startDateTime.subtract(const Duration(hours: 1));
+            final reminderTimestamp = startDateTime.subtract(
+              const Duration(hours: 1),
+            );
             notifications[reminderId] = LearnerNotification(
               id: reminderId,
               type: LearnerNotificationType.lessonReminder,
               title: 'Lesson reminder',
               message:
                   'Reminder: Lesson with $instructorName on ${_formatDateTime(startDateTime)}.',
-              timestamp:
-                  reminderTimestamp.isAfter(now) ? reminderTimestamp : now,
+              timestamp: reminderTimestamp.isAfter(now)
+                  ? reminderTimestamp
+                  : now,
             );
           }
           break;
@@ -686,29 +701,30 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final body = switch (_selectedIndex) {
       0 => HomeDashboard(
-          name: _greetingName,
-          isLearner: _isLearner,
-          profileImageUrl: _profileImageUrl,
-          locationLabel: _selectedLocation,
-          selectedFocus: _selectedFocus,
-          completedSkills: _completedSkills,
-          totalSkills: _totalSkills,
-          nextSkillName: _nextSkillName,
-          isProgressLoading: _isProgressLoading,
-          isLessonsLoading: _lessonsLoading,
-          lessonsError: _lessonsError,
-          upcomingLessons: _upcomingLessons,
-          ongoingLesson: _ongoingLesson,
-          onRefreshLessons: _refreshUpcomingLessons,
-          onAddLocation: _handleSelectLocation,
-          onChangeFocus: _handleChangeFocus,
-          onBookLesson: _goToFindInstructor,
-          onMyLessons: _goToLessons,
-          onProgress: _goToProgress,
-          onProfile: _goToProfile,
-          onNotifications: _handleOpenNotifications,
-          hasNewNotifications: _hasRecentNotifications,
-        ),
+        name: _greetingName,
+        isLearner: _isLearner,
+        profileImageUrl: _profileImageUrl,
+        isVerified: _isVerified,
+        locationLabel: _selectedLocation,
+        selectedFocus: _selectedFocus,
+        completedSkills: _completedSkills,
+        totalSkills: _totalSkills,
+        nextSkillName: _nextSkillName,
+        isProgressLoading: _isProgressLoading,
+        isLessonsLoading: _lessonsLoading,
+        lessonsError: _lessonsError,
+        upcomingLessons: _upcomingLessons,
+        ongoingLesson: _ongoingLesson,
+        onRefreshLessons: _refreshUpcomingLessons,
+        onAddLocation: _handleSelectLocation,
+        onChangeFocus: _handleChangeFocus,
+        onBookLesson: _goToFindInstructor,
+        onMyLessons: _goToLessons,
+        onProgress: _goToProgress,
+        onProfile: _goToProfile,
+        onNotifications: _handleOpenNotifications,
+        hasNewNotifications: _hasRecentNotifications,
+      ),
       1 => FindInstructorScreen(selectedFocus: _selectedFocus),
       2 => const MyLessonsScreen(),
       3 => const ProgressTrackerScreen(),
@@ -744,6 +760,7 @@ class HomeDashboard extends StatelessWidget {
   final String name;
   final bool isLearner;
   final String? profileImageUrl;
+  final bool isVerified;
   final String? locationLabel;
   final String? selectedFocus;
   final int completedSkills;
@@ -769,6 +786,7 @@ class HomeDashboard extends StatelessWidget {
     required this.name,
     required this.isLearner,
     required this.profileImageUrl,
+    required this.isVerified,
     required this.locationLabel,
     required this.selectedFocus,
     required this.completedSkills,
@@ -823,9 +841,7 @@ class HomeDashboard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
       decoration: const BoxDecoration(
         color: AppColors.card,
-        border: Border(
-          bottom: BorderSide(color: AppColors.border),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -863,11 +879,13 @@ class HomeDashboard extends StatelessWidget {
                 CircleAvatar(
                   radius: 38,
                   backgroundColor: const Color(0xFF5B6BC8),
-                  backgroundImage: profileImageUrl != null &&
+                  backgroundImage:
+                      profileImageUrl != null &&
                           profileImageUrl!.trim().isNotEmpty
                       ? NetworkImage(profileImageUrl!.trim())
                       : null,
-                  child: profileImageUrl != null &&
+                  child:
+                      profileImageUrl != null &&
                           profileImageUrl!.trim().isNotEmpty
                       ? null
                       : Text(
@@ -881,6 +899,12 @@ class HomeDashboard extends StatelessWidget {
                           ),
                         ),
                 ),
+                if (isVerified)
+                  const Positioned(
+                    top: -3,
+                    right: -3,
+                    child: VerifiedProfileBadge(size: 30),
+                  ),
                 const Positioned(
                   right: -2,
                   bottom: -2,
@@ -1065,9 +1089,9 @@ class HomeDashboard extends StatelessWidget {
                         onMyLessons();
                       }
                     },
-                    child: Text(onRefreshLessons != null
-                        ? 'Try again'
-                        : 'Go to Lessons'),
+                    child: Text(
+                      onRefreshLessons != null ? 'Try again' : 'Go to Lessons',
+                    ),
                   ),
                 ),
               ],
@@ -1178,20 +1202,13 @@ class HomeDashboard extends StatelessWidget {
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         Text(
           subtitle,
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[600],
-            height: 1.4,
-          ),
+          style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.4),
         ),
         const SizedBox(height: 20),
         ...actionButtons,
@@ -1246,14 +1263,12 @@ class _NotificationsSheet extends StatelessWidget {
               const SizedBox(height: 16),
               const Text(
                 'Notifications',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               TextButton(
-                onPressed:
-                    isLoading || notifications.isEmpty ? null : onMarkRead,
+                onPressed: isLoading || notifications.isEmpty
+                    ? null
+                    : onMarkRead,
                 child: const Text('Mark read'),
               ),
               const SizedBox(height: 12),
@@ -1302,16 +1317,11 @@ class _NotificationsSheet extends StatelessWidget {
             leading: CircleAvatar(
               radius: 22,
               backgroundColor: color.withOpacity(0.12),
-              child: Icon(
-                _iconForType(notification.type),
-                color: color,
-              ),
+              child: Icon(_iconForType(notification.type), color: color),
             ),
             title: Text(
               notification.title,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1320,10 +1330,9 @@ class _NotificationsSheet extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   DateFormat('MMM d, h:mm a').format(notification.timestamp),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.grey[600]),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -1402,15 +1411,9 @@ class _NotificationMessage extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 15,
-                color: Colors.black87,
-              ),
+              style: const TextStyle(fontSize: 15, color: Colors.black87),
             ),
-            if (action != null) ...[
-              const SizedBox(height: 12),
-              action!,
-            ],
+            if (action != null) ...[const SizedBox(height: 12), action!],
           ],
         ),
       ),

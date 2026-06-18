@@ -7,10 +7,7 @@ import '../../services/instructor_referral_service.dart';
 import '../../services/supabase_service.dart';
 
 class InstructorInviteLandingScreen extends StatefulWidget {
-  const InstructorInviteLandingScreen({
-    super.key,
-    required this.code,
-  });
+  const InstructorInviteLandingScreen({super.key, required this.code});
 
   final String code;
 
@@ -54,9 +51,33 @@ class _InstructorInviteLandingScreenState
       setState(() {
         _isClaiming = false;
         _message =
-            'Code saved. It will be applied after your learner profile is approved.';
+            'Code saved. Finish your learner profile, add availability, and upload a profile photo to connect with this instructor.';
       });
     }
+  }
+
+  Future<void> _continue() async {
+    final user = SupabaseService.currentUser;
+    if (user == null) {
+      context.go(AppRoutes.accountEntry);
+      return;
+    }
+    final pendingCode = await InstructorReferralService.pendingCode();
+    final verificationState =
+        await SupabaseService.getIdentityVerificationState(user.id);
+    if (pendingCode != null &&
+        verificationState?.onboardingStage ==
+            SupabaseService.onboardingStageQuestionnaireComplete) {
+      if (!mounted) return;
+      context.go(AppRoutes.learnerReferralProfilePhoto);
+      return;
+    }
+    final destination = await SupabaseService.resolvePostAuthRoute(
+      userId: user.id,
+      metadataRole: user.userMetadata?['role'],
+    );
+    if (!mounted) return;
+    context.go(destination);
   }
 
   @override
@@ -100,12 +121,7 @@ class _InstructorInviteLandingScreenState
                 const Center(child: CircularProgressIndicator())
               else ...[
                 FilledButton(
-                  onPressed: () {
-                    final destination = SupabaseService.currentUser == null
-                        ? AppRoutes.accountEntry
-                        : AppRoutes.home;
-                    context.go(destination);
-                  },
+                  onPressed: _continue,
                   child: Text(
                     SupabaseService.currentUser == null
                         ? 'Create or Sign In'

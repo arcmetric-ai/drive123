@@ -38,6 +38,7 @@ import '../screens/onboarding/instructor_document_upload_screen.dart';
 import '../screens/onboarding/learner_pickup_address_screen.dart';
 import '../screens/onboarding/learner_questionnaire_screen.dart';
 import '../screens/onboarding/learner_account_type_screen.dart';
+import '../screens/onboarding/learner_referral_profile_photo_screen.dart';
 import '../screens/onboarding/learner_weekly_availability_screen.dart';
 import '../screens/onboarding/instructor_questionnaire_screen.dart';
 import '../screens/onboarding/learning_focus_screen.dart';
@@ -82,6 +83,8 @@ class AppRoutes {
   static const String learnerPickupAddress = '/learner-pickup-address';
   static const String learnerWeeklyAvailability =
       '/learner-weekly-availability';
+  static const String learnerReferralProfilePhoto =
+      '/learner-referral-profile-photo';
   static const String learnerApprovalSuccess = '/learner-approval-success';
   static const String instructorInvite = '/invite/instructor/:code';
   static const String instructorQuestionnaire = '/instructor-questionnaire';
@@ -116,10 +119,7 @@ class AppRoutes {
     navigatorKey: navigatorKey,
     initialLocation: splash,
     routes: [
-      GoRoute(
-        path: splash,
-        builder: (context, state) => const SplashScreen(),
-      ),
+      GoRoute(path: splash, builder: (context, state) => const SplashScreen()),
       GoRoute(
         path: intro,
         builder: (context, state) => const IntroFlowScreen(),
@@ -196,11 +196,7 @@ class AppRoutes {
           final extra = state.extra;
           final flowState = extra is Map<String, dynamic>
               ? SignupFlowState.fromMap(extra)
-              : const SignupFlowState(
-                  email: '',
-                  authUserId: '',
-                  flowToken: '',
-                );
+              : const SignupFlowState(email: '', authUserId: '', flowToken: '');
           return SignUpVerifyScreen(flowState: flowState);
         },
       ),
@@ -211,12 +207,14 @@ class AppRoutes {
           final email = extra is String
               ? extra
               : (extra is Map ? extra['email'] as String? : null);
-          final authUserId =
-              extra is Map ? extra['authUserId'] as String? : null;
+          final authUserId = extra is Map
+              ? extra['authUserId'] as String?
+              : null;
           final flowToken = extra is Map ? extra['flowToken'] as String? : null;
           final role = extra is Map ? extra['role'] as String? : null;
-          final learnerAccountType =
-              extra is Map ? extra['learnerAccountType'] as String? : null;
+          final learnerAccountType = extra is Map
+              ? extra['learnerAccountType'] as String?
+              : null;
           final flow = extra is Map
               ? (extra['flow'] as String? ?? 'recovery')
               : 'recovery';
@@ -305,6 +303,10 @@ class AppRoutes {
         },
       ),
       GoRoute(
+        path: learnerReferralProfilePhoto,
+        builder: (context, state) => const LearnerReferralProfilePhotoScreen(),
+      ),
+      GoRoute(
         path: verification,
         builder: (context, state) {
           final extra = state.extra;
@@ -385,8 +387,8 @@ class AppRoutes {
         path: learnerQuestionnaire,
         builder: (context, state) {
           final extra = state.extra;
-          final queryAccountType =
-              state.uri.queryParameters['accountType']?.trim();
+          final queryAccountType = state.uri.queryParameters['accountType']
+              ?.trim();
           final draft = extra is LearnerOnboardingDraft
               ? extra
               : LearnerOnboardingDraft(
@@ -423,9 +425,7 @@ class AppRoutes {
           final approvalToken = extra is String
               ? extra
               : (extra is Map ? extra['approvalToken'] as String? : null);
-          return LearnerApprovalSuccessScreen(
-            approvalToken: approvalToken,
-          );
+          return LearnerApprovalSuccessScreen(approvalToken: approvalToken);
         },
       ),
       GoRoute(
@@ -494,8 +494,9 @@ class AppRoutes {
           final extra = state.extra as Map<String, dynamic>? ?? const {};
           final learner =
               (extra['learner'] as Map<String, dynamic>?) ?? const {};
-          final availabilityLines =
-              (extra['availability'] as List?)?.whereType<String>().toList();
+          final availabilityLines = (extra['availability'] as List?)
+              ?.whereType<String>()
+              .toList();
           final summary =
               (extra['summary'] as Map?)?.cast<String, dynamic>() ?? const {};
           final onViewProfile = extra['onViewProfile'] as VoidCallback?;
@@ -579,7 +580,7 @@ class AppRoutes {
           final extra = state.extra as Map<String, dynamic>? ?? const {};
           final rawAvailability =
               extra['initialAvailability'] as Map<String, dynamic>? ??
-                  const <String, dynamic>{};
+              const <String, dynamic>{};
           final initialAvailability = <String, List<String>>{
             for (final entry in rawAvailability.entries)
               entry.key: entry.value is List

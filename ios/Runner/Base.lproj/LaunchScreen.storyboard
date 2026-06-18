@@ -15,7 +15,29 @@
                     </layoutGuides>
                     <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="DriveLogo" translatesAutoresizingMaskIntoConstraints="NO" id="QHa-rx-TKU">
+                                <rect key="frame" x="67" y="249" width="260" height="260"/>
+                                <constraints>
+                                    <constraint firstAttribute="width" constant="260" id="QvW-fo-lHs"/>
+                                    <constraint firstAttribute="height" constant="260" id="eav-oZ-tbx"/>
+                                </constraints>
+                            </imageView>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="DRIVE TUTOR" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="YES" minimumScaleFactor="0.75" translatesAutoresizingMaskIntoConstraints="NO" id="J7q-aa-NCv">
+                                <rect key="frame" x="40" y="614" width="314" height="53"/>
+                                <fontDescription key="fontDescription" type="system" weight="heavy" pointSize="44"/>
+                                <color key="textColor" red="0.06666666667" green="0.09411764706" blue="0.1529411765" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                        </subviews>
                         <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
+                        <constraints>
+                            <constraint firstItem="QHa-rx-TKU" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="8Jn-dj-Rc2"/>
+                            <constraint firstItem="QHa-rx-TKU" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="oeC-vh-YuD"/>
+                            <constraint firstItem="J7q-aa-NCv" firstAttribute="top" secondItem="QHa-rx-TKU" secondAttribute="bottom" constant="105" id="9hb-Mj-fcD"/>
+                            <constraint firstItem="J7q-aa-NCv" firstAttribute="leading" secondItem="Ze5-6b-2t3" secondAttribute="leading" constant="40" id="ApR-Eh-NRA"/>
+                            <constraint firstAttribute="trailing" secondItem="J7q-aa-NCv" secondAttribute="trailing" constant="40" id="eXl-xd-qVa"/>
+                        </constraints>
                     </view>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
@@ -23,4 +45,7 @@
             <point key="canvasLocation" x="53" y="375"/>
         </scene>
     </scenes>
+    <resources>
+        <image name="DriveLogo" width="1024" height="1024"/>
+    </resources>
 </document>

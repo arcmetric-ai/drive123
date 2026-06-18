@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/glass_panel.dart';
+import '../../widgets/verified_profile_badge.dart';
 
 class LearnerInstructorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -135,8 +138,9 @@ class _LearnerInstructorDetailScreenState
     }
 
     try {
-      final detail =
-          await SupabaseService.getInstructorProfileDetail(instructorId);
+      final detail = await SupabaseService.getInstructorProfileDetail(
+        instructorId,
+      );
       final profile = await SupabaseService.getRawProfile(instructorId);
 
       if (!mounted) return;
@@ -174,8 +178,10 @@ class _LearnerInstructorDetailScreenState
           if (languages is List &&
               (_profile['languages'] == null ||
                   (_profile['languages'] as List).isEmpty)) {
-            _profile['languages'] =
-                languages.whereType<String>().map((e) => e.trim()).toList();
+            _profile['languages'] = languages
+                .whereType<String>()
+                .map((e) => e.trim())
+                .toList();
           }
         }
         _syncSelectedVehicle();
@@ -221,9 +227,9 @@ class _LearnerInstructorDetailScreenState
           _isSuppressed = true;
           _cancelledAt = DateTime.now();
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Request cancelled.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Request cancelled.')));
       } else if (_requestStatus == null) {
         final focus = (_requestContext?['focus'] as String?)?.trim();
         final messageText = _messageController.text.trim();
@@ -259,6 +265,76 @@ class _LearnerInstructorDetailScreenState
     }
   }
 
+  Future<void> _handleRemoveInstructor() async {
+    final instructorId =
+        _requestContext?['instructorId'] as String? ??
+        (_profile['id'] ?? _profile['profile_id'] ?? _profile['profileId'])
+            ?.toString();
+    if (instructorId == null || instructorId.isEmpty || _processing) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove instructor?'),
+        content: const Text(
+          'This removes the instructor from your active learner list and cancels scheduled lessons with them. If this account came from an instructor invite, open instructor search will require identity verification.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep Instructor'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _processing = true);
+    try {
+      final result = await SupabaseService.removeCurrentLearnerInstructor(
+        instructorId: instructorId,
+      );
+      if (!mounted) return;
+      final requiresVerification = result['requiresVerification'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            requiresVerification
+                ? 'Instructor removed. Verify your identity to use open instructor search.'
+                : 'Instructor removed.',
+          ),
+        ),
+      );
+      if (requiresVerification) {
+        context.go(AppRoutes.identityVerificationIntro, extra: 'learner');
+        return;
+      }
+      setState(() {
+        _requestStatus = null;
+        _requestId = null;
+        _isSuppressed = true;
+        _cancelledAt = DateTime.now();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to remove instructor: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _processing = false);
+      }
+    }
+  }
+
   Map<String, dynamic> _resultPayload() {
     final payload = <String, dynamic>{};
     if (_requestStatus != null) {
@@ -277,7 +353,8 @@ class _LearnerInstructorDetailScreenState
   }
 
   String? get _relationshipStatus {
-    final status = _requestStatus ??
+    final status =
+        _requestStatus ??
         (_requestContext?['status'] as String?) ??
         (_profile['status'] as String?) ??
         (_profile['relationshipStatus'] as String?);
@@ -401,8 +478,9 @@ class _LearnerInstructorDetailScreenState
           if (year != null) makeModelParts.add(year);
           if (make != null) makeModelParts.add(make);
           if (model != null) makeModelParts.add(model);
-          final makeModel =
-              makeModelParts.isNotEmpty ? makeModelParts.join(' ') : null;
+          final makeModel = makeModelParts.isNotEmpty
+              ? makeModelParts.join(' ')
+              : null;
 
           final segments = <String>[];
           if (type != null) segments.add(type);
@@ -431,7 +509,8 @@ class _LearnerInstructorDetailScreenState
     if (vehicles is List) {
       for (final entry in vehicles) {
         if (entry is Map) {
-          final url = _asNullableString(entry['photoUrl']) ??
+          final url =
+              _asNullableString(entry['photoUrl']) ??
               _asNullableString(entry['photo_url']) ??
               _asNullableString(entry['imageUrl']) ??
               _asNullableString(entry['image_url']);
@@ -445,12 +524,14 @@ class _LearnerInstructorDetailScreenState
   }
 
   String? _resolveVehiclePhotoUrl() {
-    final directUrl = _asNullableString(_profile['vehiclePhotoUrl']) ??
+    final directUrl =
+        _asNullableString(_profile['vehiclePhotoUrl']) ??
         _asNullableString(_profile['vehicle_photo_url']);
     if (directUrl != null) return directUrl;
 
     final detailMap = _mapOrNull(_profile['detail']);
-    final detailUrl = _asNullableString(detailMap?['vehiclePhotoUrl']) ??
+    final detailUrl =
+        _asNullableString(detailMap?['vehiclePhotoUrl']) ??
         _asNullableString(detailMap?['vehicle_photo_url']);
     if (detailUrl != null) return detailUrl;
 
@@ -512,8 +593,9 @@ class _LearnerInstructorDetailScreenState
     return sanitized;
   }
 
-  List<_VehicleRequestOption> _vehicleRequestOptions(
-      {required bool concealPlate}) {
+  List<_VehicleRequestOption> _vehicleRequestOptions({
+    required bool concealPlate,
+  }) {
     final rawVehicles = _profile['vehicles'];
     final options = <_VehicleRequestOption>[];
     if (rawVehicles is List) {
@@ -541,8 +623,9 @@ class _LearnerInstructorDetailScreenState
             options.add(_VehicleRequestOption(label: label, type: type ?? ''));
           }
         } else if (entry is String) {
-          final value =
-              concealPlate ? _concealPlate(entry.trim()) : entry.trim();
+          final value = concealPlate
+              ? _concealPlate(entry.trim())
+              : entry.trim();
           if (value.isNotEmpty) {
             options.add(_VehicleRequestOption(label: value, type: ''));
           }
@@ -594,8 +677,9 @@ class _LearnerInstructorDetailScreenState
     final gender = _readString('gender', fallback: 'Gender not provided');
     final profileImageUrl = _readString('profileImageUrl');
     final vehiclePhotoUrl = _resolveVehiclePhotoUrl();
-    final vehicleSummaries =
-        _vehicleSummaries(concealPlate: !_hasActiveRelationship);
+    final vehicleSummaries = _vehicleSummaries(
+      concealPlate: !_hasActiveRelationship,
+    );
     var vehicleSummary = vehicleSummaries.isNotEmpty
         ? vehicleSummaries.first
         : _concealPlate(
@@ -604,17 +688,23 @@ class _LearnerInstructorDetailScreenState
     if (vehicleSummary.isEmpty) {
       vehicleSummary = 'Vehicle details not provided';
     }
-    final serviceArea =
-        _readString('serviceArea', fallback: 'Service area not provided');
+    final serviceArea = _readString(
+      'serviceArea',
+      fallback: 'Service area not provided',
+    );
     final languages = List<String>.from(_asStringList('languages'));
     final offerings = List<String>.from(_asStringList('offerings'));
     final offeringRates = _asStringMap('offeringRates');
-    final ratesFallback =
-        _readString('rates', fallback: 'Rates not provided yet.');
-    final vehicleOptions =
-        _vehicleRequestOptions(concealPlate: !_hasActiveRelationship);
-    final preferredLocations =
-        List<String>.from(_asStringList('preferredLocations'));
+    final ratesFallback = _readString(
+      'rates',
+      fallback: 'Rates not provided yet.',
+    );
+    final vehicleOptions = _vehicleRequestOptions(
+      concealPlate: !_hasActiveRelationship,
+    );
+    final preferredLocations = List<String>.from(
+      _asStringList('preferredLocations'),
+    );
     if (preferredLocations.isEmpty) {
       final rawPreferred = _profile['preferredLocationsRaw'];
       if (rawPreferred is List) {
@@ -676,12 +766,14 @@ class _LearnerInstructorDetailScreenState
     );
     final bool showContactInfo =
         _hasActiveRelationship && ((phone ?? '').isNotEmpty);
-    final bool showLocationNotes = _hasActiveRelationship &&
+    final bool showLocationNotes =
+        _hasActiveRelationship &&
         (locationNotes != null && locationNotes.isNotEmpty);
     final bool isVerified = _isVerifiedInstructor;
     final String? displayAge = age == 'Age not provided' ? null : age;
-    final String? displayGender =
-        gender == 'Gender not provided' ? null : gender;
+    final String? displayGender = gender == 'Gender not provided'
+        ? null
+        : gender;
     final String subtitleLine = [
       displayAge,
       displayGender,
@@ -694,8 +786,9 @@ class _LearnerInstructorDetailScreenState
         !_isSuppressed && (_requestStatus == null || isDeclined);
     final bool canEditMessage =
         !isPending && !_isSuppressed && (_requestStatus == null || isDeclined);
-    final String requestButtonLabel =
-        isDeclined ? 'Request Again' : 'Request Lesson';
+    final String requestButtonLabel = isDeclined
+        ? 'Request Again'
+        : 'Request Lesson';
 
     return WillPopScope(
       onWillPop: _handleWillPop,
@@ -729,9 +822,7 @@ class _LearnerInstructorDetailScreenState
                         Text(
                           name,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
+                          style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         if (isVerified) const _VerifiedBadge(),
@@ -742,10 +833,9 @@ class _LearnerInstructorDetailScreenState
                       Text(
                         subtitleLine,
                         textAlign: TextAlign.center,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: Colors.grey[700]),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[700],
+                        ),
                       ),
                     ],
                     if (driveTutorNumber != null) ...[
@@ -761,11 +851,11 @@ class _LearnerInstructorDetailScreenState
                         ),
                         child: Text(
                           'Drive Tutor #$driveTutorNumber',
-                          style:
-                              Theme.of(context).textTheme.labelLarge?.copyWith(
-                                    color: AppColors.ocean,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: AppColors.ocean,
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
                       ),
                     ],
@@ -779,20 +869,17 @@ class _LearnerInstructorDetailScreenState
                   bio?.isNotEmpty == true
                       ? bio!
                       : 'This instructor hasn\'t added a bio yet.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: Colors.grey[800], height: 1.5),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[800],
+                    height: 1.5,
+                  ),
                 ),
               ),
               if (showContactInfo) ...[
                 const SizedBox(height: 16),
                 _DetailSection(
                   title: 'Contact',
-                  child: _DetailRow(
-                    label: 'Phone',
-                    value: phone!,
-                  ),
+                  child: _DetailRow(label: 'Phone', value: phone!),
                 ),
               ],
               if (showContactInfo) const SizedBox(height: 16),
@@ -804,19 +891,16 @@ class _LearnerInstructorDetailScreenState
                   children: [
                     Text(
                       vehicleSummary,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: Colors.grey[800]),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey[800]),
                     ),
                     for (final extra in vehicleSummaries.skip(1))
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           extra,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: Colors.grey[600]),
                         ),
                       ),
@@ -857,21 +941,23 @@ class _LearnerInstructorDetailScreenState
                       const SizedBox(height: 12),
                       Text(
                         'Preferred locations',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelLarge
-                            ?.copyWith(color: Colors.grey[600]),
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Colors.grey[600],
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: preferredLocations
-                            .map((location) => Chip(
-                                  label: Text(location),
-                                  backgroundColor:
-                                      AppColors.ocean.withOpacity(0.08),
-                                ))
+                            .map(
+                              (location) => Chip(
+                                label: Text(location),
+                                backgroundColor: AppColors.ocean.withOpacity(
+                                  0.08,
+                                ),
+                              ),
+                            )
                             .toList(),
                       ),
                     ],
@@ -879,10 +965,9 @@ class _LearnerInstructorDetailScreenState
                       const SizedBox(height: 12),
                       Text(
                         'Services offered',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelLarge
-                            ?.copyWith(color: Colors.grey[600]),
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Colors.grey[600],
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Wrap(
@@ -892,8 +977,9 @@ class _LearnerInstructorDetailScreenState
                             .map(
                               (offering) => Chip(
                                 label: Text(offering),
-                                backgroundColor:
-                                    AppColors.golden.withOpacity(0.12),
+                                backgroundColor: AppColors.golden.withOpacity(
+                                  0.12,
+                                ),
                               ),
                             )
                             .toList(),
@@ -903,18 +989,16 @@ class _LearnerInstructorDetailScreenState
                       const SizedBox(height: 12),
                       Text(
                         'Location notes',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelLarge
-                            ?.copyWith(color: Colors.grey[600]),
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Colors.grey[600],
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         locationNotes,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: Colors.grey[700]),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[700],
+                        ),
                       ),
                     ],
                   ],
@@ -926,10 +1010,9 @@ class _LearnerInstructorDetailScreenState
                 child: languages.isEmpty
                     ? Text(
                         'Languages not provided yet.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: Colors.grey[700]),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[700],
+                        ),
                       )
                     : Wrap(
                         spacing: 8,
@@ -938,8 +1021,9 @@ class _LearnerInstructorDetailScreenState
                             .map(
                               (language) => Chip(
                                 label: Text(language),
-                                backgroundColor:
-                                    AppColors.ocean.withOpacity(0.1),
+                                backgroundColor: AppColors.ocean.withOpacity(
+                                  0.1,
+                                ),
                               ),
                             )
                             .toList(),
@@ -951,9 +1035,10 @@ class _LearnerInstructorDetailScreenState
                   title: 'Preferred Vehicle',
                   child: DropdownButtonFormField<String>(
                     isExpanded: true,
-                    value: vehicleOptions.any(
-                      (option) => option.label == _selectedVehicleLabel,
-                    )
+                    value:
+                        vehicleOptions.any(
+                          (option) => option.label == _selectedVehicleLabel,
+                        )
                         ? _selectedVehicleLabel
                         : null,
                     decoration: const InputDecoration(
@@ -1020,10 +1105,9 @@ class _LearnerInstructorDetailScreenState
                 child: offeringRates.isEmpty
                     ? Text(
                         ratesFallback,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: Colors.grey[800]),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[800],
+                        ),
                       )
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1049,6 +1133,7 @@ class _LearnerInstructorDetailScreenState
           child: _buildBottomAction(
             isPending: isPending,
             isAccepted: isAccepted,
+            hasActiveRelationship: _hasActiveRelationship,
             canRequest: canRequest,
             requestLabel: requestButtonLabel,
           ),
@@ -1060,15 +1145,14 @@ class _LearnerInstructorDetailScreenState
   Widget _buildBottomAction({
     required bool isPending,
     required bool isAccepted,
+    required bool hasActiveRelationship,
     required bool canRequest,
     required String requestLabel,
   }) {
     if (_checkingRequest) {
       return const SizedBox(
         height: 52,
-        child: Center(
-          child: CircularProgressIndicator(strokeWidth: 2.4),
-        ),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
       );
     }
     if (isPending) {
@@ -1079,13 +1163,39 @@ class _LearnerInstructorDetailScreenState
         backgroundColor: AppColors.golden.withOpacity(0.15),
       );
     }
-    if (isAccepted) {
-      return _statusBanner(
-        icon: Icons.check_circle_outline,
-        message:
-            'Accepted! Head to the Lessons tab to schedule with this instructor.',
-        textColor: AppColors.success,
-        backgroundColor: AppColors.success.withOpacity(0.12),
+    if (isAccepted || hasActiveRelationship) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _statusBanner(
+            icon: Icons.check_circle_outline,
+            message:
+                'Connected. Head to the Lessons tab to schedule with this instructor.',
+            textColor: AppColors.success,
+            backgroundColor: AppColors.success.withOpacity(0.12),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 50,
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _processing ? null : _handleRemoveInstructor,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.error,
+                side: BorderSide(
+                  color: AppColors.error.withValues(alpha: 0.34),
+                ),
+              ),
+              child: _processing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    )
+                  : const Text('Remove Instructor'),
+            ),
+          ),
+        ],
       );
     }
     if (_isSuppressed) {
@@ -1142,10 +1252,7 @@ class _LearnerInstructorDetailScreenState
             child: Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: textColor,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -1168,7 +1275,7 @@ class _VerifiedBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          Icon(Icons.verified, size: 16, color: AppColors.success),
+          VerifiedProfileBadge(size: 18, borderWidth: 0),
           SizedBox(width: 4),
           Text(
             'Verified',
@@ -1188,10 +1295,7 @@ class _ProfileImage extends StatelessWidget {
   final String imageUrl;
   final String fallbackInitial;
 
-  const _ProfileImage({
-    required this.imageUrl,
-    required this.fallbackInitial,
-  });
+  const _ProfileImage({required this.imageUrl, required this.fallbackInitial});
 
   @override
   Widget build(BuildContext context) {
@@ -1224,10 +1328,9 @@ class _FallbackAvatar extends StatelessWidget {
       backgroundColor: AppColors.ocean.withOpacity(0.15),
       child: Text(
         initial.toUpperCase(),
-        style: Theme.of(context)
-            .textTheme
-            .headlineMedium
-            ?.copyWith(color: AppColors.ocean),
+        style: Theme.of(
+          context,
+        ).textTheme.headlineMedium?.copyWith(color: AppColors.ocean),
       ),
     );
   }
@@ -1259,8 +1362,8 @@ class _DetailSection extends StatelessWidget {
                 child: Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               if (trailingImage != null && trailingImage!.isNotEmpty)
@@ -1285,10 +1388,7 @@ class _DetailSection extends StatelessWidget {
 }
 
 class _VehicleRequestOption {
-  const _VehicleRequestOption({
-    required this.label,
-    required this.type,
-  });
+  const _VehicleRequestOption({required this.label, required this.type});
 
   final String label;
   final String type;
@@ -1309,10 +1409,9 @@ class _DetailRow extends StatelessWidget {
           flex: 2,
           child: Text(
             label,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: Colors.grey[600]),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
           ),
         ),
         const SizedBox(width: 12),
@@ -1320,10 +1419,9 @@ class _DetailRow extends StatelessWidget {
           flex: 3,
           child: Text(
             value,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: Colors.grey[800]),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[800]),
           ),
         ),
       ],

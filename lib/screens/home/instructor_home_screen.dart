@@ -18,17 +18,20 @@ import '../../services/supabase_service.dart';
 import '../../utils/learner_color_utils.dart';
 import '../../utils/lesson_request_utils.dart';
 import '../../widgets/glass_panel.dart';
+import '../../widgets/verified_profile_badge.dart';
 import '../instructor/instructor_pending_requests_screen.dart';
 import '../instructor/instructor_requests_screen.dart';
 import '../home/instructor_notifications_sheet.dart';
 import '../profile/profile_screen.dart';
 
 LessonStatus _deriveLessonStatus(Map<String, dynamic> lesson) {
-  final baseStatus =
-      LessonModel.parseStatus((lesson['status'] ?? '').toString());
+  final baseStatus = LessonModel.parseStatus(
+    (lesson['status'] ?? '').toString(),
+  );
   final scheduledStr = lesson['scheduled_at']?.toString();
-  final scheduled =
-      scheduledStr != null ? DateTime.tryParse(scheduledStr) : null;
+  final scheduled = scheduledStr != null
+      ? DateTime.tryParse(scheduledStr)
+      : null;
   if (scheduled == null) return baseStatus;
 
   double? durationHours;
@@ -71,8 +74,9 @@ class InstructorHomeScreen extends StatefulWidget {
 }
 
 class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
-  static final Uri _activationUrl =
-      Uri.parse('https://www.drivetutor.ca/instructor/activate');
+  static final Uri _activationUrl = Uri.parse(
+    'https://www.drivetutor.ca/instructor/activate',
+  );
 
   int _selectedIndex = 0;
   bool _reduceMotion = false;
@@ -162,8 +166,9 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) return;
     try {
-      final hasBilling =
-          await SupabaseService.hasActiveInstructorBilling(userId);
+      final hasBilling = await SupabaseService.hasActiveInstructorBilling(
+        userId,
+      );
       if (!mounted) return;
       setState(() {
         _hasActiveBilling = hasBilling;
@@ -218,7 +223,8 @@ class _InstructorBillingLifecycle extends StatefulWidget {
 }
 
 class _InstructorBillingLifecycleState
-    extends State<_InstructorBillingLifecycle> with WidgetsBindingObserver {
+    extends State<_InstructorBillingLifecycle>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -268,11 +274,7 @@ class _ActivationInlineCard extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(
-                Icons.lock_open_rounded,
-                color: AppColors.primary,
-                size: 28,
-              ),
+              Icon(Icons.lock_open_rounded, color: AppColors.primary, size: 28),
               SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -317,10 +319,7 @@ class _ActivationInlineCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              TextButton(
-                onPressed: onRefresh,
-                child: const Text('Refresh'),
-              ),
+              TextButton(onPressed: onRefresh, child: const Text('Refresh')),
             ],
           ),
         ],
@@ -367,6 +366,7 @@ class _DashboardTabState extends State<_DashboardTab> {
   double _totalHours = 0;
   String? _profileImageUrl;
   String? _displayName;
+  bool _isVerified = false;
   List<InstructorNotification> _notifications = [];
   String? _notificationsError;
   bool _notificationsLoading = false;
@@ -406,6 +406,7 @@ class _DashboardTabState extends State<_DashboardTab> {
         _totalHours = 0;
         _profileImageUrl = null;
         _displayName = null;
+        _isVerified = false;
         _notifications = [];
         _notificationsError = 'Instructor not found.';
         _notificationsLoading = false;
@@ -447,29 +448,33 @@ class _DashboardTabState extends State<_DashboardTab> {
           .toList();
 
       final pendingRequests = requests
-          .where((request) =>
-              ((request['status'] as String?) ?? '').toLowerCase() == 'pending')
+          .where(
+            (request) =>
+                ((request['status'] as String?) ?? '').toLowerCase() ==
+                'pending',
+          )
           .toList();
       final derivedName = () {
         final first = (profile?['first_name'] as String?)?.trim();
         final last = (profile?['last_name'] as String?)?.trim();
-        final parts = [first, last]
-            .whereType<String>()
-            .where((value) => value.isNotEmpty)
-            .toList();
+        final parts = [
+          first,
+          last,
+        ].whereType<String>().where((value) => value.isNotEmpty).toList();
         if (parts.isNotEmpty) return parts.join(' ');
         final metadata = SupabaseService.currentUser?.userMetadata;
         final fallbackFirst = (metadata?['first_name'] as String?)?.trim();
         final fallbackLast = (metadata?['last_name'] as String?)?.trim();
-        final fallbackParts = [fallbackFirst, fallbackLast]
-            .whereType<String>()
-            .where((value) => value.isNotEmpty)
-            .toList();
+        final fallbackParts = [
+          fallbackFirst,
+          fallbackLast,
+        ].whereType<String>().where((value) => value.isNotEmpty).toList();
         if (fallbackParts.isNotEmpty) return fallbackParts.join(' ');
         return null;
       }();
-      final metadataImage = SupabaseService
-          .currentUser?.userMetadata?['profile_image_url'] as String?;
+      final metadataImage =
+          SupabaseService.currentUser?.userMetadata?['profile_image_url']
+              as String?;
       final derivedProfileImage = () {
         final primary = profile?['profile_image_url'] as String?;
         final avatar = profile?['avatar_url'] as String?;
@@ -480,14 +485,18 @@ class _DashboardTabState extends State<_DashboardTab> {
             .map((value) => value.trim())
             .firstWhere((value) => value.isNotEmpty, orElse: () => '');
       }();
-      final notifications =
-          _buildInstructorNotifications(requests, lessonsForNotifications);
+      final notifications = _buildInstructorNotifications(
+        requests,
+        lessonsForNotifications,
+      );
 
       setState(() {
         _upcomingLessons = lessons
-            .where((lesson) =>
-                _deriveLessonStatus(lesson) != LessonStatus.completed &&
-                _deriveLessonStatus(lesson) != LessonStatus.cancelled)
+            .where(
+              (lesson) =>
+                  _deriveLessonStatus(lesson) != LessonStatus.completed &&
+                  _deriveLessonStatus(lesson) != LessonStatus.cancelled,
+            )
             .toList();
         _requests = pendingRequests;
         _monthlyClasses = summary['monthlyClasses'] is int
@@ -499,9 +508,11 @@ class _DashboardTabState extends State<_DashboardTab> {
         _totalHours = summary['totalHours'] is num
             ? (summary['totalHours'] as num).toDouble()
             : 0.0;
-        _profileImageUrl =
-            derivedProfileImage.isNotEmpty ? derivedProfileImage : null;
+        _profileImageUrl = derivedProfileImage.isNotEmpty
+            ? derivedProfileImage
+            : null;
         _displayName = derivedName;
+        _isVerified = profile?['is_verified'] == true;
         _notifications = notifications;
         _notificationsError = null;
         _notificationsLoading = false;
@@ -516,6 +527,7 @@ class _DashboardTabState extends State<_DashboardTab> {
         _totalHours = 0;
         _profileImageUrl = null;
         _displayName = null;
+        _isVerified = false;
         _notifications = [];
         _notificationsError =
             'Unable to load notifications right now. Please try again soon.';
@@ -527,8 +539,9 @@ class _DashboardTabState extends State<_DashboardTab> {
   String get _profileInitials {
     final name = (_displayName ?? widget.name).trim();
     if (name.isEmpty || _looksLikeHandle(name)) return 'I';
-    final parts =
-        name.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
+    final parts = name
+        .split(RegExp(r'\s+'))
+        .where((segment) => segment.isNotEmpty);
     final initials = parts.take(2).map((segment) => segment[0].toUpperCase());
     final joined = initials.join();
     return joined.isNotEmpty ? joined : 'I';
@@ -538,15 +551,17 @@ class _DashboardTabState extends State<_DashboardTab> {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return false;
     if (trimmed.contains('@')) return true;
-    final parts =
-        trimmed.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
+    final parts = trimmed
+        .split(RegExp(r'\s+'))
+        .where((segment) => segment.isNotEmpty);
     if (parts.length > 1) return false;
     return RegExp(r'[0-9._]').hasMatch(trimmed);
   }
 
   bool get _hasNotificationBadge {
-    return _notifications
-        .any((notification) => _isNotificationUnread(notification));
+    return _notifications.any(
+      (notification) => _isNotificationUnread(notification),
+    );
   }
 
   Future<void> _refreshNotifications() async {
@@ -602,14 +617,16 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   bool _isNotificationUnread(InstructorNotification notification) {
     final now = DateTime.now();
-    final effective =
-        notification.timestamp.isAfter(now) ? now : notification.timestamp;
+    final effective = notification.timestamp.isAfter(now)
+        ? now
+        : notification.timestamp;
     if (_notificationsLastViewedAt == null) return true;
     return effective.isAfter(_notificationsLastViewedAt!);
   }
 
   Future<List<InstructorNotification>> _fetchNotificationsData(
-      String userId) async {
+    String userId,
+  ) async {
     final now = DateTime.now();
     final start = now.subtract(const Duration(days: 1));
     final end = now.add(const Duration(days: 1));
@@ -663,8 +680,9 @@ class _DashboardTabState extends State<_DashboardTab> {
       if (endTime == null && startTime != null) {
         final durationHours = (lesson['duration_hours'] as num?)?.toDouble();
         if (durationHours != null && durationHours > 0) {
-          endTime =
-              startTime.add(Duration(minutes: (durationHours * 60).round()));
+          endTime = startTime.add(
+            Duration(minutes: (durationHours * 60).round()),
+          );
         }
       }
       final learnerName = _resolveLessonLearnerName(lesson['learner']);
@@ -677,15 +695,17 @@ class _DashboardTabState extends State<_DashboardTab> {
         final diffMinutes = startTime.difference(now).inMinutes;
         if (diffMinutes >= 0 && diffMinutes <= 15) {
           final id = 'lesson-reminder-$lessonId';
-          final reminderTimestamp =
-              startTime.subtract(const Duration(minutes: 15));
+          final reminderTimestamp = startTime.subtract(
+            const Duration(minutes: 15),
+          );
           map[id] = InstructorNotification(
             id: id,
             title: 'You have a class in 15 mins reminder',
             message:
                 'You have a class with $learnerName on $dayLabel at $timeRangeLabel in 15 minutes.',
-            timestamp:
-                reminderTimestamp.isAfter(now) ? reminderTimestamp : startTime,
+            timestamp: reminderTimestamp.isAfter(now)
+                ? reminderTimestamp
+                : startTime,
             icon: Icons.alarm,
             color: AppColors.golden,
           );
@@ -748,13 +768,7 @@ class _DashboardTabState extends State<_DashboardTab> {
     final hour = int.tryParse(parts[0]);
     final minute = int.tryParse(parts[1]);
     if (hour == null || minute == null) return date;
-    final combined = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      hour,
-      minute,
-    );
+    final combined = DateTime(date.year, date.month, date.day, hour, minute);
     return combined.toLocal();
   }
 
@@ -778,10 +792,10 @@ class _DashboardTabState extends State<_DashboardTab> {
     }
     final first = (request['requested_first_name'] as String?)?.trim();
     final last = (request['requested_last_name'] as String?)?.trim();
-    final combined = [first, last]
-        .whereType<String>()
-        .where((value) => value.isNotEmpty)
-        .join(' ');
+    final combined = [
+      first,
+      last,
+    ].whereType<String>().where((value) => value.isNotEmpty).join(' ');
     if (combined.isNotEmpty) return combined;
     final name = (request['requested_name'] as String?)?.trim();
     if (name != null && name.isNotEmpty) return name;
@@ -939,6 +953,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                         name: _displayName ?? widget.name,
                         profileImageUrl: _profileImageUrl,
                         profileInitials: _profileInitials,
+                        isVerified: _isVerified,
                         hasNotificationBadge: _hasNotificationBadge,
                         onProfileTap: _openProfile,
                         onNotificationsTap: _handleOpenNotifications,
@@ -947,8 +962,9 @@ class _DashboardTabState extends State<_DashboardTab> {
                       Container(
                         decoration: const BoxDecoration(
                           color: Colors.white,
-                          borderRadius:
-                              BorderRadius.vertical(top: Radius.circular(32)),
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(32),
+                          ),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -1059,8 +1075,10 @@ class _ScheduleTabState extends State<_ScheduleTab> {
     _loadLessonsForMonth(_focusedDay, silent: true);
   }
 
-  Future<void> _loadLessonsForMonth(DateTime reference,
-      {bool silent = false}) async {
+  Future<void> _loadLessonsForMonth(
+    DateTime reference, {
+    bool silent = false,
+  }) async {
     final instructorId = SupabaseService.currentUser?.id;
     if (instructorId == null) {
       if (!silent) {
@@ -1169,10 +1187,7 @@ class _ScheduleTabState extends State<_ScheduleTab> {
       appBar: AppBar(
         title: const Text(
           'Schedule',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
         centerTitle: false,
         backgroundColor: AppColors.primaryBlue,
@@ -1185,140 +1200,139 @@ class _ScheduleTabState extends State<_ScheduleTab> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error
-              ? _ScheduleErrorView(
-                  onRetry: () => _loadLessonsForMonth(_focusedDay),
-                )
-              : SafeArea(
-                  child: RefreshIndicator(
-                    color: AppColors.primaryBlue,
-                    onRefresh: _refresh,
-                    child: ValueListenableBuilder<List<_LessonEvent>>(
-                      valueListenable: _selectedEvents,
-                      builder: (context, events, _) {
-                        final summaryText = events.isEmpty
-                            ? 'No lessons scheduled'
-                            : '${events.length} ${events.length == 1 ? 'lesson' : 'lessons'} scheduled';
-                        return SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(0, 0, 0, 40),
-                          child: Column(
-                            children: [
-                              _buildCalendarCard(),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                                child: Container(
-                                  decoration: _outlinedSurfaceDecoration(
-                                    24,
-                                    color: Colors.transparent,
-                                  ),
-                                  child: GlassPanel(
-                                    borderRadius: BorderRadius.circular(24),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 14,
-                                    ),
-                                    opacity: 0.42,
-                                    borderColor: AppColors.border,
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                DateFormat.yMMMMEEEEd()
-                                                    .format(_selectedDay),
-                                                style: const TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: AppColors.primaryBlue,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                summaryText,
-                                                style: const TextStyle(
-                                                  color: Colors.black54,
-                                                ),
-                                              ),
-                                            ],
+          ? _ScheduleErrorView(onRetry: () => _loadLessonsForMonth(_focusedDay))
+          : SafeArea(
+              child: RefreshIndicator(
+                color: AppColors.primaryBlue,
+                onRefresh: _refresh,
+                child: ValueListenableBuilder<List<_LessonEvent>>(
+                  valueListenable: _selectedEvents,
+                  builder: (context, events, _) {
+                    final summaryText = events.isEmpty
+                        ? 'No lessons scheduled'
+                        : '${events.length} ${events.length == 1 ? 'lesson' : 'lessons'} scheduled';
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 40),
+                      child: Column(
+                        children: [
+                          _buildCalendarCard(),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                            child: Container(
+                              decoration: _outlinedSurfaceDecoration(
+                                24,
+                                color: Colors.transparent,
+                              ),
+                              child: GlassPanel(
+                                borderRadius: BorderRadius.circular(24),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 14,
+                                ),
+                                opacity: 0.42,
+                                borderColor: AppColors.border,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            DateFormat.yMMMMEEEEd().format(
+                                              _selectedDay,
+                                            ),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                              color: AppColors.primaryBlue,
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        FilledButton.icon(
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor:
-                                                AppColors.primaryBlue,
-                                            foregroundColor: Colors.white,
-                                            shape: const StadiumBorder(),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            summaryText,
+                                            style: const TextStyle(
+                                              color: Colors.black54,
+                                            ),
                                           ),
-                                          onPressed: () {
-                                            GoRouter.of(context).push(AppRoutes
-                                                .instructorAvailability);
-                                          },
-                                          icon: const Icon(
-                                              Icons.calendar_view_week),
-                                          label: const Text('Weekly planner'),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
+                                    const SizedBox(width: 16),
+                                    FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: AppColors.primaryBlue,
+                                        foregroundColor: Colors.white,
+                                        shape: const StadiumBorder(),
+                                      ),
+                                      onPressed: () {
+                                        GoRouter.of(context).push(
+                                          AppRoutes.instructorAvailability,
+                                        );
+                                      },
+                                      icon: const Icon(
+                                        Icons.calendar_view_week,
+                                      ),
+                                      label: const Text('Weekly planner'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (events.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              child: Container(
+                                decoration: _outlinedSurfaceDecoration(
+                                  26,
+                                  color: Colors.transparent,
+                                ),
+                                child: GlassPanel(
+                                  borderRadius: BorderRadius.circular(26),
+                                  opacity: 0.42,
+                                  borderColor: AppColors.border,
+                                  padding: const EdgeInsets.all(24),
+                                  child: _EmptyState(
+                                    icon: Icons.event_available_outlined,
+                                    title: 'No lessons scheduled',
+                                    description:
+                                        'Use the weekly planner to add lessons for this day.',
+                                    primaryActionText: 'Open weekly planner',
+                                    onPrimaryAction: () {
+                                      GoRouter.of(
+                                        context,
+                                      ).push(AppRoutes.instructorAvailability);
+                                    },
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              if (events.isEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 20),
-                                  child: Container(
-                                    decoration: _outlinedSurfaceDecoration(
-                                      26,
-                                      color: Colors.transparent,
-                                    ),
-                                    child: GlassPanel(
-                                      borderRadius: BorderRadius.circular(26),
-                                      opacity: 0.42,
-                                      borderColor: AppColors.border,
-                                      padding: const EdgeInsets.all(24),
-                                      child: _EmptyState(
-                                        icon: Icons.event_available_outlined,
-                                        title: 'No lessons scheduled',
-                                        description:
-                                            'Use the weekly planner to add lessons for this day.',
-                                        primaryActionText:
-                                            'Open weekly planner',
-                                        onPrimaryAction: () {
-                                          GoRouter.of(context).push(
-                                              AppRoutes.instructorAvailability);
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              else
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 20),
-                                  child: Column(
-                                    children: [
-                                      for (int i = 0;
-                                          i < events.length;
-                                          i++) ...[
-                                        if (i > 0) const SizedBox(height: 14),
-                                        _ScheduleEventTile(event: events[i]),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                            )
+                          else
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              child: Column(
+                                children: [
+                                  for (int i = 0; i < events.length; i++) ...[
+                                    if (i > 0) const SizedBox(height: 14),
+                                    _ScheduleEventTile(event: events[i]),
+                                  ],
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
+              ),
+            ),
     );
   }
 
@@ -1380,10 +1394,14 @@ class _ScheduleTabState extends State<_ScheduleTab> {
                 color: AppColors.primaryBlue,
                 fontWeight: FontWeight.w600,
               ),
-              leftChevronIcon:
-                  const Icon(Icons.chevron_left, color: AppColors.primaryBlue),
-              rightChevronIcon:
-                  const Icon(Icons.chevron_right, color: AppColors.primaryBlue),
+              leftChevronIcon: const Icon(
+                Icons.chevron_left,
+                color: AppColors.primaryBlue,
+              ),
+              rightChevronIcon: const Icon(
+                Icons.chevron_right,
+                color: AppColors.primaryBlue,
+              ),
             ),
             availableCalendarFormats: const {
               CalendarFormat.month: 'Month',
@@ -1416,8 +1434,9 @@ class _ScheduleEventTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => GoRouter.of(context)
-            .push(AppRoutes.instructorLessonDetail, extra: event.raw),
+        onTap: () => GoRouter.of(
+          context,
+        ).push(AppRoutes.instructorLessonDetail, extra: event.raw),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: _outlinedSurfaceDecoration(18),
@@ -1432,8 +1451,10 @@ class _ScheduleEventTile extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: statusColor.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(999),
@@ -1529,8 +1550,9 @@ class _ScheduleCard extends StatelessWidget {
                   CircleAvatar(
                     radius: 22,
                     backgroundColor: AppColors.primaryBlue.withOpacity(0.12),
-                    backgroundImage:
-                        avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                    backgroundImage: avatarUrl.isNotEmpty
+                        ? NetworkImage(avatarUrl)
+                        : null,
                     child: avatarUrl.isEmpty
                         ? Text(
                             initial,
@@ -1586,16 +1608,16 @@ class _ScheduleCard extends StatelessWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(Icons.calendar_today_outlined,
-                      size: 18, color: Colors.grey[600]),
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    size: 18,
+                    color: Colors.grey[600],
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Pickup: $location',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[700],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[700]),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -1644,8 +1666,9 @@ class _LessonEvent {
 
   static _LessonEvent? fromRow(Map<String, dynamic> row) {
     if (row['scheduled_at'] == null) return null;
-    final scheduledAt =
-        DateTime.tryParse(row['scheduled_at'].toString())?.toLocal();
+    final scheduledAt = DateTime.tryParse(
+      row['scheduled_at'].toString(),
+    )?.toLocal();
     if (scheduledAt == null) return null;
 
     final data = Map<String, dynamic>.from(row);
@@ -1697,8 +1720,9 @@ class _LessonEvent {
 
     final focus = (data['focus'] ?? '').toString();
     final location = (data['pickup_location'] ?? '').toString();
-    final baseStatus =
-        LessonModel.parseStatus((data['status'] ?? '').toString());
+    final baseStatus = LessonModel.parseStatus(
+      (data['status'] ?? '').toString(),
+    );
     final derivedStatus = LessonModel.deriveStatus(
       scheduledDate: scheduledAt.toLocal(),
       startTime: (data['start_time'] ?? '').toString(),
@@ -1738,10 +1762,7 @@ class _ScheduleErrorView extends StatelessWidget {
             const SizedBox(height: 16),
             const Text(
               'Unable to load schedule',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -1789,10 +1810,7 @@ class _BookingsErrorView extends StatelessWidget {
               const SizedBox(height: 16),
               const Text(
                 'Unable to load bookings',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -1845,20 +1863,23 @@ String _readLearnerName(Map<String, dynamic> data) {
 
   Map<String, dynamic>? learnerMap;
   if (data['learner'] is Map) {
-    learnerMap = (data['learner'] as Map)
-        .map((key, value) => MapEntry(key.toString(), value));
+    learnerMap = (data['learner'] as Map).map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
   }
 
   Map<String, dynamic>? learnerProfile;
   if (data['learner_profile'] is Map) {
-    learnerProfile = (data['learner_profile'] as Map)
-        .map((key, value) => MapEntry(key.toString(), value));
+    learnerProfile = (data['learner_profile'] as Map).map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
   }
 
   Map<String, dynamic>? nestedProfile;
   if (learnerProfile != null && learnerProfile['profile'] is Map) {
-    nestedProfile = (learnerProfile['profile'] as Map)
-        .map((key, value) => MapEntry(key.toString(), value));
+    nestedProfile = (learnerProfile['profile'] as Map).map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
   }
 
   final learnerString = _clean(data['learner']);
@@ -1895,20 +1916,23 @@ String _readLearnerColorKey(Map<String, dynamic> data) {
 
   Map<String, dynamic>? learnerMap;
   if (data['learner'] is Map) {
-    learnerMap = (data['learner'] as Map)
-        .map((key, value) => MapEntry(key.toString(), value));
+    learnerMap = (data['learner'] as Map).map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
   }
 
   Map<String, dynamic>? learnerProfile;
   if (data['learner_profile'] is Map) {
-    learnerProfile = (data['learner_profile'] as Map)
-        .map((key, value) => MapEntry(key.toString(), value));
+    learnerProfile = (data['learner_profile'] as Map).map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
   }
 
   Map<String, dynamic>? nestedProfile;
   if (learnerProfile != null && learnerProfile['profile'] is Map) {
-    nestedProfile = (learnerProfile['profile'] as Map)
-        .map((key, value) => MapEntry(key.toString(), value));
+    nestedProfile = (learnerProfile['profile'] as Map).map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
   }
 
   final requestedName = () {
@@ -1979,8 +2003,11 @@ class _BookingsTabState extends State<_BookingsTab>
     final baseMonth = DateTime(_currentMonth.year, _currentMonth.month, 1);
     final start = baseMonth.subtract(const Duration(days: 7));
     // include a buffer into the following month to cover the calendar view
-    final end = DateTime(baseMonth.year, baseMonth.month + 1, 1)
-        .add(const Duration(days: 7));
+    final end = DateTime(
+      baseMonth.year,
+      baseMonth.month + 1,
+      1,
+    ).add(const Duration(days: 7));
 
     try {
       final lessons = await SupabaseService.getInstructorLessonsForRange(
@@ -1993,7 +2020,8 @@ class _BookingsTabState extends State<_BookingsTab>
       for (final lesson in lessons) {
         final status = _deriveLessonStatus(lesson);
         if (status != LessonStatus.scheduled &&
-            status != LessonStatus.inProgress) continue;
+            status != LessonStatus.inProgress)
+          continue;
         final scheduledStr = lesson['scheduled_at'] as String?;
         if (scheduledStr == null) continue;
         final scheduled = DateTime.tryParse(scheduledStr);
@@ -2022,19 +2050,23 @@ class _BookingsTabState extends State<_BookingsTab>
             startTime = parsedStart;
             endTime = parsedEnd;
           } else {
-            endTime =
-                localStart.add(Duration(minutes: (durationHours * 60).round()));
+            endTime = localStart.add(
+              Duration(minutes: (durationHours * 60).round()),
+            );
           }
         } else {
-          endTime =
-              localStart.add(Duration(minutes: (durationHours * 60).round()));
+          endTime = localStart.add(
+            Duration(minutes: (durationHours * 60).round()),
+          );
         }
 
         final learnerName = _readLearnerName(lesson);
         final learnerColors = learnerColorForKey(_readLearnerColorKey(lesson));
 
         final dayKey = _normalizeDate(localStart);
-        map.putIfAbsent(dayKey, () => <_LessonSlot>[]).add(
+        map
+            .putIfAbsent(dayKey, () => <_LessonSlot>[])
+            .add(
               _LessonSlot(
                 id: (lesson['id'] ?? '').toString(),
                 start: startTime,
@@ -2140,8 +2172,10 @@ class _BookingsTabState extends State<_BookingsTab>
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
         children: [
           Container(
-            decoration:
-                _outlinedSurfaceDecoration(28, color: Colors.transparent),
+            decoration: _outlinedSurfaceDecoration(
+              28,
+              color: Colors.transparent,
+            ),
             child: GlassPanel(
               borderRadius: BorderRadius.circular(28),
               opacity: 0.42,
@@ -2200,8 +2234,10 @@ class _BookingsTabState extends State<_BookingsTab>
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
         children: [
           Container(
-            decoration:
-                _outlinedSurfaceDecoration(28, color: Colors.transparent),
+            decoration: _outlinedSurfaceDecoration(
+              28,
+              color: Colors.transparent,
+            ),
             child: GlassPanel(
               borderRadius: BorderRadius.circular(28),
               opacity: 0.42,
@@ -2229,8 +2265,10 @@ class _BookingsTabState extends State<_BookingsTab>
                   child: SizedBox(
                     width: 200,
                     child: Container(
-                      decoration: _outlinedSurfaceDecoration(26,
-                          color: Colors.transparent),
+                      decoration: _outlinedSurfaceDecoration(
+                        26,
+                        color: Colors.transparent,
+                      ),
                       child: GlassPanel(
                         borderRadius: BorderRadius.circular(26),
                         opacity: 0.42,
@@ -2271,8 +2309,10 @@ class _BookingsTabState extends State<_BookingsTab>
   Widget _buildMonthView() {
     final firstDay = DateTime(_currentMonth.year, _currentMonth.month, 1);
     final firstWeekday = firstDay.weekday % 7;
-    final daysInMonth =
-        DateUtils.getDaysInMonth(_currentMonth.year, _currentMonth.month);
+    final daysInMonth = DateUtils.getDaysInMonth(
+      _currentMonth.year,
+      _currentMonth.month,
+    );
     final totalCells = ((firstWeekday + daysInMonth) / 7).ceil() * 7;
 
     return RefreshIndicator(
@@ -2310,7 +2350,10 @@ class _BookingsTabState extends State<_BookingsTab>
                         onPressed: () {
                           setState(() {
                             _currentMonth = DateTime(
-                                _currentMonth.year, _currentMonth.month - 1, 1);
+                              _currentMonth.year,
+                              _currentMonth.month - 1,
+                              1,
+                            );
                           });
                           _loadLessons();
                         },
@@ -2325,7 +2368,10 @@ class _BookingsTabState extends State<_BookingsTab>
                         onPressed: () {
                           setState(() {
                             _currentMonth = DateTime(
-                                _currentMonth.year, _currentMonth.month + 1, 1);
+                              _currentMonth.year,
+                              _currentMonth.month + 1,
+                              1,
+                            );
                           });
                           _loadLessons();
                         },
@@ -2367,7 +2413,10 @@ class _BookingsTabState extends State<_BookingsTab>
                     return const SizedBox.shrink();
                   }
                   final date = DateTime(
-                      _currentMonth.year, _currentMonth.month, dayNumber);
+                    _currentMonth.year,
+                    _currentMonth.month,
+                    dayNumber,
+                  );
                   final slots = _slotsForDay(date);
                   final hasLessons = slots.isNotEmpty;
                   return _MonthDayCell(
@@ -2414,8 +2463,10 @@ class _BookingsTabState extends State<_BookingsTab>
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: slot.status == LessonStatus.inProgress
                         ? AppColors.warning.withOpacity(0.14)
@@ -2459,8 +2510,8 @@ class _BookingsTabState extends State<_BookingsTab>
                     onPressed: isUpdating
                         ? null
                         : slot.status == LessonStatus.inProgress
-                            ? () => _completeInstructorLesson(slot)
-                            : () => _startInstructorLesson(slot),
+                        ? () => _completeInstructorLesson(slot)
+                        : () => _startInstructorLesson(slot),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: slot.status == LessonStatus.inProgress
                           ? AppColors.success
@@ -2544,10 +2595,7 @@ class _BookingsTabState extends State<_BookingsTab>
       appBar: AppBar(
         title: const Text(
           'Bookings',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
         centerTitle: false,
         backgroundColor: AppColors.primaryBlue,
@@ -2606,24 +2654,19 @@ class _BookingsTabState extends State<_BookingsTab>
         ),
       ),
       body: Padding(
-        padding: EdgeInsets.fromLTRB(
-          0,
-          12,
-          0,
-          contentBottomInset,
-        ),
+        padding: EdgeInsets.fromLTRB(0, 12, 0, contentBottomInset),
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error
-                ? _BookingsErrorView(onRetry: _loadLessons)
-                : TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildDayView(),
-                      _buildWeekView(),
-                      _buildMonthView(),
-                    ],
-                  ),
+            ? _BookingsErrorView(onRetry: _loadLessons)
+            : TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildDayView(),
+                  _buildWeekView(),
+                  _buildMonthView(),
+                ],
+              ),
       ),
     );
   }
@@ -2811,8 +2854,9 @@ class _MonthDayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool hasLessons = highlighted && slots.isNotEmpty;
-    final Color backgroundColor =
-        hasLessons ? Colors.white : Colors.white.withOpacity(0.85);
+    final Color backgroundColor = hasLessons
+        ? Colors.white
+        : Colors.white.withOpacity(0.85);
     final accentDots = <Color>[];
     for (final slot in slots) {
       if (!accentDots.contains(slot.learnerColors.accent)) {
@@ -2853,8 +2897,9 @@ class _MonthDayCell extends StatelessWidget {
                     style: TextStyle(
                       fontSize: compact ? 15 : 16,
                       fontWeight: FontWeight.w600,
-                      color:
-                          hasLessons ? AppColors.primaryBlue : Colors.black87,
+                      color: hasLessons
+                          ? AppColors.primaryBlue
+                          : Colors.black87,
                     ),
                   ),
                   if (hasLessons)
@@ -2961,10 +3006,7 @@ class _StudentsTabState extends State<_StudentsTab> {
       appBar: AppBar(
         title: const Text(
           'Learners',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
         backgroundColor: AppColors.primaryBlue,
         foregroundColor: Colors.white,
@@ -2976,9 +3018,7 @@ class _StudentsTabState extends State<_StudentsTab> {
       body: const SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(20, 16, 20, 20),
-          child: LearnerRosterView(
-            padding: EdgeInsets.fromLTRB(0, 0, 0, 32),
-          ),
+          child: LearnerRosterView(padding: EdgeInsets.fromLTRB(0, 0, 0, 32)),
         ),
       ),
     );
@@ -3150,12 +3190,15 @@ class _StatsRow extends StatelessWidget {
         const spacing = 12.0;
         const cardHeight = 110.0;
         final size = MediaQuery.of(context).size;
-        final maxWidth =
-            constraints.maxWidth.isFinite ? constraints.maxWidth : size.width;
+        final maxWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : size.width;
         final availableWidth = math.max(maxWidth, 0.0);
         final totalSpacing = spacing * (columns - 1);
-        final cardWidth =
-            math.max((availableWidth - totalSpacing) / columns, 0.0);
+        final cardWidth = math.max(
+          (availableWidth - totalSpacing) / columns,
+          0.0,
+        );
         return Wrap(
           spacing: spacing,
           runSpacing: spacing,
@@ -3257,10 +3300,7 @@ class _StatItem extends StatelessWidget {
 }
 
 class _BlurCircle extends StatelessWidget {
-  const _BlurCircle({
-    required this.diameter,
-    required this.color,
-  });
+  const _BlurCircle({required this.diameter, required this.color});
 
   final double diameter;
   final Color color;
@@ -3387,10 +3427,12 @@ class _UpcomingLessonsCard extends StatelessWidget {
 
   static String _lessonTimeLabel(Map<String, dynamic> lesson) {
     final scheduled = lesson['scheduled_at'] as String?;
-    DateTime? baseDate =
-        scheduled != null ? DateTime.tryParse(scheduled)?.toLocal() : null;
+    DateTime? baseDate = scheduled != null
+        ? DateTime.tryParse(scheduled)?.toLocal()
+        : null;
     final now = DateTime.now();
-    final isToday = baseDate != null &&
+    final isToday =
+        baseDate != null &&
         baseDate.year == now.year &&
         baseDate.month == now.month &&
         baseDate.day == now.day;
@@ -3461,14 +3503,16 @@ class _UpcomingLessonsCard extends StatelessWidget {
         final profile = Map<String, dynamic>.from(
           lesson['learner_profile'] as Map,
         );
-        final profileFocus =
-            (profile['learning_focus'] ?? '').toString().trim();
+        final profileFocus = (profile['learning_focus'] ?? '')
+            .toString()
+            .trim();
         if (profileFocus.isNotEmpty) return profileFocus;
       }
       if (lesson['learner'] is Map<String, dynamic>) {
         final learner = Map<String, dynamic>.from(lesson['learner'] as Map);
-        final learnerFocus =
-            (learner['learning_focus'] ?? '').toString().trim();
+        final learnerFocus = (learner['learning_focus'] ?? '')
+            .toString()
+            .trim();
         if (learnerFocus.isNotEmpty) return learnerFocus;
       }
       return '';
@@ -3498,7 +3542,8 @@ class _UpcomingLessonsCard extends StatelessWidget {
     final learner = lesson['learner'];
     List<dynamic>? preferredLocations;
     if (learner is Map<String, dynamic>) {
-      preferredLocations = _preferredFrom(learner) ??
+      preferredLocations =
+          _preferredFrom(learner) ??
           _preferredFrom(
             learner['profile'] is Map
                 ? Map<String, dynamic>.from(learner['profile'] as Map)
@@ -3510,7 +3555,8 @@ class _UpcomingLessonsCard extends StatelessWidget {
       final profile = Map<String, dynamic>.from(
         lesson['learner_profile'] as Map,
       );
-      preferredLocations = _preferredFrom(profile) ??
+      preferredLocations =
+          _preferredFrom(profile) ??
           _preferredFrom(
             profile['profile'] is Map
                 ? Map<String, dynamic>.from(profile['profile'] as Map)
@@ -3521,8 +3567,9 @@ class _UpcomingLessonsCard extends StatelessWidget {
     String? preferredSummary(List<dynamic> locations) {
       for (final entry in locations) {
         if (entry is Map) {
-          final label =
-              (entry['label'] ?? entry['type'] ?? '').toString().trim();
+          final label = (entry['label'] ?? entry['type'] ?? '')
+              .toString()
+              .trim();
           final address = (entry['address'] ?? '').toString().trim();
           if (label.isNotEmpty && address.isNotEmpty) {
             return '$label - $address';
@@ -3609,10 +3656,7 @@ class _RequestsCard extends StatelessWidget {
   final List<Map<String, dynamic>> requests;
   final VoidCallback onTap;
 
-  const _RequestsCard({
-    required this.requests,
-    required this.onTap,
-  });
+  const _RequestsCard({required this.requests, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -3623,10 +3667,11 @@ class _RequestsCard extends StatelessWidget {
         ? formatLessonRequestLearnerName(previewRequest).toUpperCase()
         : 'NO PENDING REQUESTS';
     final learner = previewRequest?['learner'];
-    final learnerCity =
-        learner is Map<String, dynamic> ? learner['city'] : null;
-    final city =
-        ((previewRequest?['requested_city'] ?? learnerCity) as String?)?.trim();
+    final learnerCity = learner is Map<String, dynamic>
+        ? learner['city']
+        : null;
+    final city = ((previewRequest?['requested_city'] ?? learnerCity) as String?)
+        ?.trim();
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -3675,8 +3720,8 @@ class _RequestsCard extends StatelessWidget {
                   Text(
                     hasRequests
                         ? city != null && city.isNotEmpty
-                            ? '$learnerName • $city'
-                            : learnerName
+                              ? '$learnerName • $city'
+                              : learnerName
                         : 'Tap to view and manage learner requests',
                     style: const TextStyle(
                       fontSize: 14,
@@ -3706,6 +3751,7 @@ class _InstructorOverviewHeader extends StatelessWidget {
     required this.name,
     required this.profileImageUrl,
     required this.profileInitials,
+    required this.isVerified,
     required this.hasNotificationBadge,
     required this.onProfileTap,
     required this.onNotificationsTap,
@@ -3715,6 +3761,7 @@ class _InstructorOverviewHeader extends StatelessWidget {
   final String name;
   final String? profileImageUrl;
   final String profileInitials;
+  final bool isVerified;
   final bool hasNotificationBadge;
   final VoidCallback onProfileTap;
   final VoidCallback onNotificationsTap;
@@ -3736,22 +3783,33 @@ class _InstructorOverviewHeader extends StatelessWidget {
         children: [
           GestureDetector(
             onTap: onProfileTap,
-            child: CircleAvatar(
-              radius: 28,
-              backgroundColor: Colors.white.withOpacity(0.18),
-              backgroundImage: profileImageUrl != null
-                  ? NetworkImage(profileImageUrl!)
-                  : null,
-              child: profileImageUrl == null
-                  ? Text(
-                      profileInitials,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    )
-                  : null,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Colors.white.withOpacity(0.18),
+                  backgroundImage: profileImageUrl != null
+                      ? NetworkImage(profileImageUrl!)
+                      : null,
+                  child: profileImageUrl == null
+                      ? Text(
+                          profileInitials,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        )
+                      : null,
+                ),
+                if (isVerified)
+                  const Positioned(
+                    top: -5,
+                    right: -5,
+                    child: VerifiedProfileBadge(size: 24, borderWidth: 1.5),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: 14),
@@ -3831,8 +3889,9 @@ class _InstructorOverviewHeader extends StatelessWidget {
   String _greetingName(String rawName) {
     final trimmed = rawName.trim();
     if (trimmed.isEmpty || trimmed.contains('@')) return 'Instructor';
-    final parts =
-        trimmed.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
+    final parts = trimmed
+        .split(RegExp(r'\s+'))
+        .where((segment) => segment.isNotEmpty);
     if (parts.isEmpty) return 'Instructor';
     final first = parts.first;
     if (parts.length == 1 && RegExp(r'[0-9._]').hasMatch(first)) {
@@ -3898,10 +3957,7 @@ class _InstructorOverviewStats extends StatelessWidget {
 }
 
 class _OverviewMetric {
-  const _OverviewMetric({
-    required this.label,
-    required this.value,
-  });
+  const _OverviewMetric({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -3953,10 +4009,7 @@ class _InstructorSectionHeader extends StatelessWidget {
 }
 
 class _GlassBottomNavBar extends StatelessWidget {
-  const _GlassBottomNavBar({
-    required this.currentIndex,
-    required this.onTap,
-  });
+  const _GlassBottomNavBar({required this.currentIndex, required this.onTap});
 
   final int currentIndex;
   final ValueChanged<int> onTap;

@@ -86,11 +86,7 @@ class SupabaseService {
     final response = await _client.auth.signUp(
       email: email,
       password: password,
-      data: {
-        'first_name': firstName,
-        'last_name': lastName,
-        'phone': phone,
-      },
+      data: {'first_name': firstName, 'last_name': lastName, 'phone': phone},
     );
     final user = response.user;
     if (user != null) {
@@ -163,31 +159,31 @@ class SupabaseService {
     final userId = _client.auth.currentUser?.id;
     if (userId == null || fcmToken.trim().isEmpty) return;
 
-    await _client.from('device_tokens').upsert(
-      {
-        'profile_id': userId,
-        'fcm_token': fcmToken.trim(),
-        'platform': platform,
-        'app_version': appVersion,
-        'device_label': deviceLabel,
-        'is_active': true,
-        'revoked_at': null,
-        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      onConflict: 'fcm_token',
-    );
+    await _client.from('device_tokens').upsert({
+      'profile_id': userId,
+      'fcm_token': fcmToken.trim(),
+      'platform': platform,
+      'app_version': appVersion,
+      'device_label': deviceLabel,
+      'is_active': true,
+      'revoked_at': null,
+      'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'fcm_token');
   }
 
   static Future<void> revokeCurrentDeviceToken({String? fcmToken}) async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
 
-    var query = _client.from('device_tokens').update({
-      'is_active': false,
-      'revoked_at': DateTime.now().toUtc().toIso8601String(),
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('profile_id', userId);
+    var query = _client
+        .from('device_tokens')
+        .update({
+          'is_active': false,
+          'revoked_at': DateTime.now().toUtc().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('profile_id', userId);
 
     final token = fcmToken?.trim();
     if (token != null && token.isNotEmpty) {
@@ -266,10 +262,7 @@ class SupabaseService {
   }) async {
     await _client.functions.invoke(
       'complete-signup-password',
-      body: {
-        ...flowState.toMap(),
-        'newPassword': newPassword,
-      },
+      body: {...flowState.toMap(), 'newPassword': newPassword},
     );
   }
 
@@ -319,28 +312,21 @@ class SupabaseService {
       throw ArgumentError('Unsupported role "$role"');
     }
 
-    await _client.from('profiles').upsert(
-      {
-        'id': userId,
-        'role': normalizedRole,
-        'onboarding_stage': onboardingStageRoleSelected,
-      },
-      onConflict: 'id',
-    );
+    await _client.from('profiles').upsert({
+      'id': userId,
+      'role': normalizedRole,
+      'onboarding_stage': onboardingStageRoleSelected,
+    }, onConflict: 'id');
 
     if (normalizedRole == 'instructor') {
-      await _client.from('instructor_profiles').upsert(
-        {'profile_id': userId},
-        onConflict: 'profile_id',
-      );
+      await _client.from('instructor_profiles').upsert({
+        'profile_id': userId,
+      }, onConflict: 'profile_id');
     } else {
-      await _client.from('learner_profiles').upsert(
-        {
-          'profile_id': userId,
-          'account_type': _normalizeLearnerAccountType(learnerAccountType),
-        },
-        onConflict: 'profile_id',
-      );
+      await _client.from('learner_profiles').upsert({
+        'profile_id': userId,
+        'account_type': _normalizeLearnerAccountType(learnerAccountType),
+      }, onConflict: 'profile_id');
     }
 
     // Keep auth metadata in sync because multiple screens read role from metadata.
@@ -348,12 +334,15 @@ class SupabaseService {
     if (currentUser?.id == userId) {
       try {
         await _client.auth.updateUser(
-          UserAttributes(data: {
-            'role': normalizedRole,
-            if (normalizedRole == 'learner')
-              'learnerAccountType':
-                  _normalizeLearnerAccountType(learnerAccountType),
-          }),
+          UserAttributes(
+            data: {
+              'role': normalizedRole,
+              if (normalizedRole == 'learner')
+                'learnerAccountType': _normalizeLearnerAccountType(
+                  learnerAccountType,
+                ),
+            },
+          ),
         );
       } catch (e) {
         print('Warning: unable to update auth role metadata: $e');
@@ -433,13 +422,14 @@ class SupabaseService {
     required String userId,
     required String stage,
   }) async {
-    await _client.from('profiles').update({
-      'onboarding_stage': stage,
-    }).eq('id', userId);
+    await _client
+        .from('profiles')
+        .update({'onboarding_stage': stage})
+        .eq('id', userId);
   }
 
   static Future<IdentityVerificationState?>
-      getCurrentIdentityVerificationState() async {
+  getCurrentIdentityVerificationState() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
     return getIdentityVerificationState(user.id);
@@ -495,6 +485,16 @@ class SupabaseService {
       try {
         final learnerDetail = await getLearnerProfileDetail(userId);
         final focus = (learnerDetail?['learning_focus'] as String?)?.trim();
+        final identityStatus = verificationState?.verificationStatus
+            ?.trim()
+            .toLowerCase();
+        if (identityStatus == 'referral_approved') {
+          final hasReferralInstructor =
+              await hasActiveLearnerInstructorRelationship(userId);
+          if (hasReferralInstructor) {
+            return AppRoutes.home;
+          }
+        }
         if (focus == null || focus.isEmpty) {
           return AppRoutes.learningFocus;
         }
@@ -502,8 +502,9 @@ class SupabaseService {
         return AppRoutes.learningFocus;
       }
 
-      final identityStatus =
-          verificationState?.verificationStatus?.trim().toLowerCase();
+      final identityStatus = verificationState?.verificationStatus
+          ?.trim()
+          .toLowerCase();
       if (verificationState?.hasRequiredIdentityDocuments != true ||
           identityStatus == 'rejected') {
         return AppRoutes.identityVerificationIntro;
@@ -515,16 +516,17 @@ class SupabaseService {
         return AppRoutes.identityPendingReview;
       }
 
-      final approvalToken = verificationState?.verificationApprovedAt
+      final approvalToken =
+          verificationState?.verificationApprovedAt
               ?.toUtc()
               .toIso8601String() ??
           verificationState?.verificationStatus ??
           'approved';
       final shouldShowSuccess =
           await LaunchPreferences.shouldShowLearnerApprovalSuccess(
-        userId: userId,
-        approvalToken: approvalToken,
-      );
+            userId: userId,
+            approvalToken: approvalToken,
+          );
       if (shouldShowSuccess) {
         return AppRoutes.learnerApprovalSuccess;
       }
@@ -532,11 +534,12 @@ class SupabaseService {
     }
 
     if (role == 'instructor') {
-      final identityStatus =
-          verificationState?.verificationStatus?.trim().toLowerCase();
+      final identityStatus = verificationState?.verificationStatus
+          ?.trim()
+          .toLowerCase();
       final hasIdentityDocs =
           verificationState?.identityLicensePath?.trim().isNotEmpty == true &&
-              verificationState?.identitySelfiePath?.trim().isNotEmpty == true;
+          verificationState?.identitySelfiePath?.trim().isNotEmpty == true;
       if (!hasIdentityDocs || identityStatus == 'rejected') {
         return AppRoutes.identityVerificationIntro;
       }
@@ -628,19 +631,22 @@ class SupabaseService {
     required String role,
   }) async {
     final timestamp = DateTime.now().toUtc().toIso8601String();
-    await _client.from('profiles').update({
-      'role': role,
-      'verification_status': 'approved',
-      'verification_submitted_at': timestamp,
-      'verification_review_started_at': timestamp,
-      'verification_approved_at': timestamp,
-      'identity_license_path': 'testing://license-skip',
-      'identity_selfie_path': 'testing://selfie-skip',
-      'guardian_identity_license_path': 'testing://guardian-license-skip',
-      'guardian_identity_selfie_path': 'testing://guardian-selfie-skip',
-      'guardian_consent_submitted_at': timestamp,
-      'is_verified': role == 'learner',
-    }).eq('id', userId);
+    await _client
+        .from('profiles')
+        .update({
+          'role': role,
+          'verification_status': 'approved',
+          'verification_submitted_at': timestamp,
+          'verification_review_started_at': timestamp,
+          'verification_approved_at': timestamp,
+          'identity_license_path': 'testing://license-skip',
+          'identity_selfie_path': 'testing://selfie-skip',
+          'guardian_identity_license_path': 'testing://guardian-license-skip',
+          'guardian_identity_selfie_path': 'testing://guardian-selfie-skip',
+          'guardian_consent_submitted_at': timestamp,
+          'is_verified': role == 'learner',
+        })
+        .eq('id', userId);
   }
 
   static Future<void> uploadInstructorCredentialDocument({
@@ -654,7 +660,9 @@ class SupabaseService {
     final storagePath =
         '$userId/${documentType.storageKey}-${DateTime.now().millisecondsSinceEpoch}.$extension';
 
-    await _client.storage.from(_instructorCredentialsBucket).uploadBinary(
+    await _client.storage
+        .from(_instructorCredentialsBucket)
+        .uploadBinary(
           storagePath,
           bytes,
           fileOptions: const FileOptions(upsert: true),
@@ -665,16 +673,16 @@ class SupabaseService {
         .select('credentials_status')
         .eq('profile_id', userId)
         .maybeSingle();
-    final currentStatus =
-        (existingProfile?['credentials_status'] as String?)?.trim();
+    final currentStatus = (existingProfile?['credentials_status'] as String?)
+        ?.trim();
 
     final updates = <String, dynamic>{
       'profile_id': userId,
       documentType.columnName: storagePath,
       'credentials_status':
           (currentStatus == 'approved' || currentStatus == 'pending')
-              ? currentStatus
-              : 'not_started',
+          ? currentStatus
+          : 'not_started',
     };
     final expiryColumn = documentType.expiryColumnName;
     if (expiryColumn != null && expiresAt != null) {
@@ -728,7 +736,9 @@ class SupabaseService {
     final storagePath =
         '$userId/$filePrefix-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
 
-    await _client.storage.from(_identityVerificationBucket).uploadBinary(
+    await _client.storage
+        .from(_identityVerificationBucket)
+        .uploadBinary(
           storagePath,
           bytes,
           fileOptions: const FileOptions(upsert: true),
@@ -738,16 +748,17 @@ class SupabaseService {
   }
 
   static Future<void> updatePassword(String newPassword) async {
-    await _client.auth.updateUser(
-      UserAttributes(password: newPassword),
-    );
+    await _client.auth.updateUser(UserAttributes(password: newPassword));
   }
 
   // User Methods
   static Future<UserModel?> getUserProfile(String userId) async {
     try {
-      final response =
-          await _client.from('profiles').select().eq('id', userId).single();
+      final response = await _client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .single();
 
       return UserModel.fromJson(response);
     } catch (e) {
@@ -773,7 +784,9 @@ class SupabaseService {
   }
 
   static Future<void> updateProfileFields(
-      String userId, Map<String, dynamic> data) async {
+    String userId,
+    Map<String, dynamic> data,
+  ) async {
     await _client.from('profiles').update(data).eq('id', userId);
   }
 
@@ -786,7 +799,9 @@ class SupabaseService {
     final filePath =
         'profile_images/$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
 
-    await _client.storage.from('avatars').uploadBinary(
+    await _client.storage
+        .from('avatars')
+        .uploadBinary(
           filePath,
           bytes,
           fileOptions: const FileOptions(upsert: true),
@@ -795,9 +810,7 @@ class SupabaseService {
     final publicUrl = _client.storage.from('avatars').getPublicUrl(filePath);
 
     if (publicUrl.isNotEmpty) {
-      await updateProfileFields(userId, {
-        'profile_image_url': publicUrl,
-      });
+      await updateProfileFields(userId, {'profile_image_url': publicUrl});
     }
 
     return publicUrl;
@@ -813,18 +826,22 @@ class SupabaseService {
       final filePath =
           'vehicle_gallery/$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
 
-      await _client.storage.from('instructor-assets').uploadBinary(
+      await _client.storage
+          .from('instructor-assets')
+          .uploadBinary(
             filePath,
             bytes,
             fileOptions: const FileOptions(upsert: true),
           );
 
-      final publicUrl =
-          _client.storage.from('instructor-assets').getPublicUrl(filePath);
+      final publicUrl = _client.storage
+          .from('instructor-assets')
+          .getPublicUrl(filePath);
       if (publicUrl.isNotEmpty) {
         await _client
             .from('instructor_profiles')
-            .update({'vehicle_photo_url': publicUrl}).eq('profile_id', userId);
+            .update({'vehicle_photo_url': publicUrl})
+            .eq('profile_id', userId);
       }
 
       return publicUrl;
@@ -856,7 +873,8 @@ class SupabaseService {
     final user = _client.auth.currentUser;
     if (user == null) {
       throw Exception(
-          'Please sign in again before requesting account deletion.');
+        'Please sign in again before requesting account deletion.',
+      );
     }
 
     String? role;
@@ -870,15 +888,13 @@ class SupabaseService {
       'reason': reason?.trim().isEmpty == true ? null : reason?.trim(),
       'details': details?.trim().isEmpty == true ? null : details?.trim(),
       'status': 'requested',
-      'metadata': {
-        'source': 'mobile_app',
-        'email': user.email,
-      },
+      'metadata': {'source': 'mobile_app', 'email': user.email},
     });
   }
 
   static Future<Map<String, dynamic>?> getInstructorProfileDetail(
-      String userId) async {
+    String userId,
+  ) async {
     try {
       final profile = await _client
           .from('instructor_profiles')
@@ -949,8 +965,9 @@ class SupabaseService {
             .select('drive_tutor_number')
             .eq('profile_id', userId)
             .maybeSingle();
-        final refreshedValue =
-            refreshed?['drive_tutor_number']?.toString().trim();
+        final refreshedValue = refreshed?['drive_tutor_number']
+            ?.toString()
+            .trim();
         if (refreshedValue != null && refreshedValue.isNotEmpty) {
           return refreshedValue;
         }
@@ -989,28 +1006,28 @@ class SupabaseService {
 
     return (rows as List)
         .whereType<Map>()
-        .map((row) => InstructorBillingPlan.fromJson(
-              Map<String, dynamic>.from(row),
-            ))
+        .map(
+          (row) =>
+              InstructorBillingPlan.fromJson(Map<String, dynamic>.from(row)),
+        )
         .toList(growable: false);
   }
 
   static Future<InstructorBillingEntitlement?>
-      getCurrentInstructorBillingEntitlement() async {
+  getCurrentInstructorBillingEntitlement() async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return null;
 
     final row = await _client
         .from('instructor_billing_entitlements')
-        .select(
-          'plan_key, status, access_expires_at, cancel_at_period_end',
-        )
+        .select('plan_key, status, access_expires_at, cancel_at_period_end')
         .eq('profile_id', userId)
         .maybeSingle();
 
     if (row == null) return null;
     return InstructorBillingEntitlement.fromJson(
-        Map<String, dynamic>.from(row));
+      Map<String, dynamic>.from(row),
+    );
   }
 
   static Future<bool> hasActiveInstructorBilling(String userId) async {
@@ -1022,7 +1039,8 @@ class SupabaseService {
   }
 
   static Future<Map<String, dynamic>?> getLearnerProfileDetail(
-      String userId) async {
+    String userId,
+  ) async {
     try {
       final profile = await _client
           .from('learner_profiles')
@@ -1069,9 +1087,7 @@ class SupabaseService {
       return trimmed.isEmpty ? null : trimmed;
     }
 
-    final data = <String, dynamic>{
-      'profile_id': userId,
-    };
+    final data = <String, dynamic>{'profile_id': userId};
 
     final cleanedBio = cleanString(bio);
     if (cleanedBio != null) {
@@ -1089,8 +1105,9 @@ class SupabaseService {
       data['offerings'] = offerings;
     }
     if (offeringRates != null) {
-      data['offering_rates'] =
-          offeringRates.map((key, value) => MapEntry(key, value.toDouble()));
+      data['offering_rates'] = offeringRates.map(
+        (key, value) => MapEntry(key, value.toDouble()),
+      );
     }
     if (preferredLocations != null || clearPreferredLocations) {
       data['preferred_locations'] = preferredLocations;
@@ -1117,10 +1134,10 @@ class SupabaseService {
     await ensureInstructorDriveTutorNumber(userId: userId);
 
     try {
-      await _client.from('profiles').update({'role': 'instructor'}).eq(
-        'id',
-        userId,
-      );
+      await _client
+          .from('profiles')
+          .update({'role': 'instructor'})
+          .eq('id', userId);
       await _client.from('learner_profiles').delete().eq('profile_id', userId);
     } catch (e) {
       print('Warning: unable to clean conflicting learner profile: $e');
@@ -1201,8 +1218,9 @@ class SupabaseService {
       data['preferred_location_notes'] = cleanedLocationNotes;
     }
     if (weeklyAvailability != null) {
-      data['weekly_availability'] =
-          _normalizeWeeklyAvailabilityPayload(weeklyAvailability);
+      data['weekly_availability'] = _normalizeWeeklyAvailabilityPayload(
+        weeklyAvailability,
+      );
     }
     if (availabilityRecurring != null) {
       data['availability_recurring'] = availabilityRecurring;
@@ -1284,7 +1302,8 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> getLearnerSkillProgress(
-      String userId) async {
+    String userId,
+  ) async {
     try {
       final response = await _client
           .from('learner_skill_progress')
@@ -1298,7 +1317,8 @@ class SupabaseService {
   }
 
   static Future<Map<String, int>> getLearnerProgressCounts(
-      List<String> learnerIds) async {
+    List<String> learnerIds,
+  ) async {
     if (learnerIds.isEmpty) return {};
     final response = await _client
         .from('learner_skill_progress')
@@ -1309,7 +1329,8 @@ class SupabaseService {
       final profileId = row['profile_id']?.toString();
       if (profileId == null || profileId.isEmpty) continue;
       final status = row['status']?.toString().trim().toLowerCase();
-      final isCompleted = row['is_completed'] == true ||
+      final isCompleted =
+          row['is_completed'] == true ||
           status == 'test_ready' ||
           status == 'completed';
       if (isCompleted) {
@@ -1366,19 +1387,21 @@ class SupabaseService {
   }
 
   static Map<String, dynamic> _normalizeWeeklyAvailabilityPayload(
-      dynamic value) {
+    dynamic value,
+  ) {
     final normalized = <String, dynamic>{};
 
     void addSlots(String dayKey, Iterable<dynamic> slots) {
       final key = dayKey.trim().toLowerCase();
       if (key.isEmpty) return;
-      final slotList = slots
-          .whereType<String>()
-          .map((slot) => slot.trim())
-          .where((slot) => slot.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
+      final slotList =
+          slots
+              .whereType<String>()
+              .map((slot) => slot.trim())
+              .where((slot) => slot.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
       if (slotList.isNotEmpty) {
         normalized[key] = slotList;
       }
@@ -1431,7 +1454,8 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> getInstructorAvailability(
-      String userId) async {
+    String userId,
+  ) async {
     final results = await _client
         .from('instructor_availability')
         .select()
@@ -1471,19 +1495,22 @@ class SupabaseService {
     }
 
     final payload = slots
-        .map((slot) => {
-              'instructor_id': userId,
-              'weekday': slot['weekday'],
-              'start_time': slot['start_time'],
-              'end_time': slot['end_time'],
-            })
+        .map(
+          (slot) => {
+            'instructor_id': userId,
+            'weekday': slot['weekday'],
+            'start_time': slot['start_time'],
+            'end_time': slot['end_time'],
+          },
+        )
         .toList();
 
     await _client.from('instructor_availability').insert(payload);
   }
 
   static Future<List<Map<String, dynamic>>> getAvailabilityBlocks(
-      String userId) async {
+    String userId,
+  ) async {
     final results = await _client
         .from('instructor_availability_blocks')
         .select()
@@ -1520,7 +1547,8 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> getLessonRequestsForInstructor(
-      String userId) async {
+    String userId,
+  ) async {
     final results = await _client
         .from('learner_requests')
         .select('*')
@@ -1531,7 +1559,8 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> getLessonRequestsForLearner(
-      String userId) async {
+    String userId,
+  ) async {
     final results = await _client
         .from('learner_requests')
         .select('*')
@@ -1575,14 +1604,16 @@ class SupabaseService {
   }
 
   static Future<Map<String, Map<String, dynamic>>> _fetchLearnerProfiles(
-      Set<String> learnerIds) async {
+    Set<String> learnerIds,
+  ) async {
     final ids = learnerIds.where((id) => id.isNotEmpty).toSet();
     if (ids.isEmpty) return const <String, Map<String, dynamic>>{};
 
     final rows = await _client
         .from('learner_profiles')
         .select(
-            'profile_id, account_type, ward_first_name, ward_last_name, ward_age, ward_gender, learning_focus, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)')
+          'profile_id, account_type, ward_first_name, ward_last_name, ward_age, ward_gender, learning_focus, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)',
+        )
         .inFilter('profile_id', ids.toList());
 
     final map = <String, Map<String, dynamic>>{};
@@ -1610,10 +1641,7 @@ class SupabaseService {
         ? Map<String, dynamic>.from(target['learner_profile'] as Map)
         : <String, dynamic>{};
     normalizedProfile.remove('profile');
-    target['learner_profile'] = {
-      ...existingProfile,
-      ...normalizedProfile,
-    };
+    target['learner_profile'] = {...existingProfile, ...normalizedProfile};
 
     void setIfMissing(String key, dynamic value) {
       if (value == null) return;
@@ -1659,8 +1687,9 @@ class SupabaseService {
           : <String, dynamic>{};
       learner.addAll(nestedProfile);
       target['learner'] = learner;
-      final learnerProfileMap =
-          Map<String, dynamic>.from(target['learner_profile'] as Map);
+      final learnerProfileMap = Map<String, dynamic>.from(
+        target['learner_profile'] as Map,
+      );
       for (final key in [
         'first_name',
         'last_name',
@@ -1678,8 +1707,10 @@ class SupabaseService {
       if (normalizedAvailability != null) {
         learnerProfileMap['weekly_availability'] = normalizedAvailability;
       }
-      learnerProfileMap.putIfAbsent('availability_recurring',
-          () => normalizedProfile['availability_recurring']);
+      learnerProfileMap.putIfAbsent(
+        'availability_recurring',
+        () => normalizedProfile['availability_recurring'],
+      );
       target['learner_profile'] = learnerProfileMap;
       target['learner_email'] ??= nestedProfile['email'];
       target['requested_first_name'] ??= nestedProfile['first_name'];
@@ -1699,7 +1730,8 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> _hydrateLessonRequests(
-      List<Map<String, dynamic>> requests) async {
+    List<Map<String, dynamic>> requests,
+  ) async {
     final missingLearnerIds = <String>{};
     final learnerIds = <String>{};
 
@@ -1718,7 +1750,8 @@ class SupabaseService {
       final last = learner['last_name'] as String?;
       final email = learner['email'] as String?;
       final phone = learner['phone'];
-      final hasIdentity = (first != null && first.trim().isNotEmpty) ||
+      final hasIdentity =
+          (first != null && first.trim().isNotEmpty) ||
           (last != null && last.trim().isNotEmpty) ||
           (email != null && email.trim().isNotEmpty);
       final hasPhone = phone != null && phone.toString().trim().isNotEmpty;
@@ -1744,7 +1777,8 @@ class SupabaseService {
     for (final request in requests) {
       final learner = request['learner'];
       if (_learnerHasDetails(
-          learner is Map<String, dynamic> ? learner : null)) {
+        learner is Map<String, dynamic> ? learner : null,
+      )) {
         continue;
       }
       final learnerId = request['learner_id'] as String?;
@@ -1759,7 +1793,8 @@ class SupabaseService {
     final profiles = await _client
         .from('profiles')
         .select(
-            'id, first_name, last_name, email, phone, profile_image_url, city, gender, age')
+          'id, first_name, last_name, email, phone, profile_image_url, city, gender, age',
+        )
         .inFilter('id', ids);
 
     final profileMap = <String, Map<String, dynamic>>{};
@@ -1831,7 +1866,8 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> _hydrateLessonLearners(
-      List<Map<String, dynamic>> lessons) async {
+    List<Map<String, dynamic>> lessons,
+  ) async {
     String? _fallbackName(Map<String, dynamic> map) {
       String _clean(dynamic value) {
         if (value == null) return '';
@@ -1840,9 +1876,10 @@ class SupabaseService {
       }
 
       String combine(dynamic first, dynamic last) {
-        final parts = [_clean(first), _clean(last)]
-            .where((value) => value.isNotEmpty)
-            .toList();
+        final parts = [
+          _clean(first),
+          _clean(last),
+        ].where((value) => value.isNotEmpty).toList();
         return parts.join(' ').trim();
       }
 
@@ -1868,8 +1905,10 @@ class SupabaseService {
         if (name.isNotEmpty) return name;
         if (profile['profile'] is Map) {
           final nested = Map<String, dynamic>.from(profile['profile'] as Map);
-          final nestedCombined =
-              combine(nested['first_name'], nested['last_name']);
+          final nestedCombined = combine(
+            nested['first_name'],
+            nested['last_name'],
+          );
           if (nestedCombined.isNotEmpty) return nestedCombined;
           final nestedEmail = _clean(nested['email']);
           if (nestedEmail.isNotEmpty) return nestedEmail;
@@ -1879,8 +1918,9 @@ class SupabaseService {
       }
 
       final requested = combine(
-          map['requested_first_name'] ?? map['requested_name'] ?? '',
-          map['requested_last_name']);
+        map['requested_first_name'] ?? map['requested_name'] ?? '',
+        map['requested_last_name'],
+      );
       if (requested.isNotEmpty) return requested;
 
       final requestedEmail = _clean(map['learner_email']);
@@ -1926,7 +1966,9 @@ class SupabaseService {
     }
 
     Map<String, dynamic>? _profileFor(
-        String? learnerId, Map<String, Map<String, dynamic>> profiles) {
+      String? learnerId,
+      Map<String, Map<String, dynamic>> profiles,
+    ) {
       if (learnerId == null || learnerId.isEmpty) return null;
       final profile = profiles[learnerId];
       return profile != null ? Map<String, dynamic>.from(profile) : null;
@@ -1991,18 +2033,30 @@ class SupabaseService {
     required String requestId,
     required String status,
   }) async {
-    final result = await _client
-        .from('learner_requests')
-        .update({'status': status})
-        .eq('id', requestId)
-        .select('*')
-        .maybeSingle();
+    final normalizedStatus = status.trim().toLowerCase();
+    dynamic result;
+    if (normalizedStatus == 'accepted') {
+      final response = await _client.rpc(
+        'accept_learner_request_first_claim',
+        params: {'target_request_id': requestId},
+      );
+      if (response is Map && response['request'] is Map) {
+        result = Map<String, dynamic>.from(response['request'] as Map);
+      }
+    } else {
+      result = await _client
+          .from('learner_requests')
+          .update({'status': status})
+          .eq('id', requestId)
+          .select('*')
+          .maybeSingle();
+    }
     if (result == null) return null;
-    final hydrated = await _hydrateLessonRequests(
-        [Map<String, dynamic>.from(result as Map)]);
+    final hydrated = await _hydrateLessonRequests([
+      Map<String, dynamic>.from(result as Map),
+    ]);
     final request = hydrated.isNotEmpty ? hydrated.first : null;
     if (request != null) {
-      final normalizedStatus = status.trim().toLowerCase();
       if (normalizedStatus == 'accepted') {
         await _queueAppNotification(
           eventKey: 'learner.request.accepted',
@@ -2040,7 +2094,8 @@ class SupabaseService {
       final status = (existing['status'] as String?)?.toLowerCase();
       if (status == 'pending' || status == 'accepted') {
         throw Exception(
-            'You already have a pending request with this instructor.');
+          'You already have a pending request with this instructor.',
+        );
       }
       if (status == 'declined') {
         final updatedAtRaw = existing['updated_at']?.toString();
@@ -2061,10 +2116,25 @@ class SupabaseService {
               remainingText = 'less than an hour';
             }
             throw Exception(
-                'You can request this instructor again in $remainingText.');
+              'You can request this instructor again in $remainingText.',
+            );
           }
         }
       }
+    }
+
+    final activeRelationship = await _client
+        .from('learner_requests')
+        .select('id')
+        .eq('learner_id', learnerId)
+        .neq('instructor_id', instructorId)
+        .inFilter('status', const ['accepted', 'active', 'in_progress'])
+        .limit(1)
+        .maybeSingle();
+    if (activeRelationship != null) {
+      throw Exception(
+        'You already have an active instructor. Remove that instructor before requesting someone else.',
+      );
     }
 
     Map<String, dynamic>? learnerSnapshot;
@@ -2100,8 +2170,9 @@ class SupabaseService {
           'instructor_id': instructorId,
           'learner_id': learnerId,
           'focus': normalizedFocus?.isNotEmpty == true ? normalizedFocus : null,
-          'message':
-              normalizedMessage?.isNotEmpty == true ? normalizedMessage : null,
+          'message': normalizedMessage?.isNotEmpty == true
+              ? normalizedMessage
+              : null,
           'requested_vehicle_label': normalizedVehicleLabel?.isNotEmpty == true
               ? normalizedVehicleLabel
               : null,
@@ -2133,7 +2204,8 @@ class SupabaseService {
   }
 
   static Future<Map<String, dynamic>> claimInstructorReferralCode(
-      String code) async {
+    String code,
+  ) async {
     final normalized = code.trim();
     if (normalized.isEmpty) {
       throw Exception('Enter an instructor code.');
@@ -2152,16 +2224,47 @@ class SupabaseService {
     return <String, dynamic>{};
   }
 
+  static Future<bool> hasActiveLearnerInstructorRelationship(
+    String learnerId,
+  ) async {
+    final existing = await _client
+        .from('learner_requests')
+        .select('id')
+        .eq('learner_id', learnerId)
+        .inFilter('status', const ['accepted', 'active', 'in_progress'])
+        .limit(1)
+        .maybeSingle();
+    return existing != null;
+  }
+
+  static Future<Map<String, dynamic>> removeCurrentLearnerInstructor({
+    required String instructorId,
+  }) async {
+    final response = await _client.rpc(
+      'remove_current_learner_instructor',
+      params: {'target_instructor_id': instructorId},
+    );
+    if (response is Map<String, dynamic>) {
+      return response;
+    }
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+    return <String, dynamic>{};
+  }
+
   static Future<Map<String, dynamic>?> getLearnerRequestById(
-      String requestId) async {
+    String requestId,
+  ) async {
     final result = await _client
         .from('learner_requests')
         .select('*')
         .eq('id', requestId)
         .maybeSingle();
     if (result == null) return null;
-    final hydrated = await _hydrateLessonRequests(
-        [Map<String, dynamic>.from(result as Map)]);
+    final hydrated = await _hydrateLessonRequests([
+      Map<String, dynamic>.from(result as Map),
+    ]);
     return hydrated.isNotEmpty ? hydrated.first : null;
   }
 
@@ -2172,7 +2275,8 @@ class SupabaseService {
     final request = await _client
         .from('learner_requests')
         .select(
-            'id, status, focus, message, created_at, requested_vehicle_label, requested_vehicle_type')
+          'id, status, focus, message, created_at, requested_vehicle_label, requested_vehicle_type',
+        )
         .eq('instructor_id', instructorId)
         .eq('learner_id', learnerId)
         .or('status.eq.pending,status.eq.accepted')
@@ -2184,7 +2288,8 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> getActiveLessonRequestsForLearner(
-      String learnerId) async {
+    String learnerId,
+  ) async {
     final results = await _client
         .from('learner_requests')
         .select('id, instructor_id, status, updated_at, created_at')
@@ -2196,7 +2301,8 @@ class SupabaseService {
   static Future<void> cancelLessonRequest(String requestId) async {
     await _client
         .from('learner_requests')
-        .update({'status': 'cancelled'}).eq('id', requestId);
+        .update({'status': 'cancelled'})
+        .eq('id', requestId);
     await _queueAppNotification(
       eventKey: 'learner.request.cancelled',
       entityId: requestId,
@@ -2242,14 +2348,14 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> getActiveLearnersWithAvailability(
-      String instructorId) async {
+    String instructorId,
+  ) async {
     final results = await _client
         .from('learner_requests')
         .select('*')
         .eq('instructor_id', instructorId)
-        .inFilter('status', ['accepted', 'active', 'in_progress']).order(
-            'created_at',
-            ascending: false);
+        .inFilter('status', ['accepted', 'active', 'in_progress'])
+        .order('created_at', ascending: false);
 
     final rawEntries = List<Map<String, dynamic>>.from(results);
     final entries = await _hydrateLessonRequests(rawEntries);
@@ -2266,7 +2372,8 @@ class SupabaseService {
     final availabilityRows = await _client
         .from('learner_profiles')
         .select(
-            'profile_id, weekly_availability, availability_recurring, learning_focus, preferred_locations')
+          'profile_id, weekly_availability, availability_recurring, learning_focus, preferred_locations',
+        )
         .inFilter('profile_id', ids);
 
     final availabilityMap = <String, Map<String, dynamic>>{};
@@ -2282,8 +2389,8 @@ class SupabaseService {
       if (availability != null) {
         entry.value['weekly_availability'] =
             _normalizeWeeklyAvailabilityPayload(
-          availability['weekly_availability'],
-        );
+              availability['weekly_availability'],
+            );
         entry.value['availability_recurring'] =
             availability['availability_recurring'];
         entry.value['learning_focus'] ??= availability['learning_focus'];
@@ -2301,12 +2408,16 @@ class SupabaseService {
     final nowLocal = DateTime.now();
     // Include all of today's lessons plus anything upcoming, so active/in-progress
     // sessions that started earlier in the day still appear.
-    final windowStart =
-        DateTime(nowLocal.year, nowLocal.month, nowLocal.day).toUtc();
+    final windowStart = DateTime(
+      nowLocal.year,
+      nowLocal.month,
+      nowLocal.day,
+    ).toUtc();
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, start_time, end_time, duration_hours, focus, pickup_location, notes, status, learner_id')
+          'id, scheduled_at, start_time, end_time, duration_hours, focus, pickup_location, notes, status, learner_id',
+        )
         .eq('instructor_id', userId)
         .inFilter('status', ['scheduled', 'active', 'in_progress'])
         .gte('scheduled_at', windowStart.toIso8601String())
@@ -2326,7 +2437,8 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by')
+          'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by',
+        )
         .eq('instructor_id', userId)
         .inFilter('status', ['scheduled', 'active', 'in_progress'])
         .gte('scheduled_at', startUtc.toIso8601String())
@@ -2344,7 +2456,8 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id')
+          'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id',
+        )
         .eq('instructor_id', userId)
         .lt('scheduled_at', nowUtc)
         .order('scheduled_at', ascending: false)
@@ -2354,7 +2467,8 @@ class SupabaseService {
   }
 
   static Future<Map<String, dynamic>> getInstructorEarningsSummary(
-      String instructorId) async {
+    String instructorId,
+  ) async {
     // Count scheduled and in-progress lessons as part of the month's workload,
     // while earnings only accumulate from completed/done/finished rows.
     final earningStatuses = ['completed', 'done', 'finished'];
@@ -2362,7 +2476,7 @@ class SupabaseService {
       'scheduled',
       'active',
       'in_progress',
-      ...earningStatuses
+      ...earningStatuses,
     ];
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1).toUtc();
@@ -2387,20 +2501,23 @@ class SupabaseService {
         return null;
       }
 
-      final normalizedFocus =
-          focus?.toString().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      final normalizedFocus = focus?.toString().toLowerCase().replaceAll(
+        RegExp(r'[^a-z0-9]'),
+        '',
+      );
       final offeringRates =
           instructorProfile?['offering_rates'] is Map<String, dynamic>
-              ? Map<String, dynamic>.from(
-                  instructorProfile!['offering_rates'] as Map)
-              : const <String, dynamic>{};
+          ? Map<String, dynamic>.from(
+              instructorProfile!['offering_rates'] as Map,
+            )
+          : const <String, dynamic>{};
 
       if (normalizedFocus != null && normalizedFocus.isNotEmpty) {
         for (final entry in offeringRates.entries) {
           final key = entry.key.toString().toLowerCase().replaceAll(
-                RegExp(r'[^a-z0-9]'),
-                '',
-              );
+            RegExp(r'[^a-z0-9]'),
+            '',
+          );
           if (key == normalizedFocus) {
             final rate = asDouble(entry.value);
             if (rate != null && rate > 0) return rate;
@@ -2496,9 +2613,7 @@ class SupabaseService {
         start: monthStart,
         end: nextMonth,
       );
-      final totalLessonRows = await fetchLessons(
-        statuses: lessonCountStatuses,
-      );
+      final totalLessonRows = await fetchLessons(statuses: lessonCountStatuses);
 
       // For display, treat earnings as upcoming + completed sessions for the month.
       // If a lesson has an explicit cost, we use it; otherwise we derive from rate.
@@ -2529,8 +2644,11 @@ class SupabaseService {
     required DateTime weekStart,
     required List<Map<String, dynamic>> slots,
   }) async {
-    final startOfWeek =
-        DateTime(weekStart.year, weekStart.month, weekStart.day);
+    final startOfWeek = DateTime(
+      weekStart.year,
+      weekStart.month,
+      weekStart.day,
+    );
     final startUtc = startOfWeek.toUtc();
     final endUtc = startUtc.add(const Duration(days: 7));
 
@@ -2584,7 +2702,8 @@ class SupabaseService {
   }
 
   static Future<Map<String, Map<String, dynamic>>> getProfileSummaries(
-      List<String> ids) async {
+    List<String> ids,
+  ) async {
     if (ids.isEmpty) return {};
     final rows = await _client
         .from('profiles')
@@ -2630,8 +2749,9 @@ class SupabaseService {
     double? minRating,
   }) async {
     try {
-      var query =
-          _client.from('instructor_profiles').select('*, user:profiles(*)');
+      var query = _client
+          .from('instructor_profiles')
+          .select('*, user:profiles(*)');
 
       final targetCity = city?.trim().toLowerCase();
       String? _normalizedCity(dynamic value) {
@@ -2668,7 +2788,8 @@ class SupabaseService {
               final fallback = await _client
                   .from('profiles')
                   .select(
-                      'id, email, phone, first_name, last_name, role, profile_image_url, city, created_at, updated_at, is_verified')
+                    'id, email, phone, first_name, last_name, role, profile_image_url, city, created_at, updated_at, is_verified',
+                  )
                   .eq('id', profileId)
                   .maybeSingle();
               if (fallback is Map<String, dynamic>) {
@@ -2940,7 +3061,8 @@ class SupabaseService {
           .update(payload)
           .eq('id', lessonId)
           .select(
-              'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by')
+            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by',
+          )
           .single();
 
       final rows = await _hydrateLessonLearners([
@@ -3124,7 +3246,8 @@ class SupabaseService {
     final double dLat = _degreesToRadians(lat2 - lat1);
     final double dLon = _degreesToRadians(lon2 - lon1);
 
-    final double a = (dLat / 2) * (dLat / 2) +
+    final double a =
+        (dLat / 2) * (dLat / 2) +
         (dLon / 2) *
             (dLon / 2) *
             (lat1 * 3.14159 / 180) *

@@ -66,17 +66,15 @@ class _LearnerWeeklyAvailabilityScreenState
 
     final end = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay(
-        hour: (start.hour + 2) % 24,
-        minute: start.minute,
-      ),
+      initialTime: TimeOfDay(hour: (start.hour + 2) % 24, minute: start.minute),
     );
     if (end == null || !mounted) return;
 
     final slot = _encodeSlot(start, end);
     setState(() {
-      final current =
-          List<String>.from(_availability[_selectedDay] ?? const []);
+      final current = List<String>.from(
+        _availability[_selectedDay] ?? const [],
+      );
       current.add(slot);
       current.sort();
       _availability[_selectedDay] = current;
@@ -85,8 +83,9 @@ class _LearnerWeeklyAvailabilityScreenState
 
   void _removeSlot(String slot) {
     setState(() {
-      final current =
-          List<String>.from(_availability[_selectedDay] ?? const []);
+      final current = List<String>.from(
+        _availability[_selectedDay] ?? const [],
+      );
       current.remove(slot);
       _availability[_selectedDay] = current;
     });
@@ -142,12 +141,13 @@ class _LearnerWeeklyAvailabilityScreenState
           userId: userId,
           stage: SupabaseService.onboardingStageQuestionnaireComplete,
         );
-        try {
-          await InstructorReferralService.claimPendingCodeIfAvailable();
-        } catch (error) {
-          debugPrint('Pending instructor referral was not claimed: $error');
-        }
+        final pendingReferralCode =
+            await InstructorReferralService.pendingCode();
         if (!mounted) return;
+        if (pendingReferralCode != null) {
+          context.go(AppRoutes.learnerReferralProfilePhoto);
+          return;
+        }
         context.go(AppRoutes.learningFocus, extra: widget.draft.role);
       }
     } catch (error) {
@@ -351,8 +351,9 @@ class _LearnerWeeklyAvailabilityScreenState
                               minimumSize: const Size.fromHeight(58),
                               foregroundColor: AppColors.primary,
                               side: BorderSide(
-                                color:
-                                    AppColors.primary.withValues(alpha: 0.24),
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.24,
+                                ),
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(999),

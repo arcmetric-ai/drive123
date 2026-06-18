@@ -12,6 +12,7 @@ import '../../constants/app_routes.dart';
 import '../../models/user_model.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/profile_expandable_section.dart';
+import '../../widgets/verified_profile_badge.dart';
 import '../instructor/instructor_bookings_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -162,6 +163,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         )
                       : null,
                 ),
+                if (_isVerified)
+                  const Positioned(
+                    top: -2,
+                    right: -2,
+                    child: VerifiedProfileBadge(size: 34),
+                  ),
                 if (_isUploadingImage)
                   Positioned.fill(
                     child: Container(
@@ -213,47 +220,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               color: Colors.black.withValues(alpha: 0.6),
             ),
           ),
-          const SizedBox(height: 10),
-          if (_isVerified)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF2EE5A3),
-                    Color(0xFF15C68A),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(999),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF15C68A).withValues(alpha: 0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.verified_rounded,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    'Verified',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: 0.25,
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );
@@ -330,8 +296,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primaryBlue,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                  horizontal: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -350,8 +318,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _openingPreview
                     ? 'Opening preview...'
                     : (isInstructor
-                        ? 'Preview Public Instructor Profile'
-                        : 'Preview Public Profile'),
+                          ? 'Preview Public Instructor Profile'
+                          : 'Preview Public Profile'),
               ),
             ),
           ),
@@ -425,10 +393,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 : 'View all your past lessons',
             onTap: isInstructor
                 ? () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const InstructorBookingsHistoryScreen(),
-                      ),
-                    )
+                    MaterialPageRoute(
+                      builder: (_) => const InstructorBookingsHistoryScreen(),
+                    ),
+                  )
                 : () => context.push(AppRoutes.myLessons),
           ),
           _buildActionDivider(),
@@ -476,17 +444,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildInstructorReferralCard() {
     final code = _instructorDriveTutorNumber?.trim();
     final hasCode = code != null && code.isNotEmpty;
-    final inviteUrl =
-        hasCode ? 'https://www.drivetutor.ca/invite/instructor/$code' : null;
+    final inviteUrl = hasCode
+        ? 'https://www.drivetutor.ca/invite/instructor/$code'
+        : null;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFFFFFFFF),
-            Color(0xFFF4F7FF),
-          ],
+          colors: [Color(0xFFFFFFFF), Color(0xFFF4F7FF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -506,10 +472,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   shape: BoxShape.circle,
                   border: Border.all(color: AppColors.primaryBlue, width: 3),
                   image: _avatarImage != null
-                      ? DecorationImage(
-                          image: _avatarImage!,
-                          fit: BoxFit.cover,
-                        )
+                      ? DecorationImage(image: _avatarImage!, fit: BoxFit.cover)
                       : null,
                 ),
                 child: _avatarImage == null
@@ -627,10 +590,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: const Color(0xFFE3E8F5)),
                   ),
-                  child: QrImageView(
-                    data: inviteUrl,
-                    size: 118,
-                  ),
+                  child: QrImageView(data: inviteUrl, size: 118),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -681,9 +641,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _copyInstructorReferral(String code) async {
     await Clipboard.setData(ClipboardData(text: code));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Instructor code copied.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Instructor code copied.')));
   }
 
   Future<void> _generateInstructorReferralCode() async {
@@ -691,7 +651,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (userId == null) return;
     try {
       final code = await SupabaseService.ensureInstructorDriveTutorNumber(
-          userId: userId);
+        userId: userId,
+      );
       if (!mounted) return;
       setState(() => _instructorDriveTutorNumber = code);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -734,10 +695,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildActionDivider() => const Divider(
-        height: 20,
-        color: Color(0xFFE6ECF7),
-      );
+  Widget _buildActionDivider() =>
+      const Divider(height: 20, color: Color(0xFFE6ECF7));
 
   Widget _buildInfoRow({
     required IconData icon,
@@ -747,10 +706,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          color: AppColors.primaryBlue,
-        ),
+        Icon(icon, color: AppColors.primaryBlue),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -1076,11 +1032,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _learnerClassesTaken = int.tryParse(classesTaken);
         }
         final lastClass = _asString(detail['last_class_date']);
-        _learnerLastClassDate =
-            lastClass != null ? DateTime.tryParse(lastClass) : null;
+        _learnerLastClassDate = lastClass != null
+            ? DateTime.tryParse(lastClass)
+            : null;
         final testDate = _asString(detail['target_test_date']);
-        _learnerTestDate =
-            testDate != null ? DateTime.tryParse(testDate) : null;
+        _learnerTestDate = testDate != null
+            ? DateTime.tryParse(testDate)
+            : null;
         final locations = detail['preferred_locations'];
         _learnerLocations = [];
         if (locations is List) {
@@ -1103,8 +1061,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
         }
-        _learnerWeeklyAvailability =
-            _parseWeeklyAvailability(detail['weekly_availability']);
+        _learnerWeeklyAvailability = _parseWeeklyAvailability(
+          detail['weekly_availability'],
+        );
         _learnerAvailabilityRecurring =
             detail['availability_recurring'] == true;
       });
@@ -1265,8 +1224,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final role = _roleLabel.toLowerCase();
       if (role == 'instructor') {
         final rawProfile = await SupabaseService.getRawProfile(user.id);
-        final detail =
-            await SupabaseService.getInstructorProfileDetail(user.id);
+        final detail = await SupabaseService.getInstructorProfileDetail(
+          user.id,
+        );
         if (!mounted) return;
         final payload = _buildInstructorPreviewPayload(
           rawProfile is Map<String, dynamic>
@@ -1276,17 +1236,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ? Map<String, dynamic>.from(detail)
               : null,
         );
-        await context.push(
-          AppRoutes.instructorProfilePreview,
-          extra: payload,
-        );
+        await context.push(AppRoutes.instructorProfilePreview, extra: payload);
       } else {
         await context.push(
           AppRoutes.instructorLearnerDetail,
-          extra: {
-            'profile_id': user.id,
-            'status': 'public_preview',
-          },
+          extra: {'profile_id': user.id, 'status': 'public_preview'},
         );
       }
     } catch (e) {
@@ -1347,7 +1301,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (rawVehicles is List) {
         for (final entry in rawVehicles) {
           if (entry is Map) {
-            final url = clean(entry['photoUrl']) ??
+            final url =
+                clean(entry['photoUrl']) ??
                 clean(entry['photo_url']) ??
                 clean(entry['imageUrl']) ??
                 clean(entry['image_url']);
@@ -1460,7 +1415,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
             if (radiusValue != null) {
               parts.add(
-                  '${radiusValue.toStringAsFixed(radiusValue == radiusValue.roundToDouble() ? 0 : 1)} km radius');
+                '${radiusValue.toStringAsFixed(radiusValue == radiusValue.roundToDouble() ? 0 : 1)} km radius',
+              );
             }
             final label = parts.join(' - ').trim();
             if (label.isNotEmpty) {
@@ -1488,7 +1444,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     String composeRatesLabel(
-        dynamic defaultRateRaw, Map<String, String> rates) {
+      dynamic defaultRateRaw,
+      Map<String, String> rates,
+    ) {
       if (defaultRateRaw is num && defaultRateRaw > 0) {
         return 'Standard lesson: \$${defaultRateRaw.toDouble().toStringAsFixed(0)}/hr';
       }
@@ -1500,37 +1458,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final vehicles = summarizeVehicles(detailMap['vehicles']);
-    final preferredLocations =
-        composePreferredLocations(detailMap['preferred_locations']);
+    final preferredLocations = composePreferredLocations(
+      detailMap['preferred_locations'],
+    );
     final areas = composeAreas(detailMap['areas_of_operation']);
     final offeringRates = composeOfferingRates(detailMap['offering_rates']);
-    final languages = (profileMap['languages'] is List
-            ? (profileMap['languages'] as List)
-                .whereType<String>()
-                .map(_titleCase)
-                .where((value) => value.isNotEmpty)
-                .toList()
-            : _instructorLanguages)
-        .toList();
+    final languages =
+        (profileMap['languages'] is List
+                ? (profileMap['languages'] as List)
+                      .whereType<String>()
+                      .map(_titleCase)
+                      .where((value) => value.isNotEmpty)
+                      .toList()
+                : _instructorLanguages)
+            .toList();
     final offerings = detailMap['offerings'] is List
         ? List<String>.from(
-            (detailMap['offerings'] as List).whereType<String>())
+            (detailMap['offerings'] as List).whereType<String>(),
+          )
         : _instructorOfferings;
     final focus = detailMap['levels_offered'] is List
         ? List<String>.from(
-            (detailMap['levels_offered'] as List).whereType<String>())
+            (detailMap['levels_offered'] as List).whereType<String>(),
+          )
         : offerings;
     final defaultRate = detailMap['default_rate'];
     final ratesLabel = composeRatesLabel(defaultRate, offeringRates);
 
-    final vehiclePhotoUrl = clean(detailMap['vehicle_photo_url']) ??
+    final vehiclePhotoUrl =
+        clean(detailMap['vehicle_photo_url']) ??
         clean(detailMap['vehiclePhotoUrl']) ??
         clean(profileMap['vehicle_photo_url']) ??
         firstVehiclePhoto(detailMap['vehicles']) ??
         firstVehiclePhoto(profileMap['vehicles']) ??
         '';
     final bio = _instructorBio ?? clean(detailMap['bio']) ?? '';
-    final serviceArea = _instructorServiceArea ??
+    final serviceArea =
+        _instructorServiceArea ??
         clean(detailMap['service_area']) ??
         clean(profileMap['city']) ??
         '';
@@ -1572,7 +1536,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'isVerified': _isVerified,
       'driveTutorNumber': clean(detailMap['drive_tutor_number']) ?? '',
       'licenseNumber': _licenceNumber ?? clean(profileMap['licence_number']),
-      'licenseExpiry': _licenceExpiry?.toIso8601String() ??
+      'licenseExpiry':
+          _licenceExpiry?.toIso8601String() ??
           clean(profileMap['licence_expiry']),
       'age': clean(profileMap['age']) ?? '',
       'gender': clean(profileMap['gender']) ?? '',
@@ -1654,8 +1619,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           prefixIcon: Icon(Icons.badge_outlined),
                         ),
                         validator: (value) {
-                          final cleaned = (value ?? '')
-                              .replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+                          final cleaned = (value ?? '').replaceAll(
+                            RegExp(r'[^A-Za-z0-9]'),
+                            '',
+                          );
                           if (cleaned.length != 8) {
                             return 'Enter the full instructor code.';
                           }
@@ -1697,15 +1664,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         error = null;
                                       });
                                       try {
-                                        await SupabaseService
-                                            .claimInstructorReferralCode(
+                                        await SupabaseService.claimInstructorReferralCode(
                                           controller.text,
                                         );
                                         if (!context.mounted) return;
                                         Navigator.of(context).pop();
                                         if (!mounted) return;
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           const SnackBar(
                                             content: Text(
                                               'Instructor connected. They can now manage lessons with you.',
@@ -1715,8 +1682,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       } catch (exception) {
                                         setModalState(() {
                                           isSubmitting = false;
-                                          error =
-                                              _referralClaimError(exception);
+                                          error = _referralClaimError(
+                                            exception,
+                                          );
                                         });
                                       }
                                     },
@@ -2046,10 +2014,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           value: 'Created account by mistake',
                           child: Text('Created account by mistake'),
                         ),
-                        DropdownMenuItem(
-                          value: 'Other',
-                          child: Text('Other'),
-                        ),
+                        DropdownMenuItem(value: 'Other', child: Text('Other')),
                       ],
                       onChanged: _isRequestingDeletion
                           ? null
@@ -2160,7 +2125,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       applicationVersion: '1.0.0',
       children: const [
         Text(
-            'A friendly platform connecting driving learners with verified instructors in Ontario.'),
+          'A friendly platform connecting driving learners with verified instructors in Ontario.',
+        ),
       ],
     );
   }
@@ -2196,9 +2162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return 'Not provided';
     }
     final entries = _learnerWeeklyAvailability.entries.toList()
-      ..sort(
-        (a, b) => _weekdayOrder(a.key).compareTo(_weekdayOrder(b.key)),
-      );
+      ..sort((a, b) => _weekdayOrder(a.key).compareTo(_weekdayOrder(b.key)));
     final lines = <String>[];
     for (final entry in entries) {
       final dayLabel = _titleCase(entry.key);
@@ -2216,7 +2180,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (raw is Map) {
       raw.forEach((key, value) {
         final day = key.toString().toLowerCase();
-        final slots = (value as List?)
+        final slots =
+            (value as List?)
                 ?.whereType<String>()
                 .map((slot) => slot.trim().toLowerCase())
                 .where((slot) => slot.isNotEmpty)
@@ -2232,7 +2197,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       for (final entry in raw) {
         if (entry is Map) {
           final day = entry['day']?.toString().toLowerCase();
-          final slots = (entry['slots'] as List?)
+          final slots =
+              (entry['slots'] as List?)
                   ?.whereType<String>()
                   .map((slot) => slot.trim().toLowerCase())
                   .where((slot) => slot.isNotEmpty)
@@ -2288,9 +2254,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (trimmed.isEmpty) return '';
     final words = trimmed.split(RegExp(r'\s+'));
     return words
-        .map((word) => word.isEmpty
-            ? ''
-            : word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .map(
+          (word) => word.isEmpty
+              ? ''
+              : word[0].toUpperCase() + word.substring(1).toLowerCase(),
+        )
         .join(' ');
   }
 

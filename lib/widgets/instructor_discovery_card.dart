@@ -4,6 +4,7 @@ import '../constants/app_colors.dart';
 import '../constants/app_radii.dart';
 import '../constants/app_shadows.dart';
 import '../models/instructor_model.dart';
+import 'verified_profile_badge.dart';
 
 class InstructorDiscoveryCard extends StatelessWidget {
   const InstructorDiscoveryCard({
@@ -23,19 +24,21 @@ class InstructorDiscoveryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final profileImage = instructor.user.profileImageUrl?.trim();
     final hasProfileImage = profileImage != null && profileImage.isNotEmpty;
-    final name =
-        '${instructor.user.firstName} ${instructor.user.lastName}'.trim();
-    final vehicle = (instructor.vehicles.isNotEmpty
-            ? instructor.vehicles.first.summary()
-            : 'Vehicle details not provided')
-        .replaceAll(' �- ', ' - ');
+    final name = '${instructor.user.firstName} ${instructor.user.lastName}'
+        .trim();
+    final vehicle =
+        (instructor.vehicles.isNotEmpty
+                ? instructor.vehicles.first.summary()
+                : 'Vehicle details not provided')
+            .replaceAll(' �- ', ' - ');
     final experienceText = '${instructor.yearsOfExperience} YEARS EXP.';
-    final effectiveRate = displayedRate ??
+    final effectiveRate =
+        displayedRate ??
         (instructor.hourlyRate > 0
             ? instructor.hourlyRate
             : (instructor.offeringRates.isNotEmpty
-                ? instructor.offeringRates.values.first
-                : 0.0));
+                  ? instructor.offeringRates.values.first
+                  : 0.0));
     final rateText = '\$${effectiveRate.toStringAsFixed(0)}';
     final pickupText = instructor.pickupPreference == true
         ? 'OFFERS LEARNER PICKUP'
@@ -99,24 +102,7 @@ class InstructorDiscoveryCard extends StatelessWidget {
                     const Positioned(
                       right: -4,
                       top: -4,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                          border: Border.fromBorderSide(
-                            BorderSide(color: Colors.white, width: 3),
-                          ),
-                        ),
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: Icon(
-                            Icons.check_rounded,
-                            size: 16,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
+                      child: VerifiedProfileBadge(size: 28),
                     ),
                 ],
               ),
@@ -212,10 +198,7 @@ class InstructorDiscoveryCard extends StatelessWidget {
               icon: Icons.language_rounded,
               text: languageText,
             ),
-            trailing: _MetaItem(
-              icon: Icons.star_rounded,
-              text: ratingText,
-            ),
+            trailing: _MetaItem(icon: Icons.star_rounded, text: ratingText),
           ),
           const SizedBox(height: 16),
           const Divider(color: AppColors.border, height: 1),
@@ -253,10 +236,7 @@ class InstructorDiscoveryCard extends StatelessWidget {
                   ),
                   child: const Text(
                     'View Profile',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
@@ -325,9 +305,7 @@ class _Pill extends StatelessWidget {
 }
 
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({
-    required this.label,
-  });
+  const _StatusBadge({required this.label});
 
   final String label;
 
@@ -353,10 +331,7 @@ class _StatusBadge extends StatelessWidget {
 }
 
 class _MetaRow extends StatelessWidget {
-  const _MetaRow({
-    required this.leading,
-    required this.trailing,
-  });
+  const _MetaRow({required this.leading, required this.trailing});
 
   final Widget leading;
   final Widget trailing;
@@ -374,10 +349,7 @@ class _MetaRow extends StatelessWidget {
 }
 
 class _MetaItem extends StatelessWidget {
-  const _MetaItem({
-    required this.icon,
-    required this.text,
-  });
+  const _MetaItem({required this.icon, required this.text});
 
   final IconData icon;
   final String text;
@@ -386,11 +358,7 @@ class _MetaItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 16,
-          color: AppColors.mutedForeground,
-        ),
+        Icon(icon, size: 16, color: AppColors.mutedForeground),
         const SizedBox(width: 6),
         Expanded(
           child: Text(

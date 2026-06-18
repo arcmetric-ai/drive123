@@ -20,6 +20,8 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
+  static const _postAnimationHold = Duration(milliseconds: 1800);
+
   late final AnimationController _controller;
   late final Animation<double> _fade;
   late final Animation<double> _scale;
@@ -30,42 +32,33 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    _controller = AnimationController(
-      vsync: this,
-      duration: AppDurations.slow,
-    );
+    _controller = AnimationController(vsync: this, duration: AppDurations.slow);
 
-    _fade = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    );
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
 
-    _scale = Tween<double>(begin: 0.92, end: 1).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutBack,
-      ),
-    );
+    _scale = Tween<double>(
+      begin: 0.92,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
 
-    _slide =
-        Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     _logoBounce = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.96, end: 1.04).chain(
-          CurveTween(curve: Curves.easeOut),
-        ),
+        tween: Tween<double>(
+          begin: 0.96,
+          end: 1.04,
+        ).chain(CurveTween(curve: Curves.easeOut)),
         weight: 55,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.04, end: 1).chain(
-          CurveTween(curve: Curves.easeOutBack),
-        ),
+        tween: Tween<double>(
+          begin: 1.04,
+          end: 1,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 45,
       ),
     ]).animate(_controller);
@@ -80,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _onAnimationComplete() async {
-    await Future<void>.delayed(const Duration(milliseconds: 800));
+    await Future<void>.delayed(_postAnimationHold);
     if (!mounted) return;
     await _handlePostSplashNavigation();
   }
@@ -139,41 +132,41 @@ class _SplashScreenState extends State<SplashScreen>
                       position: _slide,
                       child: ScaleTransition(
                         scale: _scale,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ScaleTransition(
-                              scale: _logoBounce,
-                              child: const BrandBadge(
-                                size: 170,
-                                contentScale: 1.75,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.xxxl),
-                            const FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                'DRIVE TUTOR',
-                                style: TextStyle(
-                                  color: AppColors.foreground,
-                                  fontSize: 44,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.8,
-                                  height: 1,
-                                ),
-                              ),
-                            ),
-                          ],
+                        child: ScaleTransition(
+                          scale: _logoBounce,
+                          child: const BrandBadge(size: 280, contentScale: 1),
                         ),
                       ),
                     ),
                   ),
                 ),
-                const Positioned(
+                Positioned(
                   left: 0,
                   right: 0,
                   bottom: AppSpacing.xxxl,
-                  child: _SplashFooter(),
+                  child: FadeTransition(
+                    opacity: _fade,
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'DRIVE TUTOR',
+                            style: TextStyle(
+                              color: AppColors.foreground,
+                              fontSize: 44,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.8,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: AppSpacing.xxl),
+                        _SplashFooter(),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),

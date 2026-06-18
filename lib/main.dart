@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'constants/app_theme.dart';
 import 'constants/app_routes.dart';
+import 'services/app_link_service.dart';
 import 'services/push_notification_service.dart';
 
 Future<void> main() async {
@@ -25,10 +26,12 @@ Future<void> main() async {
   const definedSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
   const definedSupabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
   final envSupabaseUrl = dotenvLoaded ? dotenv.env['SUPABASE_URL'] : null;
-  final envSupabaseAnonKey =
-      dotenvLoaded ? dotenv.env['SUPABASE_ANON_KEY'] : null;
-  final supabaseUrl =
-      definedSupabaseUrl.isNotEmpty ? definedSupabaseUrl : envSupabaseUrl;
+  final envSupabaseAnonKey = dotenvLoaded
+      ? dotenv.env['SUPABASE_ANON_KEY']
+      : null;
+  final supabaseUrl = definedSupabaseUrl.isNotEmpty
+      ? definedSupabaseUrl
+      : envSupabaseUrl;
   final supabaseAnonKey = definedSupabaseAnonKey.isNotEmpty
       ? definedSupabaseAnonKey
       : envSupabaseAnonKey;
@@ -43,12 +46,10 @@ Future<void> main() async {
   await Firebase.initializeApp();
 
   // Initialize Supabase
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-  );
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
   await PushNotificationService.initialize();
+  await AppLinkService.initialize();
 
   runApp(const ProviderScope(child: DriveTApp()));
 }

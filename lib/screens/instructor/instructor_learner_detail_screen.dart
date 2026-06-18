@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_colors.dart';
 import '../../models/learner_progress.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/verified_profile_badge.dart';
 
 class InstructorLearnerDetailScreen extends StatefulWidget {
   /// Accepts either a full learner map or an object with a 'profile_id' / 'id'.
@@ -59,21 +60,19 @@ class _InstructorLearnerDetailScreenState
     final passed = widget.learner ?? {};
 
     // Prefer explicit profile data passed in. If a profile id is provided, fetch raw profile + learner detail.
-    final profileId =
-        (passed['profile_id'] ?? passed['id'] ?? passed['userId'])?.toString();
+    final profileId = (passed['profile_id'] ?? passed['id'] ?? passed['userId'])
+        ?.toString();
 
     if (profileId != null) {
-      final learnerDetail =
-          await SupabaseService.getLearnerProfileDetail(profileId);
+      final learnerDetail = await SupabaseService.getLearnerProfileDetail(
+        profileId,
+      );
       final progressRows = await SupabaseService.getLearnerSkillProgress(
         profileId,
       );
       if (learnerDetail != null) {
         setState(() {
-          _learner = {
-            ...learnerDetail,
-            ...passed,
-          };
+          _learner = {...learnerDetail, ...passed};
           _profile = _mapOrNull(learnerDetail['profile']) ?? {};
           _progressSkills = learnerProgressSkillsFromRows(progressRows);
           _normalizeLearnerDetail();
@@ -205,8 +204,9 @@ class _InstructorLearnerDetailScreenState
     final availabilityRaw =
         _learner['weekly_availability'] ?? profileMap?['weekly_availability'];
     if (availabilityRaw != null) {
-      _learner['weekly_availability'] =
-          _normalizeWeeklyAvailability(availabilityRaw);
+      _learner['weekly_availability'] = _normalizeWeeklyAvailability(
+        availabilityRaw,
+      );
     }
 
     if (_learner['availability_recurring'] == null &&
@@ -215,7 +215,8 @@ class _InstructorLearnerDetailScreenState
           profileMap?['availability_recurring'];
     }
 
-    final accountType = _asNullableString(_learner['account_type']) ??
+    final accountType =
+        _asNullableString(_learner['account_type']) ??
         _asNullableString(profileMap?['account_type']);
     if (accountType?.toLowerCase() == 'guardian') {
       final wardFirst = _pickString([
@@ -234,10 +235,7 @@ class _InstructorLearnerDetailScreenState
       if (wardName.isNotEmpty) {
         _learner['name'] = wardName;
       }
-      final wardAge = _pickInt([
-        _learner['ward_age'],
-        profileMap?['ward_age'],
-      ]);
+      final wardAge = _pickInt([_learner['ward_age'], profileMap?['ward_age']]);
       if (wardAge != null) {
         _learner['age'] = wardAge;
       }
@@ -322,7 +320,8 @@ class _InstructorLearnerDetailScreenState
     if (raw is Map) {
       raw.forEach((key, value) {
         final day = key.toString().toLowerCase();
-        final slots = (value as List?)
+        final slots =
+            (value as List?)
                 ?.whereType<String>()
                 .map((slot) => slot.toLowerCase())
                 .where((slot) => slot.isNotEmpty)
@@ -338,7 +337,8 @@ class _InstructorLearnerDetailScreenState
       for (final entry in raw) {
         if (entry is Map) {
           final day = entry['day']?.toString().toLowerCase();
-          final slots = (entry['slots'] as List?)
+          final slots =
+              (entry['slots'] as List?)
                   ?.whereType<String>()
                   .map((slot) => slot.toLowerCase())
                   .where((slot) => slot.isNotEmpty)
@@ -356,7 +356,8 @@ class _InstructorLearnerDetailScreenState
   }
 
   List<String> _preferredLocationSummaries() {
-    final source = _learner['preferred_locations'] ??
+    final source =
+        _learner['preferred_locations'] ??
         _profile['preferred_locations'] ??
         _learner['preferredLocations'];
     final results = <String>[];
@@ -395,9 +396,11 @@ class _InstructorLearnerDetailScreenState
       return explicit;
     }
     final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
-    final first = _asNullableString(profileMap?['first_name']) ??
+    final first =
+        _asNullableString(profileMap?['first_name']) ??
         _asNullableString(_profile['first_name']);
-    final last = _asNullableString(profileMap?['last_name']) ??
+    final last =
+        _asNullableString(profileMap?['last_name']) ??
         _asNullableString(_profile['last_name']);
     final combined = [first, last]
         .whereType<String>()
@@ -407,7 +410,8 @@ class _InstructorLearnerDetailScreenState
     if (combined.isNotEmpty) {
       return combined;
     }
-    final fallback = _asNullableString(profileMap?['full_name']) ??
+    final fallback =
+        _asNullableString(profileMap?['full_name']) ??
         _asNullableString(profileMap?['name']) ??
         _asNullableString(_profile['full_name']) ??
         _asNullableString(_profile['name']);
@@ -424,7 +428,8 @@ class _InstructorLearnerDetailScreenState
 
   String get _address {
     final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
-    final addressMap = _learner['home_address'] ??
+    final addressMap =
+        _learner['home_address'] ??
         _profile['home_address'] ??
         profileMap?['home_address'] ??
         _learner['address'] ??
@@ -456,7 +461,8 @@ class _InstructorLearnerDetailScreenState
   }
 
   String? get _relationshipStatus {
-    final status = widget.learner?['status'] ??
+    final status =
+        widget.learner?['status'] ??
         _learner['status'] ??
         _learner['requestStatus'] ??
         _learner['learner_status'];
@@ -474,7 +480,8 @@ class _InstructorLearnerDetailScreenState
   }
 
   String? get _learnerProfileId {
-    final value = _learner['profile_id'] ??
+    final value =
+        _learner['profile_id'] ??
         _learner['learner_id'] ??
         _learner['id'] ??
         _profile['id'];
@@ -496,9 +503,11 @@ class _InstructorLearnerDetailScreenState
     final profileMap = _mapOrNull(_learner['profile']);
     final nested = _asNullableString(profileMap?['profile_image_url']);
     if (nested != null) return nested;
-    final fallback = _asNullableString(_learner['profileImageUrl'] ??
-        _learner['profile_image_url'] ??
-        widget.learner?['profile_image_url']);
+    final fallback = _asNullableString(
+      _learner['profileImageUrl'] ??
+          _learner['profile_image_url'] ??
+          widget.learner?['profile_image_url'],
+    );
     return fallback;
   }
 
@@ -518,13 +527,14 @@ class _InstructorLearnerDetailScreenState
         final day = dayRaw.toString().toLowerCase();
         final slots = slotsRaw is List
             ? slotsRaw
-                .whereType<String>()
-                .map((slot) => slot.toLowerCase())
-                .toList()
+                  .whereType<String>()
+                  .map((slot) => slot.toLowerCase())
+                  .toList()
             : <String>[];
         if (slots.isEmpty) continue;
         slots.sort(
-            (a, b) => (_slotOrder[a] ?? 99).compareTo(_slotOrder[b] ?? 99));
+          (a, b) => (_slotOrder[a] ?? 99).compareTo(_slotOrder[b] ?? 99),
+        );
         result[day] = slots;
       }
     } else if (raw is Map) {
@@ -533,13 +543,14 @@ class _InstructorLearnerDetailScreenState
         final value = entry.value;
         final slots = value is List
             ? value
-                .whereType<String>()
-                .map((slot) => slot.toLowerCase())
-                .toList()
+                  .whereType<String>()
+                  .map((slot) => slot.toLowerCase())
+                  .toList()
             : <String>[];
         if (slots.isEmpty) continue;
         slots.sort(
-            (a, b) => (_slotOrder[a] ?? 99).compareTo(_slotOrder[b] ?? 99));
+          (a, b) => (_slotOrder[a] ?? 99).compareTo(_slotOrder[b] ?? 99),
+        );
         result[day] = slots;
       }
     }
@@ -557,8 +568,9 @@ class _InstructorLearnerDetailScreenState
 
   String _titleCase(String value) {
     if (value.isEmpty) return value;
-    final parts =
-        value.split(RegExp(r'[_\s]+')).where((part) => part.isNotEmpty);
+    final parts = value
+        .split(RegExp(r'[_\s]+'))
+        .where((part) => part.isNotEmpty);
     return parts.map(_capitalize).join(' ');
   }
 
@@ -571,8 +583,10 @@ class _InstructorLearnerDetailScreenState
     }
     final sortedDays = availability.keys.toList()
       ..sort(
-          (a, b) => _daySequence.indexOf(a).compareTo(_daySequence.indexOf(b)));
-    final recurring = (_learner['availability_recurring'] ??
+        (a, b) => _daySequence.indexOf(a).compareTo(_daySequence.indexOf(b)),
+      );
+    final recurring =
+        (_learner['availability_recurring'] ??
             _profile['availability_recurring']) ==
         true;
 
@@ -665,10 +679,12 @@ class _InstructorLearnerDetailScreenState
   }
 
   Widget _buildHeader(BuildContext context) {
-    final upcoming = (_learner['upcoming'] as String?) ??
+    final upcoming =
+        (_learner['upcoming'] as String?) ??
         (_learner['upcoming_lesson'] as String?) ??
         '';
-    final level = (_learner['level'] as String?) ??
+    final level =
+        (_learner['level'] as String?) ??
         (_learner['learning_focus'] as String?) ??
         '';
     final imageUrl = _profileImageUrl;
@@ -731,8 +747,10 @@ class _InstructorLearnerDetailScreenState
                 if (showStatusChip) ...[
                   const SizedBox(height: 6),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(12),
@@ -749,8 +767,10 @@ class _InstructorLearnerDetailScreenState
                 if (upcoming.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(12),
@@ -831,10 +851,7 @@ class _InstructorLearnerDetailScreenState
 
     final details = <Widget>[
       _detailRow('City', city ?? 'Not provided'),
-      _detailRow(
-        'Age',
-        age != null ? '$age years' : 'Not provided',
-      ),
+      _detailRow('Age', age != null ? '$age years' : 'Not provided'),
       _detailRow('Gender', gender ?? 'Not provided'),
       _detailRow(
         'Lessons completed',
@@ -876,10 +893,7 @@ class _InstructorLearnerDetailScreenState
                     .map((location) => Chip(label: Text(location)))
                     .toList(),
               )
-            : Text(
-                'Not provided',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
+            : Text('Not provided', style: TextStyle(color: Colors.grey[600])),
       ],
     ];
 
@@ -903,11 +917,14 @@ class _InstructorLearnerDetailScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.ocean)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.ocean,
+            ),
+          ),
           const SizedBox(height: 10),
           child,
         ],
@@ -915,9 +932,12 @@ class _InstructorLearnerDetailScreenState
     );
   }
 
-  Widget _detailRow(String label, String value,
-      {Color labelColor = const Color(0xFF6B7280),
-      Color valueColor = const Color(0xFF1F2933)}) {
+  Widget _detailRow(
+    String label,
+    String value, {
+    Color labelColor = const Color(0xFF6B7280),
+    Color valueColor = const Color(0xFF1F2933),
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -927,20 +947,12 @@ class _InstructorLearnerDetailScreenState
             width: 130,
             child: Text(
               label,
-              style: TextStyle(
-                color: labelColor,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(color: labelColor, fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: valueColor,
-              ),
-            ),
+            child: Text(value, style: TextStyle(color: valueColor)),
           ),
         ],
       ),
@@ -948,7 +960,8 @@ class _InstructorLearnerDetailScreenState
   }
 
   Widget _buildRecentLessons() {
-    final recent = (_learner['recentLessons'] as List?) ??
+    final recent =
+        (_learner['recentLessons'] as List?) ??
         (_learner['recent_lessons'] as List?) ??
         [];
     if (recent.isEmpty) {
@@ -987,8 +1000,10 @@ class _InstructorLearnerDetailScreenState
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('Target date: $target'),
-            Text(readiness,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(
+              readiness,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -998,20 +1013,22 @@ class _InstructorLearnerDetailScreenState
   }
 
   Widget _buildProgressEditor() {
-    final readyCount =
-        _progressSkills.where((skill) => skill.status.isTestReady).length;
+    final readyCount = _progressSkills
+        .where((skill) => skill.status.isTestReady)
+        .length;
     final progress = _progressSkills.isEmpty
         ? 0.0
         : _progressSkills.fold<double>(
-              0,
-              (sum, skill) => sum + skill.status.score,
-            ) /
-            _progressSkills.length;
-    final focusAreas = ((_learner['focusAreas'] as List?) ??
-            (_learner['focus_areas'] as List?) ??
-            [])
-        .whereType<String>()
-        .toList();
+                0,
+                (sum, skill) => sum + skill.status.score,
+              ) /
+              _progressSkills.length;
+    final focusAreas =
+        ((_learner['focusAreas'] as List?) ??
+                (_learner['focus_areas'] as List?) ??
+                [])
+            .whereType<String>()
+            .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1023,8 +1040,9 @@ class _InstructorLearnerDetailScreenState
                 value: progress.clamp(0, 1),
                 minHeight: 8,
                 backgroundColor: AppColors.grey200,
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(AppColors.ocean),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppColors.ocean,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -1049,8 +1067,9 @@ class _InstructorLearnerDetailScreenState
           Wrap(
             spacing: 8,
             runSpacing: 6,
-            children:
-                focusAreas.map((focus) => Chip(label: Text(focus))).toList(),
+            children: focusAreas
+                .map((focus) => Chip(label: Text(focus)))
+                .toList(),
           ),
         ],
         const SizedBox(height: 12),
@@ -1233,7 +1252,7 @@ class _VerifiedBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          Icon(Icons.verified, size: 16, color: Colors.white),
+          VerifiedProfileBadge(size: 18, borderWidth: 0),
           SizedBox(width: 4),
           Text(
             'Verified',
@@ -1250,10 +1269,7 @@ class _VerifiedBadge extends StatelessWidget {
 }
 
 class _AvailabilityPill extends StatelessWidget {
-  const _AvailabilityPill({
-    required this.day,
-    required this.slots,
-  });
+  const _AvailabilityPill({required this.day, required this.slots});
 
   final String day;
   final List<String> slots;
@@ -1293,8 +1309,10 @@ class _AvailabilityPill extends StatelessWidget {
             children: slots
                 .map(
                   (slot) => Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(999),

@@ -4,5 +4,10 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:drivetutor.ca</string>
+		<string>applinks:www.drivetutor.ca</string>
+	</array>
 </dict>
 </plist>
