@@ -147,6 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           GestureDetector(
             onTap: _pickProfileImage,
             child: Stack(
+              clipBehavior: Clip.none,
               children: [
                 CircleAvatar(
                   radius: 52,
