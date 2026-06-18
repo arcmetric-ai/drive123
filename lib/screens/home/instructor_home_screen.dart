@@ -3791,7 +3791,7 @@ class _InstructorOverviewHeader extends StatelessWidget {
                   const Positioned(
                     top: -2,
                     right: -3,
-                    child: VerifiedProfileBadge(size: 22, borderWidth: 1.5),
+                    child: VerifiedProfileBadge(size: 22),
                   ),
               ],
             ),

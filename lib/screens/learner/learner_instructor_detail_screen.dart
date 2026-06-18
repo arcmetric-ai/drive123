@@ -178,10 +178,8 @@ class _LearnerInstructorDetailScreenState
           if (languages is List &&
               (_profile['languages'] == null ||
                   (_profile['languages'] as List).isEmpty)) {
-            _profile['languages'] = languages
-                .whereType<String>()
-                .map((e) => e.trim())
-                .toList();
+            _profile['languages'] =
+                languages.whereType<String>().map((e) => e.trim()).toList();
           }
         }
         _syncSelectedVehicle();
@@ -266,8 +264,7 @@ class _LearnerInstructorDetailScreenState
   }
 
   Future<void> _handleRemoveInstructor() async {
-    final instructorId =
-        _requestContext?['instructorId'] as String? ??
+    final instructorId = _requestContext?['instructorId'] as String? ??
         (_profile['id'] ?? _profile['profile_id'] ?? _profile['profileId'])
             ?.toString();
     if (instructorId == null || instructorId.isEmpty || _processing) return;
@@ -353,8 +350,7 @@ class _LearnerInstructorDetailScreenState
   }
 
   String? get _relationshipStatus {
-    final status =
-        _requestStatus ??
+    final status = _requestStatus ??
         (_requestContext?['status'] as String?) ??
         (_profile['status'] as String?) ??
         (_profile['relationshipStatus'] as String?);
@@ -478,9 +474,8 @@ class _LearnerInstructorDetailScreenState
           if (year != null) makeModelParts.add(year);
           if (make != null) makeModelParts.add(make);
           if (model != null) makeModelParts.add(model);
-          final makeModel = makeModelParts.isNotEmpty
-              ? makeModelParts.join(' ')
-              : null;
+          final makeModel =
+              makeModelParts.isNotEmpty ? makeModelParts.join(' ') : null;
 
           final segments = <String>[];
           if (type != null) segments.add(type);
@@ -509,8 +504,7 @@ class _LearnerInstructorDetailScreenState
     if (vehicles is List) {
       for (final entry in vehicles) {
         if (entry is Map) {
-          final url =
-              _asNullableString(entry['photoUrl']) ??
+          final url = _asNullableString(entry['photoUrl']) ??
               _asNullableString(entry['photo_url']) ??
               _asNullableString(entry['imageUrl']) ??
               _asNullableString(entry['image_url']);
@@ -524,14 +518,12 @@ class _LearnerInstructorDetailScreenState
   }
 
   String? _resolveVehiclePhotoUrl() {
-    final directUrl =
-        _asNullableString(_profile['vehiclePhotoUrl']) ??
+    final directUrl = _asNullableString(_profile['vehiclePhotoUrl']) ??
         _asNullableString(_profile['vehicle_photo_url']);
     if (directUrl != null) return directUrl;
 
     final detailMap = _mapOrNull(_profile['detail']);
-    final detailUrl =
-        _asNullableString(detailMap?['vehiclePhotoUrl']) ??
+    final detailUrl = _asNullableString(detailMap?['vehiclePhotoUrl']) ??
         _asNullableString(detailMap?['vehicle_photo_url']);
     if (detailUrl != null) return detailUrl;
 
@@ -623,9 +615,8 @@ class _LearnerInstructorDetailScreenState
             options.add(_VehicleRequestOption(label: label, type: type ?? ''));
           }
         } else if (entry is String) {
-          final value = concealPlate
-              ? _concealPlate(entry.trim())
-              : entry.trim();
+          final value =
+              concealPlate ? _concealPlate(entry.trim()) : entry.trim();
           if (value.isNotEmpty) {
             options.add(_VehicleRequestOption(label: value, type: ''));
           }
@@ -766,14 +757,12 @@ class _LearnerInstructorDetailScreenState
     );
     final bool showContactInfo =
         _hasActiveRelationship && ((phone ?? '').isNotEmpty);
-    final bool showLocationNotes =
-        _hasActiveRelationship &&
+    final bool showLocationNotes = _hasActiveRelationship &&
         (locationNotes != null && locationNotes.isNotEmpty);
     final bool isVerified = _isVerifiedInstructor;
     final String? displayAge = age == 'Age not provided' ? null : age;
-    final String? displayGender = gender == 'Gender not provided'
-        ? null
-        : gender;
+    final String? displayGender =
+        gender == 'Gender not provided' ? null : gender;
     final String subtitleLine = [
       displayAge,
       displayGender,
@@ -786,9 +775,8 @@ class _LearnerInstructorDetailScreenState
         !_isSuppressed && (_requestStatus == null || isDeclined);
     final bool canEditMessage =
         !isPending && !_isSuppressed && (_requestStatus == null || isDeclined);
-    final String requestButtonLabel = isDeclined
-        ? 'Request Again'
-        : 'Request Lesson';
+    final String requestButtonLabel =
+        isDeclined ? 'Request Again' : 'Request Lesson';
 
     return WillPopScope(
       onWillPop: _handleWillPop,
@@ -822,7 +810,9 @@ class _LearnerInstructorDetailScreenState
                         Text(
                           name,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         if (isVerified) const _VerifiedBadge(),
@@ -834,8 +824,8 @@ class _LearnerInstructorDetailScreenState
                         subtitleLine,
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[700],
-                        ),
+                              color: Colors.grey[700],
+                            ),
                       ),
                     ],
                     if (driveTutorNumber != null) ...[
@@ -851,11 +841,11 @@ class _LearnerInstructorDetailScreenState
                         ),
                         child: Text(
                           'Drive Tutor #$driveTutorNumber',
-                          style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(
-                                color: AppColors.ocean,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    color: AppColors.ocean,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
                       ),
                     ],
@@ -870,9 +860,9 @@ class _LearnerInstructorDetailScreenState
                       ? bio!
                       : 'This instructor hasn\'t added a bio yet.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[800],
-                    height: 1.5,
-                  ),
+                        color: Colors.grey[800],
+                        height: 1.5,
+                      ),
                 ),
               ),
               if (showContactInfo) ...[
@@ -900,7 +890,9 @@ class _LearnerInstructorDetailScreenState
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           extra,
-                          style: Theme.of(context).textTheme.bodySmall
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
                               ?.copyWith(color: Colors.grey[600]),
                         ),
                       ),
@@ -942,8 +934,8 @@ class _LearnerInstructorDetailScreenState
                       Text(
                         'Preferred locations',
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                              color: Colors.grey[600],
+                            ),
                       ),
                       const SizedBox(height: 6),
                       Wrap(
@@ -966,8 +958,8 @@ class _LearnerInstructorDetailScreenState
                       Text(
                         'Services offered',
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                              color: Colors.grey[600],
+                            ),
                       ),
                       const SizedBox(height: 6),
                       Wrap(
@@ -990,15 +982,15 @@ class _LearnerInstructorDetailScreenState
                       Text(
                         'Location notes',
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                              color: Colors.grey[600],
+                            ),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         locationNotes,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[700],
-                        ),
+                              color: Colors.grey[700],
+                            ),
                       ),
                     ],
                   ],
@@ -1011,8 +1003,8 @@ class _LearnerInstructorDetailScreenState
                     ? Text(
                         'Languages not provided yet.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[700],
-                        ),
+                              color: Colors.grey[700],
+                            ),
                       )
                     : Wrap(
                         spacing: 8,
@@ -1035,10 +1027,9 @@ class _LearnerInstructorDetailScreenState
                   title: 'Preferred Vehicle',
                   child: DropdownButtonFormField<String>(
                     isExpanded: true,
-                    value:
-                        vehicleOptions.any(
-                          (option) => option.label == _selectedVehicleLabel,
-                        )
+                    value: vehicleOptions.any(
+                      (option) => option.label == _selectedVehicleLabel,
+                    )
                         ? _selectedVehicleLabel
                         : null,
                     decoration: const InputDecoration(
@@ -1106,8 +1097,8 @@ class _LearnerInstructorDetailScreenState
                     ? Text(
                         ratesFallback,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[800],
-                        ),
+                              color: Colors.grey[800],
+                            ),
                       )
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1275,7 +1266,7 @@ class _VerifiedBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          VerifiedProfileBadge(size: 18, borderWidth: 0),
+          VerifiedProfileBadge(size: 18),
           SizedBox(width: 4),
           Text(
             'Verified',
@@ -1362,8 +1353,8 @@ class _DetailSection extends StatelessWidget {
                 child: Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
               ),
               if (trailingImage != null && trailingImage!.isNotEmpty)

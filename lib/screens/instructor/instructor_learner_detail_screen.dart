@@ -60,8 +60,8 @@ class _InstructorLearnerDetailScreenState
     final passed = widget.learner ?? {};
 
     // Prefer explicit profile data passed in. If a profile id is provided, fetch raw profile + learner detail.
-    final profileId = (passed['profile_id'] ?? passed['id'] ?? passed['userId'])
-        ?.toString();
+    final profileId =
+        (passed['profile_id'] ?? passed['id'] ?? passed['userId'])?.toString();
 
     if (profileId != null) {
       final learnerDetail = await SupabaseService.getLearnerProfileDetail(
@@ -215,8 +215,7 @@ class _InstructorLearnerDetailScreenState
           profileMap?['availability_recurring'];
     }
 
-    final accountType =
-        _asNullableString(_learner['account_type']) ??
+    final accountType = _asNullableString(_learner['account_type']) ??
         _asNullableString(profileMap?['account_type']);
     if (accountType?.toLowerCase() == 'guardian') {
       final wardFirst = _pickString([
@@ -320,8 +319,7 @@ class _InstructorLearnerDetailScreenState
     if (raw is Map) {
       raw.forEach((key, value) {
         final day = key.toString().toLowerCase();
-        final slots =
-            (value as List?)
+        final slots = (value as List?)
                 ?.whereType<String>()
                 .map((slot) => slot.toLowerCase())
                 .where((slot) => slot.isNotEmpty)
@@ -337,8 +335,7 @@ class _InstructorLearnerDetailScreenState
       for (final entry in raw) {
         if (entry is Map) {
           final day = entry['day']?.toString().toLowerCase();
-          final slots =
-              (entry['slots'] as List?)
+          final slots = (entry['slots'] as List?)
                   ?.whereType<String>()
                   .map((slot) => slot.toLowerCase())
                   .where((slot) => slot.isNotEmpty)
@@ -356,8 +353,7 @@ class _InstructorLearnerDetailScreenState
   }
 
   List<String> _preferredLocationSummaries() {
-    final source =
-        _learner['preferred_locations'] ??
+    final source = _learner['preferred_locations'] ??
         _profile['preferred_locations'] ??
         _learner['preferredLocations'];
     final results = <String>[];
@@ -396,11 +392,9 @@ class _InstructorLearnerDetailScreenState
       return explicit;
     }
     final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
-    final first =
-        _asNullableString(profileMap?['first_name']) ??
+    final first = _asNullableString(profileMap?['first_name']) ??
         _asNullableString(_profile['first_name']);
-    final last =
-        _asNullableString(profileMap?['last_name']) ??
+    final last = _asNullableString(profileMap?['last_name']) ??
         _asNullableString(_profile['last_name']);
     final combined = [first, last]
         .whereType<String>()
@@ -410,8 +404,7 @@ class _InstructorLearnerDetailScreenState
     if (combined.isNotEmpty) {
       return combined;
     }
-    final fallback =
-        _asNullableString(profileMap?['full_name']) ??
+    final fallback = _asNullableString(profileMap?['full_name']) ??
         _asNullableString(profileMap?['name']) ??
         _asNullableString(_profile['full_name']) ??
         _asNullableString(_profile['name']);
@@ -428,8 +421,7 @@ class _InstructorLearnerDetailScreenState
 
   String get _address {
     final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
-    final addressMap =
-        _learner['home_address'] ??
+    final addressMap = _learner['home_address'] ??
         _profile['home_address'] ??
         profileMap?['home_address'] ??
         _learner['address'] ??
@@ -461,8 +453,7 @@ class _InstructorLearnerDetailScreenState
   }
 
   String? get _relationshipStatus {
-    final status =
-        widget.learner?['status'] ??
+    final status = widget.learner?['status'] ??
         _learner['status'] ??
         _learner['requestStatus'] ??
         _learner['learner_status'];
@@ -480,8 +471,7 @@ class _InstructorLearnerDetailScreenState
   }
 
   String? get _learnerProfileId {
-    final value =
-        _learner['profile_id'] ??
+    final value = _learner['profile_id'] ??
         _learner['learner_id'] ??
         _learner['id'] ??
         _profile['id'];
@@ -527,9 +517,9 @@ class _InstructorLearnerDetailScreenState
         final day = dayRaw.toString().toLowerCase();
         final slots = slotsRaw is List
             ? slotsRaw
-                  .whereType<String>()
-                  .map((slot) => slot.toLowerCase())
-                  .toList()
+                .whereType<String>()
+                .map((slot) => slot.toLowerCase())
+                .toList()
             : <String>[];
         if (slots.isEmpty) continue;
         slots.sort(
@@ -543,9 +533,9 @@ class _InstructorLearnerDetailScreenState
         final value = entry.value;
         final slots = value is List
             ? value
-                  .whereType<String>()
-                  .map((slot) => slot.toLowerCase())
-                  .toList()
+                .whereType<String>()
+                .map((slot) => slot.toLowerCase())
+                .toList()
             : <String>[];
         if (slots.isEmpty) continue;
         slots.sort(
@@ -568,9 +558,8 @@ class _InstructorLearnerDetailScreenState
 
   String _titleCase(String value) {
     if (value.isEmpty) return value;
-    final parts = value
-        .split(RegExp(r'[_\s]+'))
-        .where((part) => part.isNotEmpty);
+    final parts =
+        value.split(RegExp(r'[_\s]+')).where((part) => part.isNotEmpty);
     return parts.map(_capitalize).join(' ');
   }
 
@@ -585,8 +574,7 @@ class _InstructorLearnerDetailScreenState
       ..sort(
         (a, b) => _daySequence.indexOf(a).compareTo(_daySequence.indexOf(b)),
       );
-    final recurring =
-        (_learner['availability_recurring'] ??
+    final recurring = (_learner['availability_recurring'] ??
             _profile['availability_recurring']) ==
         true;
 
@@ -679,12 +667,10 @@ class _InstructorLearnerDetailScreenState
   }
 
   Widget _buildHeader(BuildContext context) {
-    final upcoming =
-        (_learner['upcoming'] as String?) ??
+    final upcoming = (_learner['upcoming'] as String?) ??
         (_learner['upcoming_lesson'] as String?) ??
         '';
-    final level =
-        (_learner['level'] as String?) ??
+    final level = (_learner['level'] as String?) ??
         (_learner['learning_focus'] as String?) ??
         '';
     final imageUrl = _profileImageUrl;
@@ -960,8 +946,7 @@ class _InstructorLearnerDetailScreenState
   }
 
   Widget _buildRecentLessons() {
-    final recent =
-        (_learner['recentLessons'] as List?) ??
+    final recent = (_learner['recentLessons'] as List?) ??
         (_learner['recent_lessons'] as List?) ??
         [];
     if (recent.isEmpty) {
@@ -1013,22 +998,20 @@ class _InstructorLearnerDetailScreenState
   }
 
   Widget _buildProgressEditor() {
-    final readyCount = _progressSkills
-        .where((skill) => skill.status.isTestReady)
-        .length;
+    final readyCount =
+        _progressSkills.where((skill) => skill.status.isTestReady).length;
     final progress = _progressSkills.isEmpty
         ? 0.0
         : _progressSkills.fold<double>(
-                0,
-                (sum, skill) => sum + skill.status.score,
-              ) /
-              _progressSkills.length;
-    final focusAreas =
-        ((_learner['focusAreas'] as List?) ??
-                (_learner['focus_areas'] as List?) ??
-                [])
-            .whereType<String>()
-            .toList();
+              0,
+              (sum, skill) => sum + skill.status.score,
+            ) /
+            _progressSkills.length;
+    final focusAreas = ((_learner['focusAreas'] as List?) ??
+            (_learner['focus_areas'] as List?) ??
+            [])
+        .whereType<String>()
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1067,9 +1050,8 @@ class _InstructorLearnerDetailScreenState
           Wrap(
             spacing: 8,
             runSpacing: 6,
-            children: focusAreas
-                .map((focus) => Chip(label: Text(focus)))
-                .toList(),
+            children:
+                focusAreas.map((focus) => Chip(label: Text(focus))).toList(),
           ),
         ],
         const SizedBox(height: 12),
@@ -1252,7 +1234,7 @@ class _VerifiedBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          VerifiedProfileBadge(size: 18, borderWidth: 0),
+          VerifiedProfileBadge(size: 18),
           SizedBox(width: 4),
           Text(
             'Verified',

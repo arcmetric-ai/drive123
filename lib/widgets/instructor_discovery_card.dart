@@ -100,7 +100,7 @@ class InstructorDiscoveryCard extends StatelessWidget {
                     const Positioned(
                       right: -4,
                       top: -4,
-                      child: VerifiedProfileBadge(size: 28, borderWidth: 2),
+                      child: VerifiedProfileBadge(size: 28),
                     ),
                 ],
               ),
