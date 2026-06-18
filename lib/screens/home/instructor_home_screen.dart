@@ -29,9 +29,8 @@ LessonStatus _deriveLessonStatus(Map<String, dynamic> lesson) {
     (lesson['status'] ?? '').toString(),
   );
   final scheduledStr = lesson['scheduled_at']?.toString();
-  final scheduled = scheduledStr != null
-      ? DateTime.tryParse(scheduledStr)
-      : null;
+  final scheduled =
+      scheduledStr != null ? DateTime.tryParse(scheduledStr) : null;
   if (scheduled == null) return baseStatus;
 
   double? durationHours;
@@ -223,8 +222,7 @@ class _InstructorBillingLifecycle extends StatefulWidget {
 }
 
 class _InstructorBillingLifecycleState
-    extends State<_InstructorBillingLifecycle>
-    with WidgetsBindingObserver {
+    extends State<_InstructorBillingLifecycle> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -472,9 +470,8 @@ class _DashboardTabState extends State<_DashboardTab> {
         if (fallbackParts.isNotEmpty) return fallbackParts.join(' ');
         return null;
       }();
-      final metadataImage =
-          SupabaseService.currentUser?.userMetadata?['profile_image_url']
-              as String?;
+      final metadataImage = SupabaseService
+          .currentUser?.userMetadata?['profile_image_url'] as String?;
       final derivedProfileImage = () {
         final primary = profile?['profile_image_url'] as String?;
         final avatar = profile?['avatar_url'] as String?;
@@ -508,9 +505,8 @@ class _DashboardTabState extends State<_DashboardTab> {
         _totalHours = summary['totalHours'] is num
             ? (summary['totalHours'] as num).toDouble()
             : 0.0;
-        _profileImageUrl = derivedProfileImage.isNotEmpty
-            ? derivedProfileImage
-            : null;
+        _profileImageUrl =
+            derivedProfileImage.isNotEmpty ? derivedProfileImage : null;
         _displayName = derivedName;
         _isVerified = profile?['is_verified'] == true;
         _notifications = notifications;
@@ -539,9 +535,8 @@ class _DashboardTabState extends State<_DashboardTab> {
   String get _profileInitials {
     final name = (_displayName ?? widget.name).trim();
     if (name.isEmpty || _looksLikeHandle(name)) return 'I';
-    final parts = name
-        .split(RegExp(r'\s+'))
-        .where((segment) => segment.isNotEmpty);
+    final parts =
+        name.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
     final initials = parts.take(2).map((segment) => segment[0].toUpperCase());
     final joined = initials.join();
     return joined.isNotEmpty ? joined : 'I';
@@ -551,9 +546,8 @@ class _DashboardTabState extends State<_DashboardTab> {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return false;
     if (trimmed.contains('@')) return true;
-    final parts = trimmed
-        .split(RegExp(r'\s+'))
-        .where((segment) => segment.isNotEmpty);
+    final parts =
+        trimmed.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
     if (parts.length > 1) return false;
     return RegExp(r'[0-9._]').hasMatch(trimmed);
   }
@@ -617,9 +611,8 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   bool _isNotificationUnread(InstructorNotification notification) {
     final now = DateTime.now();
-    final effective = notification.timestamp.isAfter(now)
-        ? now
-        : notification.timestamp;
+    final effective =
+        notification.timestamp.isAfter(now) ? now : notification.timestamp;
     if (_notificationsLastViewedAt == null) return true;
     return effective.isAfter(_notificationsLastViewedAt!);
   }
@@ -703,9 +696,8 @@ class _DashboardTabState extends State<_DashboardTab> {
             title: 'You have a class in 15 mins reminder',
             message:
                 'You have a class with $learnerName on $dayLabel at $timeRangeLabel in 15 minutes.',
-            timestamp: reminderTimestamp.isAfter(now)
-                ? reminderTimestamp
-                : startTime,
+            timestamp:
+                reminderTimestamp.isAfter(now) ? reminderTimestamp : startTime,
             icon: Icons.alarm,
             color: AppColors.golden,
           );
@@ -1200,139 +1192,146 @@ class _ScheduleTabState extends State<_ScheduleTab> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error
-          ? _ScheduleErrorView(onRetry: () => _loadLessonsForMonth(_focusedDay))
-          : SafeArea(
-              child: RefreshIndicator(
-                color: AppColors.primaryBlue,
-                onRefresh: _refresh,
-                child: ValueListenableBuilder<List<_LessonEvent>>(
-                  valueListenable: _selectedEvents,
-                  builder: (context, events, _) {
-                    final summaryText = events.isEmpty
-                        ? 'No lessons scheduled'
-                        : '${events.length} ${events.length == 1 ? 'lesson' : 'lessons'} scheduled';
-                    return SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 40),
-                      child: Column(
-                        children: [
-                          _buildCalendarCard(),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                            child: Container(
-                              decoration: _outlinedSurfaceDecoration(
-                                24,
-                                color: Colors.transparent,
-                              ),
-                              child: GlassPanel(
-                                borderRadius: BorderRadius.circular(24),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 14,
-                                ),
-                                opacity: 0.42,
-                                borderColor: AppColors.border,
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            DateFormat.yMMMMEEEEd().format(
-                                              _selectedDay,
-                                            ),
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w700,
-                                              color: AppColors.primaryBlue,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            summaryText,
-                                            style: const TextStyle(
-                                              color: Colors.black54,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+              ? _ScheduleErrorView(
+                  onRetry: () => _loadLessonsForMonth(_focusedDay))
+              : SafeArea(
+                  child: RefreshIndicator(
+                    color: AppColors.primaryBlue,
+                    onRefresh: _refresh,
+                    child: ValueListenableBuilder<List<_LessonEvent>>(
+                      valueListenable: _selectedEvents,
+                      builder: (context, events, _) {
+                        final summaryText = events.isEmpty
+                            ? 'No lessons scheduled'
+                            : '${events.length} ${events.length == 1 ? 'lesson' : 'lessons'} scheduled';
+                        return SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(0, 0, 0, 40),
+                          child: Column(
+                            children: [
+                              _buildCalendarCard(),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                                child: Container(
+                                  decoration: _outlinedSurfaceDecoration(
+                                    24,
+                                    color: Colors.transparent,
+                                  ),
+                                  child: GlassPanel(
+                                    borderRadius: BorderRadius.circular(24),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 18,
+                                      vertical: 14,
                                     ),
-                                    const SizedBox(width: 16),
-                                    FilledButton.icon(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: AppColors.primaryBlue,
-                                        foregroundColor: Colors.white,
-                                        shape: const StadiumBorder(),
-                                      ),
-                                      onPressed: () {
-                                        GoRouter.of(context).push(
-                                          AppRoutes.instructorAvailability,
-                                        );
-                                      },
-                                      icon: const Icon(
-                                        Icons.calendar_view_week,
-                                      ),
-                                      label: const Text('Weekly planner'),
+                                    opacity: 0.42,
+                                    borderColor: AppColors.border,
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                DateFormat.yMMMMEEEEd().format(
+                                                  _selectedDay,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: AppColors.primaryBlue,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                summaryText,
+                                                style: const TextStyle(
+                                                  color: Colors.black54,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        FilledButton.icon(
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor:
+                                                AppColors.primaryBlue,
+                                            foregroundColor: Colors.white,
+                                            shape: const StadiumBorder(),
+                                          ),
+                                          onPressed: () {
+                                            GoRouter.of(context).push(
+                                              AppRoutes.instructorAvailability,
+                                            );
+                                          },
+                                          icon: const Icon(
+                                            Icons.calendar_view_week,
+                                          ),
+                                          label: const Text('Weekly planner'),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          if (events.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                              child: Container(
-                                decoration: _outlinedSurfaceDecoration(
-                                  26,
-                                  color: Colors.transparent,
-                                ),
-                                child: GlassPanel(
-                                  borderRadius: BorderRadius.circular(26),
-                                  opacity: 0.42,
-                                  borderColor: AppColors.border,
-                                  padding: const EdgeInsets.all(24),
-                                  child: _EmptyState(
-                                    icon: Icons.event_available_outlined,
-                                    title: 'No lessons scheduled',
-                                    description:
-                                        'Use the weekly planner to add lessons for this day.',
-                                    primaryActionText: 'Open weekly planner',
-                                    onPrimaryAction: () {
-                                      GoRouter.of(
-                                        context,
-                                      ).push(AppRoutes.instructorAvailability);
-                                    },
                                   ),
                                 ),
                               ),
-                            )
-                          else
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                              child: Column(
-                                children: [
-                                  for (int i = 0; i < events.length; i++) ...[
-                                    if (i > 0) const SizedBox(height: 14),
-                                    _ScheduleEventTile(event: events[i]),
-                                  ],
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
+                              const SizedBox(height: 12),
+                              if (events.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  child: Container(
+                                    decoration: _outlinedSurfaceDecoration(
+                                      26,
+                                      color: Colors.transparent,
+                                    ),
+                                    child: GlassPanel(
+                                      borderRadius: BorderRadius.circular(26),
+                                      opacity: 0.42,
+                                      borderColor: AppColors.border,
+                                      padding: const EdgeInsets.all(24),
+                                      child: _EmptyState(
+                                        icon: Icons.event_available_outlined,
+                                        title: 'No lessons scheduled',
+                                        description:
+                                            'Use the weekly planner to add lessons for this day.',
+                                        primaryActionText:
+                                            'Open weekly planner',
+                                        onPrimaryAction: () {
+                                          GoRouter.of(
+                                            context,
+                                          ).push(
+                                              AppRoutes.instructorAvailability);
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      for (int i = 0;
+                                          i < events.length;
+                                          i++) ...[
+                                        if (i > 0) const SizedBox(height: 14),
+                                        _ScheduleEventTile(event: events[i]),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
-              ),
-            ),
     );
   }
 
@@ -1550,9 +1549,8 @@ class _ScheduleCard extends StatelessWidget {
                   CircleAvatar(
                     radius: 22,
                     backgroundColor: AppColors.primaryBlue.withOpacity(0.12),
-                    backgroundImage: avatarUrl.isNotEmpty
-                        ? NetworkImage(avatarUrl)
-                        : null,
+                    backgroundImage:
+                        avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
                     child: avatarUrl.isEmpty
                         ? Text(
                             initial,
@@ -2020,8 +2018,7 @@ class _BookingsTabState extends State<_BookingsTab>
       for (final lesson in lessons) {
         final status = _deriveLessonStatus(lesson);
         if (status != LessonStatus.scheduled &&
-            status != LessonStatus.inProgress)
-          continue;
+            status != LessonStatus.inProgress) continue;
         final scheduledStr = lesson['scheduled_at'] as String?;
         if (scheduledStr == null) continue;
         final scheduled = DateTime.tryParse(scheduledStr);
@@ -2064,9 +2061,7 @@ class _BookingsTabState extends State<_BookingsTab>
         final learnerColors = learnerColorForKey(_readLearnerColorKey(lesson));
 
         final dayKey = _normalizeDate(localStart);
-        map
-            .putIfAbsent(dayKey, () => <_LessonSlot>[])
-            .add(
+        map.putIfAbsent(dayKey, () => <_LessonSlot>[]).add(
               _LessonSlot(
                 id: (lesson['id'] ?? '').toString(),
                 start: startTime,
@@ -2510,8 +2505,8 @@ class _BookingsTabState extends State<_BookingsTab>
                     onPressed: isUpdating
                         ? null
                         : slot.status == LessonStatus.inProgress
-                        ? () => _completeInstructorLesson(slot)
-                        : () => _startInstructorLesson(slot),
+                            ? () => _completeInstructorLesson(slot)
+                            : () => _startInstructorLesson(slot),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: slot.status == LessonStatus.inProgress
                           ? AppColors.success
@@ -2658,15 +2653,15 @@ class _BookingsTabState extends State<_BookingsTab>
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error
-            ? _BookingsErrorView(onRetry: _loadLessons)
-            : TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildDayView(),
-                  _buildWeekView(),
-                  _buildMonthView(),
-                ],
-              ),
+                ? _BookingsErrorView(onRetry: _loadLessons)
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildDayView(),
+                      _buildWeekView(),
+                      _buildMonthView(),
+                    ],
+                  ),
       ),
     );
   }
@@ -2854,9 +2849,8 @@ class _MonthDayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool hasLessons = highlighted && slots.isNotEmpty;
-    final Color backgroundColor = hasLessons
-        ? Colors.white
-        : Colors.white.withOpacity(0.85);
+    final Color backgroundColor =
+        hasLessons ? Colors.white : Colors.white.withOpacity(0.85);
     final accentDots = <Color>[];
     for (final slot in slots) {
       if (!accentDots.contains(slot.learnerColors.accent)) {
@@ -2897,9 +2891,8 @@ class _MonthDayCell extends StatelessWidget {
                     style: TextStyle(
                       fontSize: compact ? 15 : 16,
                       fontWeight: FontWeight.w600,
-                      color: hasLessons
-                          ? AppColors.primaryBlue
-                          : Colors.black87,
+                      color:
+                          hasLessons ? AppColors.primaryBlue : Colors.black87,
                     ),
                   ),
                   if (hasLessons)
@@ -3190,9 +3183,8 @@ class _StatsRow extends StatelessWidget {
         const spacing = 12.0;
         const cardHeight = 110.0;
         final size = MediaQuery.of(context).size;
-        final maxWidth = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : size.width;
+        final maxWidth =
+            constraints.maxWidth.isFinite ? constraints.maxWidth : size.width;
         final availableWidth = math.max(maxWidth, 0.0);
         final totalSpacing = spacing * (columns - 1);
         final cardWidth = math.max(
@@ -3427,12 +3419,10 @@ class _UpcomingLessonsCard extends StatelessWidget {
 
   static String _lessonTimeLabel(Map<String, dynamic> lesson) {
     final scheduled = lesson['scheduled_at'] as String?;
-    DateTime? baseDate = scheduled != null
-        ? DateTime.tryParse(scheduled)?.toLocal()
-        : null;
+    DateTime? baseDate =
+        scheduled != null ? DateTime.tryParse(scheduled)?.toLocal() : null;
     final now = DateTime.now();
-    final isToday =
-        baseDate != null &&
+    final isToday = baseDate != null &&
         baseDate.year == now.year &&
         baseDate.month == now.month &&
         baseDate.day == now.day;
@@ -3503,16 +3493,14 @@ class _UpcomingLessonsCard extends StatelessWidget {
         final profile = Map<String, dynamic>.from(
           lesson['learner_profile'] as Map,
         );
-        final profileFocus = (profile['learning_focus'] ?? '')
-            .toString()
-            .trim();
+        final profileFocus =
+            (profile['learning_focus'] ?? '').toString().trim();
         if (profileFocus.isNotEmpty) return profileFocus;
       }
       if (lesson['learner'] is Map<String, dynamic>) {
         final learner = Map<String, dynamic>.from(lesson['learner'] as Map);
-        final learnerFocus = (learner['learning_focus'] ?? '')
-            .toString()
-            .trim();
+        final learnerFocus =
+            (learner['learning_focus'] ?? '').toString().trim();
         if (learnerFocus.isNotEmpty) return learnerFocus;
       }
       return '';
@@ -3542,8 +3530,7 @@ class _UpcomingLessonsCard extends StatelessWidget {
     final learner = lesson['learner'];
     List<dynamic>? preferredLocations;
     if (learner is Map<String, dynamic>) {
-      preferredLocations =
-          _preferredFrom(learner) ??
+      preferredLocations = _preferredFrom(learner) ??
           _preferredFrom(
             learner['profile'] is Map
                 ? Map<String, dynamic>.from(learner['profile'] as Map)
@@ -3555,8 +3542,7 @@ class _UpcomingLessonsCard extends StatelessWidget {
       final profile = Map<String, dynamic>.from(
         lesson['learner_profile'] as Map,
       );
-      preferredLocations =
-          _preferredFrom(profile) ??
+      preferredLocations = _preferredFrom(profile) ??
           _preferredFrom(
             profile['profile'] is Map
                 ? Map<String, dynamic>.from(profile['profile'] as Map)
@@ -3567,9 +3553,8 @@ class _UpcomingLessonsCard extends StatelessWidget {
     String? preferredSummary(List<dynamic> locations) {
       for (final entry in locations) {
         if (entry is Map) {
-          final label = (entry['label'] ?? entry['type'] ?? '')
-              .toString()
-              .trim();
+          final label =
+              (entry['label'] ?? entry['type'] ?? '').toString().trim();
           final address = (entry['address'] ?? '').toString().trim();
           if (label.isNotEmpty && address.isNotEmpty) {
             return '$label - $address';
@@ -3667,11 +3652,10 @@ class _RequestsCard extends StatelessWidget {
         ? formatLessonRequestLearnerName(previewRequest).toUpperCase()
         : 'NO PENDING REQUESTS';
     final learner = previewRequest?['learner'];
-    final learnerCity = learner is Map<String, dynamic>
-        ? learner['city']
-        : null;
-    final city = ((previewRequest?['requested_city'] ?? learnerCity) as String?)
-        ?.trim();
+    final learnerCity =
+        learner is Map<String, dynamic> ? learner['city'] : null;
+    final city =
+        ((previewRequest?['requested_city'] ?? learnerCity) as String?)?.trim();
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -3720,8 +3704,8 @@ class _RequestsCard extends StatelessWidget {
                   Text(
                     hasRequests
                         ? city != null && city.isNotEmpty
-                              ? '$learnerName • $city'
-                              : learnerName
+                            ? '$learnerName • $city'
+                            : learnerName
                         : 'Tap to view and manage learner requests',
                     style: const TextStyle(
                       fontSize: 14,
@@ -3805,9 +3789,9 @@ class _InstructorOverviewHeader extends StatelessWidget {
                 ),
                 if (isVerified)
                   const Positioned(
-                    top: -5,
-                    right: -5,
-                    child: VerifiedProfileBadge(size: 24, borderWidth: 1.5),
+                    top: -6,
+                    right: -7,
+                    child: VerifiedProfileBadge(size: 28, borderWidth: 3),
                   ),
               ],
             ),
@@ -3889,9 +3873,8 @@ class _InstructorOverviewHeader extends StatelessWidget {
   String _greetingName(String rawName) {
     final trimmed = rawName.trim();
     if (trimmed.isEmpty || trimmed.contains('@')) return 'Instructor';
-    final parts = trimmed
-        .split(RegExp(r'\s+'))
-        .where((segment) => segment.isNotEmpty);
+    final parts =
+        trimmed.split(RegExp(r'\s+')).where((segment) => segment.isNotEmpty);
     if (parts.isEmpty) return 'Instructor';
     final first = parts.first;
     if (parts.length == 1 && RegExp(r'[0-9._]').hasMatch(first)) {

@@ -162,9 +162,8 @@ class _HomeScreenState extends State<HomeScreen> {
       extra: LocationSetupArgs(
         savedLocations: _savedLocations,
         initialSelectionKey: _selectedLocationKey,
-        initialManualAddress: _selectedLocationKey == null
-            ? _selectedLocation
-            : null,
+        initialManualAddress:
+            _selectedLocationKey == null ? _selectedLocation : null,
       ),
     );
     if (result == null) return;
@@ -419,9 +418,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isNotificationUnread(LearnerNotification notification) {
     final now = DateTime.now();
-    final effectiveTimestamp = notification.timestamp.isAfter(now)
-        ? now
-        : notification.timestamp;
+    final effectiveTimestamp =
+        notification.timestamp.isAfter(now) ? now : notification.timestamp;
     if (_notificationsLastViewedAt == null) return true;
     return effectiveTimestamp.isAfter(_notificationsLastViewedAt!);
   }
@@ -446,8 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final request in requests) {
       final status = (request['status'] as String?)?.toLowerCase();
       if (status != 'accepted') continue;
-      final timestamp =
-          _parseDateTime(request['updated_at']) ??
+      final timestamp = _parseDateTime(request['updated_at']) ??
           _parseDateTime(request['created_at']) ??
           now;
       if (now.difference(timestamp).inDays > 30) continue;
@@ -502,9 +499,8 @@ class _HomeScreenState extends State<HomeScreen> {
               title: 'Lesson reminder',
               message:
                   'Reminder: Lesson with $instructorName on ${_formatDateTime(startDateTime)}.',
-              timestamp: reminderTimestamp.isAfter(now)
-                  ? reminderTimestamp
-                  : now,
+              timestamp:
+                  reminderTimestamp.isAfter(now) ? reminderTimestamp : now,
             );
           }
           break;
@@ -701,30 +697,30 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final body = switch (_selectedIndex) {
       0 => HomeDashboard(
-        name: _greetingName,
-        isLearner: _isLearner,
-        profileImageUrl: _profileImageUrl,
-        isVerified: _isVerified,
-        locationLabel: _selectedLocation,
-        selectedFocus: _selectedFocus,
-        completedSkills: _completedSkills,
-        totalSkills: _totalSkills,
-        nextSkillName: _nextSkillName,
-        isProgressLoading: _isProgressLoading,
-        isLessonsLoading: _lessonsLoading,
-        lessonsError: _lessonsError,
-        upcomingLessons: _upcomingLessons,
-        ongoingLesson: _ongoingLesson,
-        onRefreshLessons: _refreshUpcomingLessons,
-        onAddLocation: _handleSelectLocation,
-        onChangeFocus: _handleChangeFocus,
-        onBookLesson: _goToFindInstructor,
-        onMyLessons: _goToLessons,
-        onProgress: _goToProgress,
-        onProfile: _goToProfile,
-        onNotifications: _handleOpenNotifications,
-        hasNewNotifications: _hasRecentNotifications,
-      ),
+          name: _greetingName,
+          isLearner: _isLearner,
+          profileImageUrl: _profileImageUrl,
+          isVerified: _isVerified,
+          locationLabel: _selectedLocation,
+          selectedFocus: _selectedFocus,
+          completedSkills: _completedSkills,
+          totalSkills: _totalSkills,
+          nextSkillName: _nextSkillName,
+          isProgressLoading: _isProgressLoading,
+          isLessonsLoading: _lessonsLoading,
+          lessonsError: _lessonsError,
+          upcomingLessons: _upcomingLessons,
+          ongoingLesson: _ongoingLesson,
+          onRefreshLessons: _refreshUpcomingLessons,
+          onAddLocation: _handleSelectLocation,
+          onChangeFocus: _handleChangeFocus,
+          onBookLesson: _goToFindInstructor,
+          onMyLessons: _goToLessons,
+          onProgress: _goToProgress,
+          onProfile: _goToProfile,
+          onNotifications: _handleOpenNotifications,
+          hasNewNotifications: _hasRecentNotifications,
+        ),
       1 => FindInstructorScreen(selectedFocus: _selectedFocus),
       2 => const MyLessonsScreen(),
       3 => const ProgressTrackerScreen(),
@@ -879,13 +875,11 @@ class HomeDashboard extends StatelessWidget {
                 CircleAvatar(
                   radius: 38,
                   backgroundColor: const Color(0xFF5B6BC8),
-                  backgroundImage:
-                      profileImageUrl != null &&
+                  backgroundImage: profileImageUrl != null &&
                           profileImageUrl!.trim().isNotEmpty
                       ? NetworkImage(profileImageUrl!.trim())
                       : null,
-                  child:
-                      profileImageUrl != null &&
+                  child: profileImageUrl != null &&
                           profileImageUrl!.trim().isNotEmpty
                       ? null
                       : Text(
@@ -901,9 +895,9 @@ class HomeDashboard extends StatelessWidget {
                 ),
                 if (isVerified)
                   const Positioned(
-                    top: -3,
-                    right: -3,
-                    child: VerifiedProfileBadge(size: 30),
+                    top: -5,
+                    right: -6,
+                    child: VerifiedProfileBadge(size: 34, borderWidth: 4),
                   ),
                 const Positioned(
                   right: -2,
@@ -1266,9 +1260,8 @@ class _NotificationsSheet extends StatelessWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               TextButton(
-                onPressed: isLoading || notifications.isEmpty
-                    ? null
-                    : onMarkRead,
+                onPressed:
+                    isLoading || notifications.isEmpty ? null : onMarkRead,
                 child: const Text('Mark read'),
               ),
               const SizedBox(height: 12),

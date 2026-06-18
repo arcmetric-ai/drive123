@@ -165,9 +165,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 if (_isVerified)
                   const Positioned(
-                    top: -2,
-                    right: -2,
-                    child: VerifiedProfileBadge(size: 34),
+                    top: -6,
+                    right: -8,
+                    child: VerifiedProfileBadge(size: 42, borderWidth: 5),
                   ),
                 if (_isUploadingImage)
                   Positioned.fill(
@@ -318,8 +318,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _openingPreview
                     ? 'Opening preview...'
                     : (isInstructor
-                          ? 'Preview Public Instructor Profile'
-                          : 'Preview Public Profile'),
+                        ? 'Preview Public Instructor Profile'
+                        : 'Preview Public Profile'),
               ),
             ),
           ),
@@ -393,10 +393,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 : 'View all your past lessons',
             onTap: isInstructor
                 ? () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const InstructorBookingsHistoryScreen(),
-                    ),
-                  )
+                      MaterialPageRoute(
+                        builder: (_) => const InstructorBookingsHistoryScreen(),
+                      ),
+                    )
                 : () => context.push(AppRoutes.myLessons),
           ),
           _buildActionDivider(),
@@ -444,9 +444,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildInstructorReferralCard() {
     final code = _instructorDriveTutorNumber?.trim();
     final hasCode = code != null && code.isNotEmpty;
-    final inviteUrl = hasCode
-        ? 'https://www.drivetutor.ca/invite/instructor/$code'
-        : null;
+    final inviteUrl =
+        hasCode ? 'https://www.drivetutor.ca/invite/instructor/$code' : null;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1032,13 +1031,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _learnerClassesTaken = int.tryParse(classesTaken);
         }
         final lastClass = _asString(detail['last_class_date']);
-        _learnerLastClassDate = lastClass != null
-            ? DateTime.tryParse(lastClass)
-            : null;
+        _learnerLastClassDate =
+            lastClass != null ? DateTime.tryParse(lastClass) : null;
         final testDate = _asString(detail['target_test_date']);
-        _learnerTestDate = testDate != null
-            ? DateTime.tryParse(testDate)
-            : null;
+        _learnerTestDate =
+            testDate != null ? DateTime.tryParse(testDate) : null;
         final locations = detail['preferred_locations'];
         _learnerLocations = [];
         if (locations is List) {
@@ -1301,8 +1298,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (rawVehicles is List) {
         for (final entry in rawVehicles) {
           if (entry is Map) {
-            final url =
-                clean(entry['photoUrl']) ??
+            final url = clean(entry['photoUrl']) ??
                 clean(entry['photo_url']) ??
                 clean(entry['imageUrl']) ??
                 clean(entry['image_url']);
@@ -1463,15 +1459,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     final areas = composeAreas(detailMap['areas_of_operation']);
     final offeringRates = composeOfferingRates(detailMap['offering_rates']);
-    final languages =
-        (profileMap['languages'] is List
-                ? (profileMap['languages'] as List)
-                      .whereType<String>()
-                      .map(_titleCase)
-                      .where((value) => value.isNotEmpty)
-                      .toList()
-                : _instructorLanguages)
-            .toList();
+    final languages = (profileMap['languages'] is List
+            ? (profileMap['languages'] as List)
+                .whereType<String>()
+                .map(_titleCase)
+                .where((value) => value.isNotEmpty)
+                .toList()
+            : _instructorLanguages)
+        .toList();
     final offerings = detailMap['offerings'] is List
         ? List<String>.from(
             (detailMap['offerings'] as List).whereType<String>(),
@@ -1485,16 +1480,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final defaultRate = detailMap['default_rate'];
     final ratesLabel = composeRatesLabel(defaultRate, offeringRates);
 
-    final vehiclePhotoUrl =
-        clean(detailMap['vehicle_photo_url']) ??
+    final vehiclePhotoUrl = clean(detailMap['vehicle_photo_url']) ??
         clean(detailMap['vehiclePhotoUrl']) ??
         clean(profileMap['vehicle_photo_url']) ??
         firstVehiclePhoto(detailMap['vehicles']) ??
         firstVehiclePhoto(profileMap['vehicles']) ??
         '';
     final bio = _instructorBio ?? clean(detailMap['bio']) ?? '';
-    final serviceArea =
-        _instructorServiceArea ??
+    final serviceArea = _instructorServiceArea ??
         clean(detailMap['service_area']) ??
         clean(profileMap['city']) ??
         '';
@@ -1536,8 +1529,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'isVerified': _isVerified,
       'driveTutorNumber': clean(detailMap['drive_tutor_number']) ?? '',
       'licenseNumber': _licenceNumber ?? clean(profileMap['licence_number']),
-      'licenseExpiry':
-          _licenceExpiry?.toIso8601String() ??
+      'licenseExpiry': _licenceExpiry?.toIso8601String() ??
           clean(profileMap['licence_expiry']),
       'age': clean(profileMap['age']) ?? '',
       'gender': clean(profileMap['gender']) ?? '',
@@ -1664,7 +1656,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         error = null;
                                       });
                                       try {
-                                        await SupabaseService.claimInstructorReferralCode(
+                                        await SupabaseService
+                                            .claimInstructorReferralCode(
                                           controller.text,
                                         );
                                         if (!context.mounted) return;
@@ -2180,8 +2173,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (raw is Map) {
       raw.forEach((key, value) {
         final day = key.toString().toLowerCase();
-        final slots =
-            (value as List?)
+        final slots = (value as List?)
                 ?.whereType<String>()
                 .map((slot) => slot.trim().toLowerCase())
                 .where((slot) => slot.isNotEmpty)
@@ -2197,8 +2189,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       for (final entry in raw) {
         if (entry is Map) {
           final day = entry['day']?.toString().toLowerCase();
-          final slots =
-              (entry['slots'] as List?)
+          final slots = (entry['slots'] as List?)
                   ?.whereType<String>()
                   .map((slot) => slot.trim().toLowerCase())
                   .where((slot) => slot.isNotEmpty)

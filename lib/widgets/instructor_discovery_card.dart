@@ -24,21 +24,19 @@ class InstructorDiscoveryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final profileImage = instructor.user.profileImageUrl?.trim();
     final hasProfileImage = profileImage != null && profileImage.isNotEmpty;
-    final name = '${instructor.user.firstName} ${instructor.user.lastName}'
-        .trim();
-    final vehicle =
-        (instructor.vehicles.isNotEmpty
-                ? instructor.vehicles.first.summary()
-                : 'Vehicle details not provided')
-            .replaceAll(' �- ', ' - ');
+    final name =
+        '${instructor.user.firstName} ${instructor.user.lastName}'.trim();
+    final vehicle = (instructor.vehicles.isNotEmpty
+            ? instructor.vehicles.first.summary()
+            : 'Vehicle details not provided')
+        .replaceAll(' �- ', ' - ');
     final experienceText = '${instructor.yearsOfExperience} YEARS EXP.';
-    final effectiveRate =
-        displayedRate ??
+    final effectiveRate = displayedRate ??
         (instructor.hourlyRate > 0
             ? instructor.hourlyRate
             : (instructor.offeringRates.isNotEmpty
-                  ? instructor.offeringRates.values.first
-                  : 0.0));
+                ? instructor.offeringRates.values.first
+                : 0.0));
     final rateText = '\$${effectiveRate.toStringAsFixed(0)}';
     final pickupText = instructor.pickupPreference == true
         ? 'OFFERS LEARNER PICKUP'
@@ -100,9 +98,9 @@ class InstructorDiscoveryCard extends StatelessWidget {
                   ),
                   if (isVerified)
                     const Positioned(
-                      right: -4,
-                      top: -4,
-                      child: VerifiedProfileBadge(size: 28),
+                      right: -7,
+                      top: -7,
+                      child: VerifiedProfileBadge(size: 34, borderWidth: 4),
                     ),
                 ],
               ),

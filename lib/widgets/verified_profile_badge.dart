@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class VerifiedProfileBadge extends StatelessWidget {
-  const VerifiedProfileBadge({super.key, this.size = 28, this.borderWidth = 2});
+  const VerifiedProfileBadge({
+    super.key,
+    this.size = 28,
+    this.borderWidth = 3,
+    this.assetPadding = 1,
+  });
 
   final double size;
   final double borderWidth;
+  final double assetPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -24,10 +30,11 @@ class VerifiedProfileBadge extends StatelessWidget {
           ),
         ],
       ),
-      child: ClipOval(
+      child: Padding(
+        padding: EdgeInsets.all(assetPadding),
         child: SvgPicture.asset(
           'assets/icons/verified_badge_full.svg',
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
         ),
       ),
     );
