@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,12 +23,17 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   static const _postAnimationHold = Duration(milliseconds: 1800);
+  static const _navigationFallbackDelay = Duration(seconds: 4);
+  static const _preferenceTimeout = Duration(seconds: 2);
+  static const _routeResolutionTimeout = Duration(seconds: 10);
 
   late final AnimationController _controller;
   late final Animation<double> _fade;
   late final Animation<double> _scale;
   late final Animation<Offset> _slide;
   late final Animation<double> _logoBounce;
+  Timer? _fallbackTimer;
+  bool _navigationStarted = false;
 
   @override
   void initState() {
@@ -63,13 +70,14 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     ]).animate(_controller);
 
-    _controller
-      ..forward()
-      ..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _onAnimationComplete();
-        }
-      });
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _onAnimationComplete();
+      }
+    });
+    _controller.forward();
+    _fallbackTimer =
+        Timer(_navigationFallbackDelay, _handlePostSplashNavigation);
   }
 
   Future<void> _onAnimationComplete() async {
@@ -79,8 +87,15 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _handlePostSplashNavigation() async {
+    if (_navigationStarted) return;
+    _navigationStarted = true;
+    _fallbackTimer?.cancel();
+
     try {
-      final shouldShowIntro = await LaunchPreferences.shouldShowIntro();
+      final shouldShowIntro = await LaunchPreferences.shouldShowIntro().timeout(
+        _preferenceTimeout,
+        onTimeout: () => false,
+      );
       if (!mounted) return;
 
       if (shouldShowIntro) {
@@ -98,7 +113,7 @@ class _SplashScreenState extends State<SplashScreen>
       final destination = await SupabaseService.resolvePostAuthRoute(
         userId: user.id,
         metadataRole: user.userMetadata?['role'],
-      );
+      ).timeout(_routeResolutionTimeout);
 
       if (!mounted) return;
       context.go(destination);
@@ -111,6 +126,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _fallbackTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
