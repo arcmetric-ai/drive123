@@ -165,9 +165,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 if (_isVerified)
                   const Positioned(
-                    top: -6,
-                    right: -8,
-                    child: VerifiedProfileBadge(size: 42, borderWidth: 5),
+                    top: -2,
+                    right: -4,
+                    child: VerifiedProfileBadge(size: 36),
                   ),
                 if (_isUploadingImage)
                   Positioned.fill(

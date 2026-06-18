@@ -5,13 +5,15 @@ class VerifiedProfileBadge extends StatelessWidget {
   const VerifiedProfileBadge({
     super.key,
     this.size = 28,
-    this.borderWidth = 3,
-    this.assetPadding = 1,
+    this.borderWidth = 2,
+    this.assetPadding = 0,
+    this.assetScale = 1.16,
   });
 
   final double size;
   final double borderWidth;
   final double assetPadding;
+  final double assetScale;
 
   @override
   Widget build(BuildContext context) {
@@ -32,9 +34,12 @@ class VerifiedProfileBadge extends StatelessWidget {
       ),
       child: Padding(
         padding: EdgeInsets.all(assetPadding),
-        child: SvgPicture.asset(
-          'assets/icons/verified_badge_full.svg',
-          fit: BoxFit.contain,
+        child: Transform.scale(
+          scale: assetScale,
+          child: SvgPicture.asset(
+            'assets/icons/verified_badge_full.svg',
+            fit: BoxFit.contain,
+          ),
         ),
       ),
     );
