@@ -1,6 +1,19 @@
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 
+-- Keep this migration independently deployable. Some existing projects were
+-- created before credential expiry columns were introduced.
+alter table public.instructor_profiles
+  add column if not exists instructor_license_expires_at timestamptz,
+  add column if not exists insurance_document_expires_at timestamptz,
+  add column if not exists municipal_license_expires_at timestamptz;
+
+create index if not exists instructor_profiles_license_expiry_idx
+  on public.instructor_profiles (instructor_license_expires_at);
+
+create index if not exists instructor_profiles_insurance_expiry_idx
+  on public.instructor_profiles (insurance_document_expires_at);
+
 create table if not exists public.verification_document_versions (
   id uuid primary key default gen_random_uuid(),
   owner_user_id uuid not null,
@@ -452,6 +465,8 @@ drop policy if exists identity_verification_update_own on storage.objects;
 drop policy if exists identity_verification_delete_own on storage.objects;
 drop policy if exists instructor_credentials_update_own on storage.objects;
 drop policy if exists instructor_credentials_delete_own on storage.objects;
+drop policy if exists identity_verification_update_mutable_media_only on storage.objects;
+drop policy if exists identity_verification_delete_mutable_media_only on storage.objects;
 
 create policy identity_verification_update_mutable_media_only
   on storage.objects
