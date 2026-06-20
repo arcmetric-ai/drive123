@@ -2017,8 +2017,7 @@ class _BookingsTabState extends State<_BookingsTab>
       final map = <DateTime, List<_LessonSlot>>{};
       for (final lesson in lessons) {
         final status = _deriveLessonStatus(lesson);
-        if (status != LessonStatus.scheduled &&
-            status != LessonStatus.inProgress) continue;
+        if (status == LessonStatus.cancelled) continue;
         final scheduledStr = lesson['scheduled_at'] as String?;
         if (scheduledStr == null) continue;
         final scheduled = DateTime.tryParse(scheduledStr);
@@ -2059,6 +2058,15 @@ class _BookingsTabState extends State<_BookingsTab>
 
         final learnerName = _readLearnerName(lesson);
         final learnerColors = learnerColorForKey(_readLearnerColorKey(lesson));
+        final learner = lesson['learner'] is Map
+            ? Map<String, dynamic>.from(lesson['learner'] as Map)
+            : const <String, dynamic>{};
+        final address = (lesson['pickup_location'] ??
+                learner['pickup_address'] ??
+                learner['city'] ??
+                'Address not provided')
+            .toString();
+        final avatarUrl = (learner['profile_image_url'] ?? '').toString();
 
         final dayKey = _normalizeDate(localStart);
         map.putIfAbsent(dayKey, () => <_LessonSlot>[]).add(
@@ -2067,6 +2075,8 @@ class _BookingsTabState extends State<_BookingsTab>
                 start: startTime,
                 end: endTime,
                 learner: learnerName,
+                address: address,
+                avatarUrl: avatarUrl,
                 focus: (lesson['focus'] ?? 'Driving lesson').toString(),
                 status: status,
                 learnerColors: learnerColors,
@@ -2450,11 +2460,34 @@ class _BookingsTabState extends State<_BookingsTab>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  slot.timeLabel,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: colors.accentText,
+                Expanded(
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: colors.pillBackground,
+                        backgroundImage: slot.avatarUrl.isNotEmpty
+                            ? NetworkImage(slot.avatarUrl)
+                            : null,
+                        child: slot.avatarUrl.isEmpty
+                            ? Text(slot.learner.isEmpty ? '?' : slot.learner[0])
+                            : null,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(slot.learner,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: colors.accentText)),
+                            Text(slot.timeLabel,
+                                style: TextStyle(color: colors.accentText)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Container(
@@ -2471,7 +2504,9 @@ class _BookingsTabState extends State<_BookingsTab>
                   child: Text(
                     slot.status == LessonStatus.inProgress
                         ? 'IN PROGRESS'
-                        : slot.learner,
+                        : slot.status == LessonStatus.completed
+                            ? 'COMPLETED'
+                            : slot.focus,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: slot.status == LessonStatus.inProgress
@@ -2484,7 +2519,7 @@ class _BookingsTabState extends State<_BookingsTab>
             ),
             const SizedBox(height: 8),
             Text(
-              slot.focus,
+              '${slot.focus}  •  ${slot.address}',
               style: TextStyle(color: colors.accentText.withOpacity(0.8)),
             ),
             const SizedBox(height: 14),
@@ -2500,13 +2535,15 @@ class _BookingsTabState extends State<_BookingsTab>
                   ),
                 ),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
+                if (slot.status != LessonStatus.completed)
+                  ElevatedButton.icon(
                     onPressed: isUpdating
                         ? null
                         : slot.status == LessonStatus.inProgress
                             ? () => _completeInstructorLesson(slot)
-                            : () => _startInstructorLesson(slot),
+                            : DateTime.now().isBefore(slot.start)
+                                ? null
+                                : () => _startInstructorLesson(slot),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: slot.status == LessonStatus.inProgress
                           ? AppColors.success
@@ -2533,7 +2570,6 @@ class _BookingsTabState extends State<_BookingsTab>
                           : 'Start',
                     ),
                   ),
-                ),
               ],
             ),
           ],
@@ -2557,23 +2593,38 @@ class _BookingsTabState extends State<_BookingsTab>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            slot.timeLabel,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: colors.accentText,
-            ),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 15,
+                backgroundColor: colors.pillBackground,
+                backgroundImage: slot.avatarUrl.isNotEmpty
+                    ? NetworkImage(slot.avatarUrl)
+                    : null,
+                child: slot.avatarUrl.isEmpty
+                    ? Text(slot.learner.isEmpty ? '?' : slot.learner[0],
+                        style: const TextStyle(fontSize: 11))
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(slot.learner,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: colors.accent,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
-          Text(
-            slot.learner,
-            style: TextStyle(
-              fontSize: 12,
-              color: colors.accent,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text(slot.timeLabel,
+              style: TextStyle(fontSize: 12, color: colors.accentText)),
+          Text(slot.focus,
+              style: TextStyle(fontSize: 11, color: colors.accentText)),
+          Text(slot.address,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: Colors.black54)),
         ],
       ),
     );
@@ -2683,13 +2734,25 @@ class _BookingsTabState extends State<_BookingsTab>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  DateFormat.yMMMMEEEEd().format(date),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryBlue,
-                  ),
+                Row(
+                  children: [
+                    IconButton.filledTonal(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      tooltip: 'Back to month',
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        DateFormat.yMMMMEEEEd().format(date),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 ...slots.map(
@@ -2948,6 +3011,8 @@ class _LessonSlot {
     required this.start,
     required this.end,
     required this.learner,
+    required this.address,
+    required this.avatarUrl,
     required this.focus,
     required this.status,
     required this.learnerColors,
@@ -2957,6 +3022,8 @@ class _LessonSlot {
   final DateTime start;
   final DateTime end;
   final String learner;
+  final String address;
+  final String avatarUrl;
   final String focus;
   final LessonStatus status;
   final LearnerColorSet learnerColors;
@@ -3789,9 +3856,9 @@ class _InstructorOverviewHeader extends StatelessWidget {
                 ),
                 if (isVerified)
                   const Positioned(
-                    top: -2,
-                    right: -3,
-                    child: VerifiedProfileBadge(size: 22),
+                    top: -7,
+                    right: -7,
+                    child: VerifiedProfileBadge(size: 30, showCutout: true),
                   ),
               ],
             ),

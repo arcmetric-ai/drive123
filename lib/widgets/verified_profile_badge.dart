@@ -6,21 +6,49 @@ class VerifiedProfileBadge extends StatelessWidget {
     super.key,
     this.size = 28,
     this.assetScale = 1,
+    this.showCutout = false,
   });
 
   final double size;
   final double assetScale;
+  final bool showCutout;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    final badge = SizedBox(
       width: size,
       height: size,
       child: Transform.scale(
         scale: assetScale,
         child: SvgPicture.asset(
-          'assets/icons/verified_badge_full.svg',
+          'assets/icons/new-spiral-verified.svg',
         ),
+      ),
+    );
+
+    if (!showCutout) return badge;
+
+    final cutoutSize = size + 3;
+    return SizedBox(
+      width: cutoutSize,
+      height: cutoutSize,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Transform.scale(
+            scale: 1.08,
+            child: SvgPicture.asset(
+              'assets/icons/new-spiral-verified.svg',
+              width: size,
+              height: size,
+              colorFilter: const ColorFilter.mode(
+                Color(0xFFFFFFFF),
+                BlendMode.srcIn,
+              ),
+            ),
+          ),
+          badge,
+        ],
       ),
     );
   }

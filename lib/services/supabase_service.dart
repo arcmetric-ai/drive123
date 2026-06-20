@@ -1,4 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as path_util;
+import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:io';
 import 'dart:convert';
@@ -23,6 +26,22 @@ class AccountAlreadyExistsException implements Exception {
 
   @override
   String toString() => 'An account already exists for $email.';
+}
+
+class _ValidatedUpload {
+  const _ValidatedUpload({
+    required this.bytes,
+    required this.mimeType,
+    required this.extension,
+    required this.originalName,
+    required this.sha256Hex,
+  });
+
+  final Uint8List bytes;
+  final String mimeType;
+  final String extension;
+  final String originalName;
+  final String sha256Hex;
 }
 
 class SupabaseService {
@@ -52,6 +71,19 @@ class SupabaseService {
     required String entityId,
     Map<String, dynamic>? data,
   }) async {
+    const databaseQueuedEvents = {
+      'learner.request.created',
+      'learner.request.cancelled',
+      'learner.request.accepted',
+      'learner.request.rejected',
+      'lesson.booked',
+      'lesson.rescheduled',
+      'lesson.cancelled',
+      'lesson.started',
+      'lesson.ended',
+      'lesson.review.requested',
+    };
+    if (databaseQueuedEvents.contains(eventKey)) return;
     if (entityId.trim().isEmpty || currentUser == null) return;
     try {
       await _client.functions.invoke(
@@ -73,6 +105,39 @@ class SupabaseService {
       return 'guardian';
     }
     return 'learner';
+  }
+
+  static bool _isMissingLearnerAccountColumnsError(Object error) {
+    final message = error.toString();
+    return message.contains('PGRST204') &&
+        message.contains('learner_profiles') &&
+        (message.contains('account_type') || message.contains('ward_'));
+  }
+
+  static Map<String, dynamic> _withoutLearnerAccountColumns(
+    Map<String, dynamic> data,
+  ) {
+    return Map<String, dynamic>.from(data)
+      ..remove('account_type')
+      ..remove('ward_first_name')
+      ..remove('ward_last_name')
+      ..remove('ward_age')
+      ..remove('ward_gender');
+  }
+
+  static Future<void> _upsertLearnerProfileCompat(
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await _client
+          .from('learner_profiles')
+          .upsert(data, onConflict: 'profile_id');
+    } catch (error) {
+      if (!_isMissingLearnerAccountColumnsError(error)) rethrow;
+      await _client.from('learner_profiles').upsert(
+          _withoutLearnerAccountColumns(data),
+          onConflict: 'profile_id');
+    }
   }
 
   // Auth Methods
@@ -176,14 +241,11 @@ class SupabaseService {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
 
-    var query = _client
-        .from('device_tokens')
-        .update({
-          'is_active': false,
-          'revoked_at': DateTime.now().toUtc().toIso8601String(),
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('profile_id', userId);
+    var query = _client.from('device_tokens').update({
+      'is_active': false,
+      'revoked_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('profile_id', userId);
 
     final token = fcmToken?.trim();
     if (token != null && token.isNotEmpty) {
@@ -323,10 +385,10 @@ class SupabaseService {
         'profile_id': userId,
       }, onConflict: 'profile_id');
     } else {
-      await _client.from('learner_profiles').upsert({
+      await _upsertLearnerProfileCompat({
         'profile_id': userId,
         'account_type': _normalizeLearnerAccountType(learnerAccountType),
-      }, onConflict: 'profile_id');
+      });
     }
 
     // Keep auth metadata in sync because multiple screens read role from metadata.
@@ -424,12 +486,11 @@ class SupabaseService {
   }) async {
     await _client
         .from('profiles')
-        .update({'onboarding_stage': stage})
-        .eq('id', userId);
+        .update({'onboarding_stage': stage}).eq('id', userId);
   }
 
   static Future<IdentityVerificationState?>
-  getCurrentIdentityVerificationState() async {
+      getCurrentIdentityVerificationState() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
     return getIdentityVerificationState(user.id);
@@ -485,9 +546,8 @@ class SupabaseService {
       try {
         final learnerDetail = await getLearnerProfileDetail(userId);
         final focus = (learnerDetail?['learning_focus'] as String?)?.trim();
-        final identityStatus = verificationState?.verificationStatus
-            ?.trim()
-            .toLowerCase();
+        final identityStatus =
+            verificationState?.verificationStatus?.trim().toLowerCase();
         if (identityStatus == 'referral_approved') {
           final hasReferralInstructor =
               await hasActiveLearnerInstructorRelationship(userId);
@@ -502,9 +562,8 @@ class SupabaseService {
         return AppRoutes.learningFocus;
       }
 
-      final identityStatus = verificationState?.verificationStatus
-          ?.trim()
-          .toLowerCase();
+      final identityStatus =
+          verificationState?.verificationStatus?.trim().toLowerCase();
       if (verificationState?.hasRequiredIdentityDocuments != true ||
           identityStatus == 'rejected') {
         return AppRoutes.identityVerificationIntro;
@@ -516,17 +575,16 @@ class SupabaseService {
         return AppRoutes.identityPendingReview;
       }
 
-      final approvalToken =
-          verificationState?.verificationApprovedAt
+      final approvalToken = verificationState?.verificationApprovedAt
               ?.toUtc()
               .toIso8601String() ??
           verificationState?.verificationStatus ??
           'approved';
       final shouldShowSuccess =
           await LaunchPreferences.shouldShowLearnerApprovalSuccess(
-            userId: userId,
-            approvalToken: approvalToken,
-          );
+        userId: userId,
+        approvalToken: approvalToken,
+      );
       if (shouldShowSuccess) {
         return AppRoutes.learnerApprovalSuccess;
       }
@@ -534,12 +592,11 @@ class SupabaseService {
     }
 
     if (role == 'instructor') {
-      final identityStatus = verificationState?.verificationStatus
-          ?.trim()
-          .toLowerCase();
+      final identityStatus =
+          verificationState?.verificationStatus?.trim().toLowerCase();
       final hasIdentityDocs =
           verificationState?.identityLicensePath?.trim().isNotEmpty == true &&
-          verificationState?.identitySelfiePath?.trim().isNotEmpty == true;
+              verificationState?.identitySelfiePath?.trim().isNotEmpty == true;
       if (!hasIdentityDocs || identityStatus == 'rejected') {
         return AppRoutes.identityVerificationIntro;
       }
@@ -577,29 +634,29 @@ class SupabaseService {
     String? guardianSelfieImagePath,
   }) async {
     final submittedAt = DateTime.now().toUtc().toIso8601String();
-    final licensePath = await _uploadIdentityAsset(
+    final licensePath = await _uploadImmutableIdentityDocument(
       userId: userId,
       file: File(licenseImagePath),
-      filePrefix: 'license',
+      documentType: 'identity_license',
     );
-    final selfiePath = await _uploadIdentityAsset(
+    final selfiePath = await _uploadMutableIdentityMedia(
       userId: userId,
       file: File(selfieImagePath),
-      filePrefix: 'selfie',
+      mediaKey: 'selfie',
     );
 
     String? guardianLicensePath;
     String? guardianSelfiePath;
     if (guardianLicenseImagePath != null && guardianSelfieImagePath != null) {
-      guardianLicensePath = await _uploadIdentityAsset(
+      guardianLicensePath = await _uploadImmutableIdentityDocument(
         userId: userId,
         file: File(guardianLicenseImagePath),
-        filePrefix: 'guardian-license',
+        documentType: 'guardian_identity_license',
       );
-      guardianSelfiePath = await _uploadIdentityAsset(
+      guardianSelfiePath = await _uploadMutableIdentityMedia(
         userId: userId,
         file: File(guardianSelfieImagePath),
-        filePrefix: 'guardian-selfie',
+        mediaKey: 'guardian-selfie',
       );
     }
 
@@ -631,22 +688,19 @@ class SupabaseService {
     required String role,
   }) async {
     final timestamp = DateTime.now().toUtc().toIso8601String();
-    await _client
-        .from('profiles')
-        .update({
-          'role': role,
-          'verification_status': 'approved',
-          'verification_submitted_at': timestamp,
-          'verification_review_started_at': timestamp,
-          'verification_approved_at': timestamp,
-          'identity_license_path': 'testing://license-skip',
-          'identity_selfie_path': 'testing://selfie-skip',
-          'guardian_identity_license_path': 'testing://guardian-license-skip',
-          'guardian_identity_selfie_path': 'testing://guardian-selfie-skip',
-          'guardian_consent_submitted_at': timestamp,
-          'is_verified': role == 'learner',
-        })
-        .eq('id', userId);
+    await _client.from('profiles').update({
+      'role': role,
+      'verification_status': 'approved',
+      'verification_submitted_at': timestamp,
+      'verification_review_started_at': timestamp,
+      'verification_approved_at': timestamp,
+      'identity_license_path': 'testing://license-skip',
+      'identity_selfie_path': 'testing://selfie-skip',
+      'guardian_identity_license_path': 'testing://guardian-license-skip',
+      'guardian_identity_selfie_path': 'testing://guardian-selfie-skip',
+      'guardian_consent_submitted_at': timestamp,
+      'is_verified': role == 'learner',
+    }).eq('id', userId);
   }
 
   static Future<void> uploadInstructorCredentialDocument({
@@ -655,48 +709,62 @@ class SupabaseService {
     required File file,
     DateTime? expiresAt,
   }) async {
-    final bytes = await file.readAsBytes();
-    final extension = file.path.split('.').last.toLowerCase();
+    final upload = await _validateUploadFile(file, allowPdf: true);
+    final nonce = _uploadNonce();
     final storagePath =
-        '$userId/${documentType.storageKey}-${DateTime.now().millisecondsSinceEpoch}.$extension';
+        '$userId/documents/${documentType.storageKey}-$nonce.${upload.extension}';
 
-    await _client.storage
-        .from(_instructorCredentialsBucket)
-        .uploadBinary(
+    await _client.storage.from(_instructorCredentialsBucket).uploadBinary(
           storagePath,
-          bytes,
-          fileOptions: const FileOptions(upsert: true),
+          upload.bytes,
+          fileOptions: FileOptions(
+            upsert: false,
+            contentType: upload.mimeType,
+            cacheControl: 'private, max-age=0, no-store',
+          ),
         );
+
+    try {
+      await _client.rpc('register_verification_document_version', params: {
+        'p_document_type': documentType.storageKey,
+        'p_storage_bucket': _instructorCredentialsBucket,
+        'p_storage_path': storagePath,
+        'p_original_file_name': upload.originalName,
+        'p_mime_type': upload.mimeType,
+        'p_size_bytes': upload.bytes.length,
+        'p_sha256_hex': upload.sha256Hex,
+        'p_expires_at': expiresAt == null
+            ? null
+            : DateTime.utc(
+                expiresAt.year,
+                expiresAt.month,
+                expiresAt.day,
+                23,
+                59,
+                59,
+              ).toIso8601String(),
+      });
+    } catch (_) {
+      // Registration is authoritative. The immutable storage object is left
+      // intact for an administrator to reconcile instead of deleting evidence.
+      rethrow;
+    }
 
     final existingProfile = await _client
         .from('instructor_profiles')
         .select('credentials_status')
         .eq('profile_id', userId)
         .maybeSingle();
-    final currentStatus = (existingProfile?['credentials_status'] as String?)
-        ?.trim();
+    final currentStatus =
+        (existingProfile?['credentials_status'] as String?)?.trim();
 
     final updates = <String, dynamic>{
       'profile_id': userId,
-      documentType.columnName: storagePath,
       'credentials_status':
           (currentStatus == 'approved' || currentStatus == 'pending')
-          ? currentStatus
-          : 'not_started',
+              ? currentStatus
+              : 'not_started',
     };
-    final expiryColumn = documentType.expiryColumnName;
-    if (expiryColumn != null && expiresAt != null) {
-      final endOfDay = DateTime.utc(
-        expiresAt.year,
-        expiresAt.month,
-        expiresAt.day,
-        23,
-        59,
-        59,
-      );
-      updates[expiryColumn] = endOfDay.toIso8601String();
-    }
-
     await _client
         .from('instructor_profiles')
         .upsert(updates, onConflict: 'profile_id');
@@ -726,24 +794,55 @@ class SupabaseService {
     await updateProfileFields(userId, {'is_verified': false});
   }
 
-  static Future<String> _uploadIdentityAsset({
+  static Future<String> _uploadImmutableIdentityDocument({
     required String userId,
     required File file,
-    required String filePrefix,
+    required String documentType,
   }) async {
-    final bytes = await file.readAsBytes();
-    final fileExtension = file.path.split('.').last.toLowerCase();
+    final upload = await _validateUploadFile(file, allowPdf: true);
     final storagePath =
-        '$userId/$filePrefix-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+        '$userId/documents/$documentType-${_uploadNonce()}.${upload.extension}';
 
-    await _client.storage
-        .from(_identityVerificationBucket)
-        .uploadBinary(
+    await _client.storage.from(_identityVerificationBucket).uploadBinary(
           storagePath,
-          bytes,
-          fileOptions: const FileOptions(upsert: true),
+          upload.bytes,
+          fileOptions: FileOptions(
+            upsert: false,
+            contentType: upload.mimeType,
+            cacheControl: 'private, max-age=0, no-store',
+          ),
         );
 
+    await _client.rpc('register_verification_document_version', params: {
+      'p_document_type': documentType,
+      'p_storage_bucket': _identityVerificationBucket,
+      'p_storage_path': storagePath,
+      'p_original_file_name': upload.originalName,
+      'p_mime_type': upload.mimeType,
+      'p_size_bytes': upload.bytes.length,
+      'p_sha256_hex': upload.sha256Hex,
+      'p_expires_at': null,
+    });
+
+    return storagePath;
+  }
+
+  static Future<String> _uploadMutableIdentityMedia({
+    required String userId,
+    required File file,
+    required String mediaKey,
+  }) async {
+    final upload = await _validateUploadFile(file, allowPdf: false);
+    final storagePath = '$userId/mutable/$mediaKey';
+    await _client.storage.from(_identityVerificationBucket).uploadBinary(
+          storagePath,
+          upload.bytes,
+          fileOptions: FileOptions(
+            upsert: true,
+            contentType: upload.mimeType,
+            cacheControl: 'private, max-age=0, no-store',
+          ),
+        );
     return storagePath;
   }
 
@@ -754,11 +853,8 @@ class SupabaseService {
   // User Methods
   static Future<UserModel?> getUserProfile(String userId) async {
     try {
-      final response = await _client
-          .from('profiles')
-          .select()
-          .eq('id', userId)
-          .single();
+      final response =
+          await _client.from('profiles').select().eq('id', userId).single();
 
       return UserModel.fromJson(response);
     } catch (e) {
@@ -794,17 +890,17 @@ class SupabaseService {
     required String userId,
     required File file,
   }) async {
-    final bytes = await file.readAsBytes();
-    final fileExtension = file.path.split('.').last;
-    final filePath =
-        'profile_images/$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+    final upload = await _validateUploadFile(file, allowPdf: false);
+    final filePath = 'profile_images/$userId/current';
 
-    await _client.storage
-        .from('avatars')
-        .uploadBinary(
+    await _client.storage.from('avatars').uploadBinary(
           filePath,
-          bytes,
-          fileOptions: const FileOptions(upsert: true),
+          upload.bytes,
+          fileOptions: FileOptions(
+            upsert: true,
+            contentType: upload.mimeType,
+            cacheControl: 'public, max-age=300',
+          ),
         );
 
     final publicUrl = _client.storage.from('avatars').getPublicUrl(filePath);
@@ -819,29 +915,29 @@ class SupabaseService {
   static Future<String?> uploadVehicleGalleryImage({
     required String userId,
     required File file,
+    int vehicleSlot = 0,
   }) async {
     try {
-      final bytes = await file.readAsBytes();
-      final fileExtension = file.path.split('.').last;
-      final filePath =
-          'vehicle_gallery/$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+      final upload = await _validateUploadFile(file, allowPdf: false);
+      final normalizedSlot = vehicleSlot.clamp(0, 99);
+      final filePath = 'vehicle_gallery/$userId/vehicle-$normalizedSlot';
 
-      await _client.storage
-          .from('instructor-assets')
-          .uploadBinary(
+      await _client.storage.from('instructor-assets').uploadBinary(
             filePath,
-            bytes,
-            fileOptions: const FileOptions(upsert: true),
+            upload.bytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: upload.mimeType,
+              cacheControl: 'public, max-age=300',
+            ),
           );
 
-      final publicUrl = _client.storage
-          .from('instructor-assets')
-          .getPublicUrl(filePath);
+      final publicUrl =
+          _client.storage.from('instructor-assets').getPublicUrl(filePath);
       if (publicUrl.isNotEmpty) {
         await _client
             .from('instructor_profiles')
-            .update({'vehicle_photo_url': publicUrl})
-            .eq('profile_id', userId);
+            .update({'vehicle_photo_url': publicUrl}).eq('profile_id', userId);
       }
 
       return publicUrl;
@@ -849,6 +945,67 @@ class SupabaseService {
       print('Error uploading vehicle image: $e');
       rethrow;
     }
+  }
+
+  static String _uploadNonce() {
+    final random = math.Random.secure().nextInt(0x7fffffff);
+    return '${DateTime.now().microsecondsSinceEpoch}-${random.toRadixString(16)}';
+  }
+
+  static Future<_ValidatedUpload> _validateUploadFile(
+    File file, {
+    required bool allowPdf,
+  }) async {
+    final bytes = await file.readAsBytes();
+    final maxBytes = allowPdf ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (bytes.isEmpty || bytes.length > maxBytes) {
+      throw const FormatException('The selected file is empty or too large.');
+    }
+
+    String mimeType;
+    String extension;
+    if (_startsWith(bytes, const [0x25, 0x50, 0x44, 0x46, 0x2D])) {
+      if (!allowPdf) {
+        throw const FormatException('Please choose a JPG or PNG image.');
+      }
+      mimeType = 'application/pdf';
+      extension = 'pdf';
+    } else if (_startsWith(bytes, const [0xFF, 0xD8, 0xFF])) {
+      mimeType = 'image/jpeg';
+      extension = 'jpg';
+    } else if (_startsWith(
+      bytes,
+      const [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+    )) {
+      mimeType = 'image/png';
+      extension = 'png';
+    } else {
+      throw const FormatException(
+          'Only valid PDF, JPG, and PNG files are accepted.');
+    }
+
+    final originalName = path_util.basename(file.path).replaceAll(
+          RegExp(r'[^A-Za-z0-9._-]'),
+          '_',
+        );
+    return _ValidatedUpload(
+      bytes: bytes,
+      mimeType: mimeType,
+      extension: extension,
+      originalName: originalName.substring(
+        0,
+        math.min(originalName.length, 255),
+      ),
+      sha256Hex: sha256.convert(bytes).toString(),
+    );
+  }
+
+  static bool _startsWith(Uint8List bytes, List<int> signature) {
+    if (bytes.length < signature.length) return false;
+    for (var index = 0; index < signature.length; index++) {
+      if (bytes[index] != signature[index]) return false;
+    }
+    return true;
   }
 
   static Future<Map<String, dynamic>?> getRawProfile(String userId) async {
@@ -965,9 +1122,8 @@ class SupabaseService {
             .select('drive_tutor_number')
             .eq('profile_id', userId)
             .maybeSingle();
-        final refreshedValue = refreshed?['drive_tutor_number']
-            ?.toString()
-            .trim();
+        final refreshedValue =
+            refreshed?['drive_tutor_number']?.toString().trim();
         if (refreshedValue != null && refreshedValue.isNotEmpty) {
           return refreshedValue;
         }
@@ -1014,7 +1170,7 @@ class SupabaseService {
   }
 
   static Future<InstructorBillingEntitlement?>
-  getCurrentInstructorBillingEntitlement() async {
+      getCurrentInstructorBillingEntitlement() async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return null;
 
@@ -1080,6 +1236,7 @@ class SupabaseService {
     int? yearsOfExperience,
     String? vehiclePhotoUrl,
     bool? pickupPreference,
+    String? transmissionPreference,
   }) async {
     String? cleanString(String? value) {
       if (value == null) return null;
@@ -1126,6 +1283,10 @@ class SupabaseService {
     if (pickupPreference != null) {
       data['pickup_preference'] = pickupPreference;
     }
+    final cleanedTransmission = cleanString(transmissionPreference);
+    if (cleanedTransmission != null) {
+      data['transmission_preference'] = cleanedTransmission;
+    }
 
     await _client
         .from('instructor_profiles')
@@ -1136,8 +1297,7 @@ class SupabaseService {
     try {
       await _client
           .from('profiles')
-          .update({'role': 'instructor'})
-          .eq('id', userId);
+          .update({'role': 'instructor'}).eq('id', userId);
       await _client.from('learner_profiles').delete().eq('profile_id', userId);
     } catch (e) {
       print('Warning: unable to clean conflicting learner profile: $e');
@@ -1161,6 +1321,7 @@ class SupabaseService {
     String? preferredLocationNotes,
     List<Map<String, dynamic>>? weeklyAvailability,
     bool? availabilityRecurring,
+    String? transmissionPreference,
   }) async {
     String? cleanString(String? value) {
       if (value == null) return null;
@@ -1169,6 +1330,10 @@ class SupabaseService {
     }
 
     final data = <String, dynamic>{'profile_id': userId};
+    final cleanedTransmission = cleanString(transmissionPreference);
+    if (cleanedTransmission != null) {
+      data['transmission_preference'] = cleanedTransmission;
+    }
 
     final cleanedFocus = cleanString(learningFocus);
     if (cleanedFocus != null) {
@@ -1226,9 +1391,7 @@ class SupabaseService {
       data['availability_recurring'] = availabilityRecurring;
     }
 
-    await _client
-        .from('learner_profiles')
-        .upsert(data, onConflict: 'profile_id');
+    await _upsertLearnerProfileCompat(data);
   }
 
   static Future<void> submitLearnerOnboardingDraft({
@@ -1329,8 +1492,7 @@ class SupabaseService {
       final profileId = row['profile_id']?.toString();
       if (profileId == null || profileId.isEmpty) continue;
       final status = row['status']?.toString().trim().toLowerCase();
-      final isCompleted =
-          row['is_completed'] == true ||
+      final isCompleted = row['is_completed'] == true ||
           status == 'test_ready' ||
           status == 'completed';
       if (isCompleted) {
@@ -1353,7 +1515,15 @@ class SupabaseService {
         .select('learner_id, scheduled_at, start_time')
         .eq('instructor_id', instructorId)
         .inFilter('learner_id', learnerIds)
-        .inFilter('status', ['scheduled', 'active', 'in_progress'])
+        .inFilter('status', [
+          'scheduled',
+          'active',
+          'in_progress',
+          'completed',
+          'done',
+          'finished',
+          'ended',
+        ])
         .gte('scheduled_at', nowUtc.toIso8601String())
         .order('scheduled_at', ascending: true);
 
@@ -1394,14 +1564,13 @@ class SupabaseService {
     void addSlots(String dayKey, Iterable<dynamic> slots) {
       final key = dayKey.trim().toLowerCase();
       if (key.isEmpty) return;
-      final slotList =
-          slots
-              .whereType<String>()
-              .map((slot) => slot.trim())
-              .where((slot) => slot.isNotEmpty)
-              .toSet()
-              .toList()
-            ..sort();
+      final slotList = slots
+          .whereType<String>()
+          .map((slot) => slot.trim())
+          .where((slot) => slot.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
       if (slotList.isNotEmpty) {
         normalized[key] = slotList;
       }
@@ -1609,12 +1778,23 @@ class SupabaseService {
     final ids = learnerIds.where((id) => id.isNotEmpty).toSet();
     if (ids.isEmpty) return const <String, Map<String, dynamic>>{};
 
-    final rows = await _client
-        .from('learner_profiles')
-        .select(
-          'profile_id, account_type, ward_first_name, ward_last_name, ward_age, ward_gender, learning_focus, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)',
-        )
-        .inFilter('profile_id', ids.toList());
+    late final List<dynamic> rows;
+    try {
+      rows = await _client
+          .from('learner_profiles')
+          .select(
+            'profile_id, account_type, ward_first_name, ward_last_name, ward_age, ward_gender, learning_focus, transmission_preference, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)',
+          )
+          .inFilter('profile_id', ids.toList());
+    } catch (error) {
+      if (!_isMissingLearnerAccountColumnsError(error)) rethrow;
+      rows = await _client
+          .from('learner_profiles')
+          .select(
+            'profile_id, learning_focus, transmission_preference, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)',
+          )
+          .inFilter('profile_id', ids.toList());
+    }
 
     final map = <String, Map<String, dynamic>>{};
     for (final row in rows) {
@@ -1652,6 +1832,7 @@ class SupabaseService {
 
     for (final key in [
       'learning_focus',
+      'transmission_preference',
       'target_test_date',
       'target_test_centre',
       'notes',
@@ -1750,8 +1931,7 @@ class SupabaseService {
       final last = learner['last_name'] as String?;
       final email = learner['email'] as String?;
       final phone = learner['phone'];
-      final hasIdentity =
-          (first != null && first.trim().isNotEmpty) ||
+      final hasIdentity = (first != null && first.trim().isNotEmpty) ||
           (last != null && last.trim().isNotEmpty) ||
           (email != null && email.trim().isNotEmpty);
       final hasPhone = phone != null && phone.toString().trim().isNotEmpty;
@@ -1868,6 +2048,55 @@ class SupabaseService {
   static Future<List<Map<String, dynamic>>> _hydrateLessonLearners(
     List<Map<String, dynamic>> lessons,
   ) async {
+    final externalLearnerIds = <String>{};
+    for (final lesson in lessons) {
+      final externalLearnerId = lesson['external_learner_id']?.toString();
+      if (externalLearnerId != null && externalLearnerId.isNotEmpty) {
+        externalLearnerIds.add(externalLearnerId);
+      }
+    }
+
+    Map<String, Map<String, dynamic>> externalLearnerMap = const {};
+    if (externalLearnerIds.isNotEmpty) {
+      final rows = await _client
+          .from('external_learners')
+          .select(
+            'id, full_name, phone, pickup_address, notes, weekly_availability, learning_focus, transmission_preference, is_active',
+          )
+          .inFilter('id', externalLearnerIds.toList());
+      externalLearnerMap = {};
+      for (final row in rows) {
+        final id = row['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        final fullName = row['full_name']?.toString().trim() ?? '';
+        externalLearnerMap[id] = {
+          'id': id,
+          'name': fullName,
+          'first_name': fullName,
+          'last_name': '',
+          'phone': row['phone'],
+          'pickup_address': row['pickup_address'],
+          'profile_image_url': null,
+          'is_external': true,
+          'is_offline': true,
+          'learning_focus': row['learning_focus'],
+          'transmission_preference': row['transmission_preference'],
+          'weekly_availability': row['weekly_availability'],
+        };
+      }
+    }
+
+    for (final lesson in lessons) {
+      final externalLearnerId = lesson['external_learner_id']?.toString();
+      if (externalLearnerId == null || externalLearnerId.isEmpty) continue;
+      final external = externalLearnerMap[externalLearnerId];
+      if (external == null) continue;
+      lesson['learner'] = Map<String, dynamic>.from(external);
+      lesson['learner_name'] = external['name'];
+      lesson['learner_id'] ??= externalLearnerId;
+      lesson['is_external_learner'] = true;
+    }
+
     String? _fallbackName(Map<String, dynamic> map) {
       String _clean(dynamic value) {
         if (value == null) return '';
@@ -1932,6 +2161,7 @@ class SupabaseService {
     final learnerIds = <String>{};
     for (final lesson in lessons) {
       final learnerId = lesson['learner_id']?.toString();
+      if (lesson['external_learner_id'] != null) continue;
       if (learnerId != null && learnerId.isNotEmpty) {
         learnerIds.add(learnerId);
       }
@@ -1940,6 +2170,7 @@ class SupabaseService {
     final learnerProfileMap = await _fetchLearnerProfiles(learnerIds);
     for (final lesson in lessons) {
       final learnerId = lesson['learner_id']?.toString();
+      if (lesson['external_learner_id'] != null) continue;
       if (learnerId != null && learnerId.isNotEmpty) {
         _applyLearnerProfileData(lesson, learnerProfileMap[learnerId]);
       }
@@ -1960,6 +2191,7 @@ class SupabaseService {
         continue;
       }
       final learnerId = lesson['learner_id']?.toString();
+      if (lesson['external_learner_id'] != null) continue;
       if (learnerId != null && learnerId.isNotEmpty) {
         missingIds.add(learnerId);
       }
@@ -1991,6 +2223,7 @@ class SupabaseService {
 
     for (final lesson in lessons) {
       final learnerId = lesson['learner_id']?.toString();
+      if (lesson['external_learner_id'] != null) continue;
       if (learnerId == null || learnerId.isEmpty) continue;
       final existing = lesson['learner'];
       Map<String, dynamic>? learnerMap;
@@ -2170,9 +2403,8 @@ class SupabaseService {
           'instructor_id': instructorId,
           'learner_id': learnerId,
           'focus': normalizedFocus?.isNotEmpty == true ? normalizedFocus : null,
-          'message': normalizedMessage?.isNotEmpty == true
-              ? normalizedMessage
-              : null,
+          'message':
+              normalizedMessage?.isNotEmpty == true ? normalizedMessage : null,
           'requested_vehicle_label': normalizedVehicleLabel?.isNotEmpty == true
               ? normalizedVehicleLabel
               : null,
@@ -2301,8 +2533,7 @@ class SupabaseService {
   static Future<void> cancelLessonRequest(String requestId) async {
     await _client
         .from('learner_requests')
-        .update({'status': 'cancelled'})
-        .eq('id', requestId);
+        .update({'status': 'cancelled'}).eq('id', requestId);
     await _queueAppNotification(
       eventKey: 'learner.request.cancelled',
       entityId: requestId,
@@ -2354,8 +2585,12 @@ class SupabaseService {
         .from('learner_requests')
         .select('*')
         .eq('instructor_id', instructorId)
-        .inFilter('status', ['accepted', 'active', 'in_progress'])
-        .order('created_at', ascending: false);
+        .inFilter('status', [
+      'accepted',
+      'active',
+      'in_progress',
+      'graduated',
+    ]).order('created_at', ascending: false);
 
     final rawEntries = List<Map<String, dynamic>>.from(results);
     final entries = await _hydrateLessonRequests(rawEntries);
@@ -2366,15 +2601,17 @@ class SupabaseService {
       learners.putIfAbsent(learnerId, () => Map<String, dynamic>.from(entry));
     }
 
-    if (learners.isEmpty) return const [];
+    final externalLearners = await getExternalLearners(instructorId);
 
     final ids = learners.keys.toList();
-    final availabilityRows = await _client
-        .from('learner_profiles')
-        .select(
-          'profile_id, weekly_availability, availability_recurring, learning_focus, preferred_locations',
-        )
-        .inFilter('profile_id', ids);
+    final availabilityRows = ids.isEmpty
+        ? const []
+        : await _client
+            .from('learner_profiles')
+            .select(
+              'profile_id, weekly_availability, availability_recurring, learning_focus, preferred_locations',
+            )
+            .inFilter('profile_id', ids);
 
     final availabilityMap = <String, Map<String, dynamic>>{};
     for (final row in availabilityRows) {
@@ -2389,8 +2626,8 @@ class SupabaseService {
       if (availability != null) {
         entry.value['weekly_availability'] =
             _normalizeWeeklyAvailabilityPayload(
-              availability['weekly_availability'],
-            );
+          availability['weekly_availability'],
+        );
         entry.value['availability_recurring'] =
             availability['availability_recurring'];
         entry.value['learning_focus'] ??= availability['learning_focus'];
@@ -2399,7 +2636,236 @@ class SupabaseService {
       }
     }
 
-    return learners.values.toList();
+    return [
+      ...learners.values,
+      ...externalLearners.map(_externalLearnerRosterEntry),
+    ];
+  }
+
+  static Map<String, dynamic> _externalLearnerRosterEntry(
+    Map<String, dynamic> external,
+  ) {
+    final fullName = external['full_name']?.toString().trim() ?? '';
+    return {
+      'external_learner_id': external['id'],
+      'learner_id': external['id'],
+      'learner_name': fullName,
+      'is_external_learner': true,
+      'is_offline': true,
+      'status': external['status'] ?? 'active',
+      'phone': external['phone'],
+      'learning_focus': external['learning_focus'],
+      'weekly_availability': _normalizeWeeklyAvailabilityPayload(
+        external['weekly_availability'],
+      ),
+      'preferred_locations': [
+        if ((external['pickup_address']?.toString().trim() ?? '').isNotEmpty)
+          {'label': 'Pickup', 'address': external['pickup_address']},
+      ],
+      'notes': external['notes'],
+      'learner': {
+        'id': external['id'],
+        'name': fullName,
+        'first_name': fullName,
+        'last_name': '',
+        'phone': external['phone'],
+        'profile_image_url': null,
+        'is_external': true,
+      },
+    };
+  }
+
+  static Future<List<Map<String, dynamic>>> getExternalLearners(
+    String instructorId,
+  ) async {
+    late final dynamic rows;
+    try {
+      rows = await _client
+          .from('external_learners')
+          .select(
+            'id, instructor_id, full_name, phone, guardian_or_contact_name, pickup_address, notes, weekly_availability, learning_focus, transmission_preference, is_active, status, created_at, updated_at',
+          )
+          .eq('instructor_id', instructorId)
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
+    } catch (_) {
+      rows = await _client
+          .from('external_learners')
+          .select(
+            'id, instructor_id, full_name, phone, guardian_or_contact_name, pickup_address, notes, weekly_availability, learning_focus, is_active, created_at, updated_at',
+          )
+          .eq('instructor_id', instructorId)
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
+    }
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  static Future<Map<String, dynamic>?> createExternalLearner({
+    required String instructorId,
+    required String fullName,
+    String? phone,
+    String? guardianOrContactName,
+    String? pickupAddress,
+    String? notes,
+    Map<String, dynamic>? weeklyAvailability,
+    String? learningFocus,
+    String? transmissionPreference,
+  }) async {
+    final payload = {
+      'instructor_id': instructorId,
+      'full_name': fullName.trim(),
+      'phone': _nullIfBlank(phone),
+      'guardian_or_contact_name': _nullIfBlank(guardianOrContactName),
+      'pickup_address': _nullIfBlank(pickupAddress),
+      'notes': _nullIfBlank(notes),
+      'weekly_availability':
+          _normalizeWeeklyAvailabilityPayload(weeklyAvailability),
+      'learning_focus': _nullIfBlank(learningFocus),
+      'transmission_preference': _nullIfBlank(transmissionPreference),
+    };
+    final row = await _client
+        .from('external_learners')
+        .insert(payload)
+        .select()
+        .single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  static Future<Map<String, dynamic>?> updateExternalLearner({
+    required String instructorId,
+    required String externalLearnerId,
+    required String fullName,
+    String? phone,
+    String? guardianOrContactName,
+    String? pickupAddress,
+    String? notes,
+    Map<String, dynamic>? weeklyAvailability,
+    String? learningFocus,
+    String? transmissionPreference,
+  }) async {
+    final row = await _client
+        .from('external_learners')
+        .update({
+          'full_name': fullName.trim(),
+          'phone': _nullIfBlank(phone),
+          'guardian_or_contact_name': _nullIfBlank(guardianOrContactName),
+          'pickup_address': _nullIfBlank(pickupAddress),
+          'notes': _nullIfBlank(notes),
+          'weekly_availability':
+              _normalizeWeeklyAvailabilityPayload(weeklyAvailability),
+          'learning_focus': _nullIfBlank(learningFocus),
+          'transmission_preference': _nullIfBlank(transmissionPreference),
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', externalLearnerId)
+        .eq('instructor_id', instructorId)
+        .select()
+        .maybeSingle();
+    return row == null ? null : Map<String, dynamic>.from(row);
+  }
+
+  static Future<void> markLearnerGraduated({
+    required String instructorId,
+    required String learnerId,
+    bool isExternalLearner = false,
+  }) async {
+    if (isExternalLearner) {
+      await _client
+          .from('external_learners')
+          .update({
+            'status': 'graduated',
+            'is_active': true,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', learnerId)
+          .eq('instructor_id', instructorId);
+
+      await _client
+          .from('lessons')
+          .update({'status': 'cancelled'})
+          .eq('instructor_id', instructorId)
+          .eq('external_learner_id', learnerId)
+          .eq('status', 'scheduled');
+      return;
+    }
+
+    await _client
+        .from('learner_requests')
+        .update({'status': 'graduated'})
+        .eq('instructor_id', instructorId)
+        .eq('learner_id', learnerId)
+        .inFilter('status', ['accepted', 'active', 'in_progress']);
+
+    await _client
+        .from('lessons')
+        .update({'status': 'cancelled'})
+        .eq('instructor_id', instructorId)
+        .eq('learner_id', learnerId)
+        .eq('status', 'scheduled');
+  }
+
+  static Future<Map<String, dynamic>?> getCurrentLearnerGraduation() async {
+    final userId = currentUser?.id;
+    if (userId == null) return null;
+    final row = await _client
+        .from('learner_requests')
+        .select(
+            'id, instructor_id, focus, status, instructor:profiles!learner_requests_instructor_id_fkey(first_name, last_name)')
+        .eq('learner_id', userId)
+        .eq('status', 'graduated')
+        .order('updated_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    return row == null ? null : Map<String, dynamic>.from(row);
+  }
+
+  static Future<void> resumeGraduatedTraining(String requestId) async {
+    final userId = currentUser?.id;
+    if (userId == null) throw StateError('Not signed in.');
+    await _client
+        .from('learner_requests')
+        .update({
+          'status': 'accepted',
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', requestId)
+        .eq('learner_id', userId)
+        .eq('status', 'graduated');
+  }
+
+  static Future<void> releaseExternalLearnerFromInstructor({
+    required String instructorId,
+    required String externalLearnerId,
+  }) async {
+    final timestamp = DateTime.now().toIso8601String();
+    try {
+      await _client
+          .from('external_learners')
+          .update({
+            'is_active': false,
+            'status': 'removed',
+            'updated_at': timestamp,
+          })
+          .eq('id', externalLearnerId)
+          .eq('instructor_id', instructorId);
+    } catch (_) {
+      await _client
+          .from('external_learners')
+          .update({
+            'is_active': false,
+            'updated_at': timestamp,
+          })
+          .eq('id', externalLearnerId)
+          .eq('instructor_id', instructorId);
+    }
+
+    await _client
+        .from('lessons')
+        .update({'status': 'cancelled'})
+        .eq('instructor_id', instructorId)
+        .eq('external_learner_id', externalLearnerId)
+        .eq('status', 'scheduled');
   }
 
   static Future<List<Map<String, dynamic>>> getUpcomingLessonsForInstructor(
@@ -2416,7 +2882,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-          'id, scheduled_at, start_time, end_time, duration_hours, focus, pickup_location, notes, status, learner_id',
+          'id, scheduled_at, start_time, end_time, duration_hours, focus, pickup_location, notes, status, learner_id, external_learner_id',
         )
         .eq('instructor_id', userId)
         .inFilter('status', ['scheduled', 'active', 'in_progress'])
@@ -2437,7 +2903,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-          'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by',
+          'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, external_learner_id, started_at, ended_at, completed_by',
         )
         .eq('instructor_id', userId)
         .inFilter('status', ['scheduled', 'active', 'in_progress'])
@@ -2456,7 +2922,7 @@ class SupabaseService {
     final results = await _client
         .from('lessons')
         .select(
-          'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id',
+          'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, external_learner_id',
         )
         .eq('instructor_id', userId)
         .lt('scheduled_at', nowUtc)
@@ -2502,22 +2968,22 @@ class SupabaseService {
       }
 
       final normalizedFocus = focus?.toString().toLowerCase().replaceAll(
-        RegExp(r'[^a-z0-9]'),
-        '',
-      );
+            RegExp(r'[^a-z0-9]'),
+            '',
+          );
       final offeringRates =
           instructorProfile?['offering_rates'] is Map<String, dynamic>
-          ? Map<String, dynamic>.from(
-              instructorProfile!['offering_rates'] as Map,
-            )
-          : const <String, dynamic>{};
+              ? Map<String, dynamic>.from(
+                  instructorProfile!['offering_rates'] as Map,
+                )
+              : const <String, dynamic>{};
 
       if (normalizedFocus != null && normalizedFocus.isNotEmpty) {
         for (final entry in offeringRates.entries) {
           final key = entry.key.toString().toLowerCase().replaceAll(
-            RegExp(r'[^a-z0-9]'),
-            '',
-          );
+                RegExp(r'[^a-z0-9]'),
+                '',
+              );
           if (key == normalizedFocus) {
             final rate = asDouble(entry.value);
             if (rate != null && rate > 0) return rate;
@@ -2681,8 +3147,10 @@ class SupabaseService {
       if (durationHours <= 0) {
         durationHours = 0.25;
       }
+      final externalLearnerId = slot['external_learner_id'];
       final map = <String, dynamic>{
-        'learner_id': slot['learner_id'],
+        if (externalLearnerId == null) 'learner_id': slot['learner_id'],
+        if (externalLearnerId != null) 'external_learner_id': externalLearnerId,
         'instructor_id': instructorId,
         'scheduled_at': scheduled.toUtc().toIso8601String(),
         'start_time': slot['start_time'],
@@ -2749,9 +3217,8 @@ class SupabaseService {
     double? minRating,
   }) async {
     try {
-      var query = _client
-          .from('instructor_profiles')
-          .select('*, user:profiles(*)');
+      var query =
+          _client.from('instructor_profiles').select('*, user:profiles(*)');
 
       final targetCity = city?.trim().toLowerCase();
       String? _normalizedCity(dynamic value) {
@@ -2931,7 +3398,8 @@ class SupabaseService {
   }
 
   static Future<LessonModel?> createLesson({
-    required String learnerId,
+    String? learnerId,
+    String? externalLearnerId,
     required String instructorId,
     required DateTime scheduledDate,
     required String startTime,
@@ -2943,11 +3411,19 @@ class SupabaseService {
     String? focus,
     DateTime? lessonDate,
   }) async {
+    if ((learnerId == null || learnerId.trim().isEmpty) &&
+        (externalLearnerId == null || externalLearnerId.trim().isEmpty)) {
+      return null;
+    }
     try {
       final response = await _client
           .from('lessons')
           .insert({
-            'learner_id': learnerId,
+            if (learnerId != null && learnerId.trim().isNotEmpty)
+              'learner_id': learnerId,
+            if (externalLearnerId != null &&
+                externalLearnerId.trim().isNotEmpty)
+              'external_learner_id': externalLearnerId,
             'instructor_id': instructorId,
             'scheduled_at': scheduledDate.toIso8601String(),
             'start_time': startTime,
@@ -2969,10 +3445,12 @@ class SupabaseService {
           .single();
 
       final lesson = LessonModel.fromJson(response);
-      await _queueAppNotification(
-        eventKey: 'lesson.booked',
-        entityId: lesson.id,
-      );
+      if (learnerId != null && learnerId.trim().isNotEmpty) {
+        await _queueAppNotification(
+          eventKey: 'lesson.booked',
+          entityId: lesson.id,
+        );
+      }
       return lesson;
     } catch (e) {
       print('Error creating lesson: $e');
@@ -3061,7 +3539,7 @@ class SupabaseService {
           .update(payload)
           .eq('id', lessonId)
           .select(
-            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, started_at, ended_at, completed_by',
+            'id, scheduled_at, status, duration_hours, start_time, end_time, focus, pickup_location, notes, learner_id, external_learner_id, started_at, ended_at, completed_by',
           )
           .single();
 
@@ -3228,7 +3706,96 @@ class SupabaseService {
     }
   }
 
+  static Future<void> updateCompletedLessonNotes({
+    required String lessonId,
+    required String notes,
+  }) async {
+    final userId = currentUser?.id;
+    if (userId == null) throw const AuthException('Not signed in');
+    await _client
+        .from('lessons')
+        .update({
+          'notes': _nullIfBlank(notes),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', lessonId)
+        .eq('instructor_id', userId)
+        .eq('status', 'completed');
+  }
+
+  static Future<void> submitLessonFeedback({
+    required String lessonId,
+    required String revieweeId,
+    required String reviewerRole,
+    required int rating,
+    bool? wasOnTime,
+    bool? wasFriendly,
+    int? vehicleCleanliness,
+    bool wasNoShow = false,
+    String? comment,
+  }) async {
+    final userId = currentUser?.id;
+    if (userId == null) throw const AuthException('Not signed in');
+    await _client.from('lesson_feedback').upsert({
+      'lesson_id': lessonId,
+      'reviewer_id': userId,
+      'reviewee_id': revieweeId,
+      'reviewer_role': reviewerRole,
+      'rating': rating,
+      'was_on_time': wasOnTime,
+      'was_friendly': wasFriendly,
+      'vehicle_cleanliness': vehicleCleanliness,
+      'was_no_show': wasNoShow,
+      'comment': _nullIfBlank(comment),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'lesson_id,reviewer_id');
+  }
+
+  static Future<void> submitUserReport({
+    required String reportedUserId,
+    required String reason,
+    String? lessonId,
+    String? comment,
+  }) async {
+    final userId = currentUser?.id;
+    if (userId == null) throw const AuthException('Not signed in');
+    await _client.from('user_reports').insert({
+      'reporter_id': userId,
+      'reported_user_id': reportedUserId,
+      'lesson_id': lessonId,
+      'reason': reason,
+      'comment': _nullIfBlank(comment),
+    });
+  }
+
+  static Future<void> sendPhoneVerificationCode(String phone) async {
+    await _client.auth.updateUser(UserAttributes(phone: phone.trim()));
+  }
+
+  static Future<void> verifyPhoneChangeCode({
+    required String phone,
+    required String token,
+  }) async {
+    final response = await _client.auth.verifyOTP(
+      phone: phone.trim(),
+      token: token.trim(),
+      type: OtpType.phoneChange,
+    );
+    final userId = response.user?.id ?? currentUser?.id;
+    if (userId == null) throw const AuthException('Unable to verify phone');
+    await _client.from('profiles').update({
+      'phone': phone.trim(),
+      'phone_verified_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', userId);
+  }
+
   // Helper Methods
+  static String? _nullIfBlank(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
   static int _durationHoursToInt(double value) {
     if (value.isNaN || value.isInfinite) return 1;
     final normalized = value <= 0 ? 1.0 : value;
@@ -3246,8 +3813,7 @@ class SupabaseService {
     final double dLat = _degreesToRadians(lat2 - lat1);
     final double dLon = _degreesToRadians(lon2 - lon1);
 
-    final double a =
-        (dLat / 2) * (dLat / 2) +
+    final double a = (dLat / 2) * (dLat / 2) +
         (dLon / 2) *
             (dLon / 2) *
             (lat1 * 3.14159 / 180) *

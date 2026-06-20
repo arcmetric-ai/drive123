@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../constants/app_colors.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/verified_profile_badge.dart';
 
 class InstructorProfilePreviewScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -386,6 +387,7 @@ class _InstructorProfilePreviewScreenState
   Widget build(BuildContext context) {
     final name = _readString('name', fallback: 'Drive Tutor Instructor');
     final phone = _readString('phone', fallback: 'Add your phone number');
+    final email = _readString('email', fallback: 'Email on file');
     final bio = _readString('bio', fallback: 'Describe your experience.');
     final serviceArea =
         _readString('serviceArea', fallback: 'Define service area');
@@ -399,11 +401,8 @@ class _InstructorProfilePreviewScreenState
     }
     final age = _readString('age', fallback: 'Add your age');
     final gender = _readString('gender', fallback: 'Add your gender');
-    final driveTutorNumber = _readString(
-      'driveTutorNumber',
-      fallback: 'Assigned after profile setup',
-    );
     final profileImageUrl = _readString('profileImageUrl');
+    final isVerified = _readBool('isVerified') || _readBool('is_verified');
     final vehiclePhotoUrl = _resolveVehiclePhotoUrl();
 
     final languages = _asStringList('languages');
@@ -429,23 +428,16 @@ class _InstructorProfilePreviewScreenState
             name: name,
             bio: bio,
             profileImageUrl: profileImageUrl,
+            isVerified: isVerified,
           ),
           const SizedBox(height: 20),
           _InfoCard(
             title: 'Contact & credentials',
-            rows: [
-              _tile(icon: Icons.phone_outlined, label: 'Phone', value: phone),
-              _tile(
-                icon: Icons.confirmation_number_outlined,
-                label: 'Drive Tutor number',
-                value: driveTutorNumber,
-              ),
-              _tile(
-                  icon: Icons.calendar_today_outlined,
-                  label: 'Age',
-                  value: age),
-              _tile(icon: Icons.person_outline, label: 'Gender', value: gender),
-            ],
+            content: _VerifiedIdentityStrip(
+              emailVerified: isVerified && email.isNotEmpty,
+              phoneVerified: isVerified && phone.isNotEmpty,
+              licenceVerified: isVerified,
+            ),
           ),
           const SizedBox(height: 20),
           _InfoCard(
@@ -750,11 +742,13 @@ class _HeaderCard extends StatelessWidget {
   final String name;
   final String bio;
   final String profileImageUrl;
+  final bool isVerified;
 
   const _HeaderCard({
     required this.name,
     required this.bio,
     required this.profileImageUrl,
+    required this.isVerified,
   });
 
   @override
@@ -777,22 +771,36 @@ class _HeaderCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 36,
-                backgroundColor: Colors.white,
-                backgroundImage: profileImageUrl.isNotEmpty
-                    ? NetworkImage(profileImageUrl)
-                    : null,
-                child: profileImageUrl.isEmpty
-                    ? Text(
-                        name.isNotEmpty ? name[0] : '?',
-                        style: const TextStyle(
-                          color: AppColors.ocean,
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : null,
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 36,
+                    backgroundColor: Colors.white,
+                    backgroundImage: profileImageUrl.isNotEmpty
+                        ? NetworkImage(profileImageUrl)
+                        : null,
+                    child: profileImageUrl.isEmpty
+                        ? Text(
+                            name.isNotEmpty ? name[0] : '?',
+                            style: const TextStyle(
+                              color: AppColors.ocean,
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : null,
+                  ),
+                  if (isVerified)
+                    const Positioned(
+                      top: -2,
+                      right: -2,
+                      child: VerifiedProfileBadge(
+                        size: 26,
+                        showCutout: true,
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -866,6 +874,41 @@ class _InfoCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _VerifiedIdentityStrip extends StatelessWidget {
+  const _VerifiedIdentityStrip({
+    required this.emailVerified,
+    required this.phoneVerified,
+    required this.licenceVerified,
+  });
+
+  final bool emailVerified;
+  final bool phoneVerified;
+  final bool licenceVerified;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget item(IconData icon, String label, bool verified) => Expanded(
+          child: Column(
+            children: [
+              Icon(icon, color: AppColors.primaryBlue),
+              const SizedBox(height: 6),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(verified ? 'Verified' : 'Pending',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: verified ? AppColors.success : Colors.black54,
+                  )),
+            ],
+          ),
+        );
+    return Row(children: [
+      item(Icons.email_outlined, 'Email', emailVerified),
+      item(Icons.phone_outlined, 'Phone', phoneVerified),
+      item(Icons.badge_outlined, 'Licence', licenceVerified),
+    ]);
   }
 }
 

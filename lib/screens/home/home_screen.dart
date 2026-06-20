@@ -895,9 +895,9 @@ class HomeDashboard extends StatelessWidget {
                 ),
                 if (isVerified)
                   const Positioned(
-                    top: -2,
-                    right: -3,
-                    child: VerifiedProfileBadge(size: 24),
+                    top: -7,
+                    right: -7,
+                    child: VerifiedProfileBadge(size: 30, showCutout: true),
                   ),
                 const Positioned(
                   right: -2,

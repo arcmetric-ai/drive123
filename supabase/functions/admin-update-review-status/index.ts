@@ -1,8 +1,9 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { type SupabaseClient } from 'npm:@supabase/supabase-js@2';
+
+import { requireAdmin } from '../_shared/admin.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const corsHeaders = {
@@ -37,73 +38,8 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function createServiceClient() {
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
-function createRequestClient(request: Request) {
-  return createClient(supabaseUrl, anonKey, {
-    global: {
-      headers: {
-        Authorization: request.headers.get('Authorization') ?? '',
-      },
-    },
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
-async function requireAdmin(request: Request) {
-  const authorization = request.headers.get('Authorization');
-  if (authorization == null || authorization.trim().length === 0) {
-    return {
-      error: jsonResponse({ error: 'Missing Authorization header.' }, 401),
-    };
-  }
-
-  const requestClient = createRequestClient(request);
-  const {
-    data: { user },
-    error: userError,
-  } = await requestClient.auth.getUser();
-
-  if (userError != null || user == null) {
-    return {
-      error: jsonResponse({ error: 'Unauthorized.' }, 401),
-    };
-  }
-
-  const admin = createServiceClient();
-  const { data: adminRow, error: adminError } = await admin
-    .from('admin_users')
-    .select('user_id, email')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  if (adminError != null) {
-    return {
-      error: jsonResponse({ error: adminError.message }, 500),
-    };
-  }
-
-  if (adminRow == null) {
-    return {
-      error: jsonResponse({ error: 'Forbidden.' }, 403),
-    };
-  }
-
-  return { admin, user, adminUser: adminRow };
-}
-
 async function queueNotificationEvent(
-  admin: ReturnType<typeof createServiceClient>,
+  admin: SupabaseClient,
   input: QueueNotificationInput,
 ) {
   const { data, error } = await admin
@@ -161,6 +97,107 @@ function displayName(profile: Record<string, unknown> | null | undefined) {
   const lastName = String(profile?.last_name ?? '').trim();
   const fullName = `${firstName} ${lastName}`.trim();
   return fullName.length > 0 ? fullName : 'Drive Tutor user';
+}
+
+async function appendDocumentReviewEvents(
+  admin: SupabaseClient,
+  userId: string,
+  documentTypes: string[],
+  status: 'approved' | 'rejected',
+  adminUserId: string,
+  reviewNotes: string,
+  rejectionReason: string,
+) {
+  const { data: versions, error: versionError } = await admin
+    .from('verification_document_versions')
+    .select('id, document_type, version_number')
+    .eq('owner_user_id', userId)
+    .in('document_type', documentTypes)
+    .order('version_number', { ascending: false });
+  if (versionError != null) throw new Error(versionError.message);
+
+  const latestByType = new Map<string, Record<string, unknown>>();
+  for (const version of versions ?? []) {
+    const type = String(version.document_type);
+    if (!latestByType.has(type)) latestByType.set(type, version);
+  }
+  if (latestByType.size === 0) {
+    throw new Error('No immutable document versions were found for this review.');
+  }
+
+  const latestVersions = [...latestByType.values()];
+  if (status === 'approved') {
+    const ids = latestVersions.map((version) => String(version.id));
+    const { data: scans, error: scanError } = await admin
+      .from('verification_document_scan_events')
+      .select('document_version_id, status, created_at')
+      .in('document_version_id', ids)
+      .order('created_at', { ascending: false });
+    if (scanError != null) throw new Error(scanError.message);
+
+    const latestScan = new Map<string, string>();
+    for (const scan of scans ?? []) {
+      const id = String(scan.document_version_id);
+      if (!latestScan.has(id)) latestScan.set(id, String(scan.status));
+    }
+    const unsafe = ids.filter((id) => latestScan.get(id) !== 'clean');
+    if (unsafe.length > 0) {
+      throw new Error('Every current document must pass malware scanning before approval.');
+    }
+  }
+
+  const { error: eventError } = await admin
+    .from('verification_document_review_events')
+    .insert(latestVersions.map((version) => ({
+      document_version_id: version.id,
+      status,
+      reviewed_by: adminUserId,
+      notes: reviewNotes.length === 0 ? null : reviewNotes,
+      rejection_reason: status === 'rejected' ? rejectionReason : null,
+    })));
+  if (eventError != null) throw new Error(eventError.message);
+}
+
+async function assertCurrentDocumentsScanned(
+  admin: SupabaseClient,
+  userId: string,
+  documentTypes: string[],
+  requiredTypes: string[],
+) {
+  const { data: versions, error: versionError } = await admin
+    .from('verification_document_versions')
+    .select('id, document_type, version_number')
+    .eq('owner_user_id', userId)
+    .in('document_type', documentTypes)
+    .order('version_number', { ascending: false });
+  if (versionError != null) throw new Error(versionError.message);
+
+  const latestByType = new Map<string, Record<string, unknown>>();
+  for (const version of versions ?? []) {
+    const type = String(version.document_type);
+    if (!latestByType.has(type)) latestByType.set(type, version);
+  }
+  const missing = requiredTypes.filter((type) => !latestByType.has(type));
+  if (missing.length > 0) {
+    throw new Error(`Required document versions are missing: ${missing.join(', ')}.`);
+  }
+
+  const ids = [...latestByType.values()].map((version) => String(version.id));
+  const { data: scans, error: scanError } = await admin
+    .from('verification_document_scan_events')
+    .select('document_version_id, status, created_at')
+    .in('document_version_id', ids)
+    .order('created_at', { ascending: false });
+  if (scanError != null) throw new Error(scanError.message);
+
+  const latestScan = new Map<string, string>();
+  for (const scan of scans ?? []) {
+    const id = String(scan.document_version_id);
+    if (!latestScan.has(id)) latestScan.set(id, String(scan.status));
+  }
+  if (ids.some((id) => latestScan.get(id) !== 'clean')) {
+    throw new Error('Every current document must pass malware scanning before approval.');
+  }
 }
 
 serve(async (request) => {
@@ -247,6 +284,20 @@ serve(async (request) => {
             'guardian';
       }
 
+
+      if (status === 'approved') {
+        await assertCurrentDocumentsScanned(
+          admin,
+          userId,
+          isGuardianReview
+            ? ['guardian_identity_license']
+            : ['identity_license'],
+          isGuardianReview
+            ? ['guardian_identity_license']
+            : ['identity_license'],
+        );
+      }
+
       const update: Record<string, unknown> = {
         verification_status: status,
         verification_reviewed_by: adminUser.user_id,
@@ -275,6 +326,18 @@ serve(async (request) => {
       if (updateError != null) {
         return jsonResponse({ error: updateError.message }, 400);
       }
+
+      await appendDocumentReviewEvents(
+        admin,
+        userId,
+        isGuardianReview
+          ? ['guardian_identity_license']
+          : ['identity_license'],
+        status,
+        String(adminUser.user_id),
+        reviewNotes,
+        rejectionReason,
+      );
 
       const reviewEventKey = isGuardianReview
         ? status === 'approved'
@@ -353,6 +416,20 @@ serve(async (request) => {
         return jsonResponse({ error: 'Instructor profile not found.' }, 404);
       }
 
+      if (status === 'approved') {
+        await assertCurrentDocumentsScanned(
+          admin,
+          userId,
+          [
+            'instructor_license',
+            'insurance_document',
+            'background_check',
+            'municipal_license',
+          ],
+          ['instructor_license', 'insurance_document', 'background_check'],
+        );
+      }
+
       const update: Record<string, unknown> = {
         credentials_status: status,
         credentials_reviewed_by: adminUser.user_id,
@@ -381,8 +458,25 @@ serve(async (request) => {
         return jsonResponse({ error: updateError.message }, 400);
       }
 
-      const profile =
-        (instructorProfile.profile as Record<string, unknown> | null) ?? {};
+      await appendDocumentReviewEvents(
+        admin,
+        userId,
+        [
+          'instructor_license',
+          'insurance_document',
+          'background_check',
+          'municipal_license',
+        ],
+        status,
+        String(adminUser.user_id),
+        reviewNotes,
+        rejectionReason,
+      );
+
+      const rawProfile = instructorProfile.profile as unknown;
+      const profile = Array.isArray(rawProfile)
+        ? ((rawProfile[0] as Record<string, unknown> | undefined) ?? {})
+        : ((rawProfile as Record<string, unknown> | null) ?? {});
       const identityApproved =
         String(profile.verification_status ?? '').trim().toLowerCase() ===
         'approved';

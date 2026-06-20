@@ -27,6 +27,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   String _email = '';
+  bool _phoneVerified = false;
   final _licenceNumberController = TextEditingController();
   final _licenceExpiryController = TextEditingController();
   DateTime? _licenceExpiryDate;
@@ -47,6 +48,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   DateTime? _g1TestDate;
   DateTime? _lastClassDate;
   String? _selectedGender;
+  String? _learnerTransmission;
 
   // Instructor fields
   final _instructorAgeController = TextEditingController();
@@ -67,12 +69,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     'Other',
   ];
   String? _selectedVehicleType;
+  String? _selectedVehicleTransmission;
   final _vehicleYearController = TextEditingController();
   final _vehicleMakeController = TextEditingController();
   final _vehicleModelController = TextEditingController();
   final _vehiclePlateController = TextEditingController();
   final List<_VehicleEntry> _vehicles = [];
   String? _pendingVehicleImagePath;
+  int? _editingVehicleIndex;
+  String? _editingVehiclePhotoUrl;
   final ImagePicker _imagePicker = ImagePicker();
 
   final _bioController = TextEditingController();
@@ -195,6 +200,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _firstNameController.text = firstName;
       _lastNameController.text = lastName;
       _phoneController.text = phone;
+      _phoneVerified = _stringOrNull(rawProfile?['phone_verified_at']) != null;
 
       final role = _stringOrNull(rawProfile?['role']) ??
           currentUser.userMetadata?['role'];
@@ -278,6 +284,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     final classesTaken = detail['classes_taken_sofar'];
+    _learnerTransmission = _stringOrNull(detail['transmission_preference']);
     if (classesTaken is int) {
       _classesTakenController.text = classesTaken.toString();
     } else if (classesTaken is String) {
@@ -601,10 +608,86 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               keyboardType: TextInputType.phone,
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _phoneVerified
+                  ? const Chip(
+                      avatar: Icon(Icons.verified_rounded, size: 18),
+                      label: Text('Phone verified'),
+                    )
+                  : TextButton.icon(
+                      onPressed: _verifyPhoneNumber,
+                      icon: const Icon(Icons.sms_outlined),
+                      label: const Text('Verify phone number'),
+                    ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _verifyPhoneNumber() async {
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || !phone.startsWith('+')) {
+      _showInlineError(
+          'Enter the phone in international format, for example +14165551234.');
+      return;
+    }
+    try {
+      await SupabaseService.sendPhoneVerificationCode(phone);
+    } catch (error) {
+      if (!mounted) return;
+      _showInlineError('Unable to send the verification code: $error');
+      return;
+    }
+    if (!mounted) return;
+
+    final controller = TextEditingController();
+    final token = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Verify phone number'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '6-digit code',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Verify'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (token == null || token.trim().length != 6) return;
+
+    try {
+      await SupabaseService.verifyPhoneChangeCode(phone: phone, token: token);
+      if (!mounted) return;
+      setState(() => _phoneVerified = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Phone number verified.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showInlineError('That code could not be verified: $error');
+    }
   }
 
   Widget _buildLearnerForm() {
@@ -669,6 +752,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
         const SizedBox(height: 24),
         _buildSectionTitle('Personal Details'),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _learnerTransmission,
+          decoration: const InputDecoration(
+            labelText: 'Car transmission you are learning',
+            border: OutlineInputBorder(),
+          ),
+          items: const [
+            DropdownMenuItem(value: 'automatic', child: Text('Automatic')),
+            DropdownMenuItem(value: 'manual', child: Text('Manual')),
+          ],
+          onChanged: (value) => setState(() => _learnerTransmission = value),
+        ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           value: _selectedArea,
@@ -1122,6 +1218,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           onChanged: (value) => setState(() => _selectedVehicleType = value),
         ),
         const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _selectedVehicleTransmission,
+          decoration: const InputDecoration(
+            labelText: 'Transmission',
+            border: OutlineInputBorder(),
+          ),
+          items: const [
+            DropdownMenuItem(value: 'automatic', child: Text('Automatic')),
+            DropdownMenuItem(value: 'manual', child: Text('Manual')),
+          ],
+          onChanged: (value) =>
+              setState(() => _selectedVehicleTransmission = value),
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -1208,7 +1318,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: OutlinedButton.icon(
             onPressed: _handleAddVehicle,
             icon: const Icon(Icons.add),
-            label: const Text('Add vehicle'),
+            label: Text(
+              _editingVehicleIndex == null ? 'Add vehicle' : 'Update vehicle',
+            ),
           ),
         ),
         if (_vehicles.isNotEmpty) ...[
@@ -1237,11 +1349,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             ),
                         ],
                       ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() {
-                          _vehicles.remove(vehicle);
-                        }),
+                      trailing: Wrap(
+                        spacing: 2,
+                        children: [
+                          IconButton(
+                            tooltip: 'Edit vehicle',
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: () => _beginEditingVehicle(vehicle),
+                          ),
+                          IconButton(
+                            tooltip: 'Remove vehicle',
+                            icon: const Icon(Icons.close),
+                            onPressed: () => setState(() {
+                              _vehicles.remove(vehicle);
+                              _editingVehicleIndex = null;
+                            }),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1437,7 +1561,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       final profileUpdates = <String, dynamic>{
-        'role': 'instructor',
+        'role': 'learner',
         'first_name': firstName,
         'last_name': lastName,
         'phone': phone.isNotEmpty ? phone : null,
@@ -1469,6 +1593,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         targetTestDate: _g1TestDate,
         preferredLocations:
             locations.map((entry) => Map<String, dynamic>.from(entry)).toList(),
+        transmissionPreference: _learnerTransmission,
       );
 
       if (!mounted) return;
@@ -1703,6 +1828,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         clearPreferredLocations: _pickupPreference,
         yearsOfExperience: yearsExperience,
         pickupPreference: _pickupPreference,
+        transmissionPreference: preparedVehicles.isNotEmpty
+            ? preparedVehicles.first.transmission
+            : null,
       );
 
       if (!mounted) return;
@@ -1792,6 +1920,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final make = _vehicleMakeController.text.trim();
     final model = _vehicleModelController.text.trim();
     final plate = _vehiclePlateController.text.trim().toUpperCase();
+    final transmission = _selectedVehicleTransmission;
 
     if (type == null || type.isEmpty) {
       _showInlineError('Select a vehicle type.');
@@ -1812,37 +1941,71 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _showInlineError('Number plate is required.');
       return;
     }
+    if (transmission == null) {
+      _showInlineError('Select automatic or manual transmission.');
+      return;
+    }
 
-    final duplicatePlate = _vehicles.any(
-      (vehicle) => vehicle.numberPlate.toUpperCase() == plate,
-    );
+    final duplicatePlate = _vehicles.asMap().entries.any(
+          (entry) =>
+              entry.key != _editingVehicleIndex &&
+              entry.value.numberPlate.toUpperCase() == plate,
+        );
     if (duplicatePlate) {
       _showInlineError('This number plate is already added.');
       return;
     }
 
     setState(() {
-      _vehicles.add(
-        _VehicleEntry(
-          type: type,
-          year: year,
-          make: make,
-          model: model,
-          numberPlate: plate,
-          localImagePath: _pendingVehicleImagePath,
-        ),
+      final updatedVehicle = _VehicleEntry(
+        type: type,
+        year: year,
+        make: make,
+        model: model,
+        numberPlate: plate,
+        transmission: transmission,
+        photoUrl: _editingVehiclePhotoUrl,
+        localImagePath: _pendingVehicleImagePath,
       );
+      final editingIndex = _editingVehicleIndex;
+      if (editingIndex == null) {
+        _vehicles.add(updatedVehicle);
+      } else {
+        _vehicles[editingIndex] = updatedVehicle;
+      }
       _vehicleYearController.clear();
       _vehicleMakeController.clear();
       _vehicleModelController.clear();
       _vehiclePlateController.clear();
+      _selectedVehicleTransmission = null;
       _pendingVehicleImagePath = null;
+      _editingVehicleIndex = null;
+      _editingVehiclePhotoUrl = null;
+    });
+  }
+
+  void _beginEditingVehicle(_VehicleEntry vehicle) {
+    final index = _vehicles.indexOf(vehicle);
+    if (index < 0) return;
+    setState(() {
+      _editingVehicleIndex = index;
+      _selectedVehicleType = vehicle.type;
+      _selectedVehicleTransmission = vehicle.transmission;
+      _vehicleYearController.text = vehicle.year;
+      _vehicleMakeController.text = vehicle.make;
+      _vehicleModelController.text = vehicle.model;
+      _vehiclePlateController.text = vehicle.numberPlate;
+      _pendingVehicleImagePath = vehicle.localImagePath;
+      _editingVehiclePhotoUrl = vehicle.photoUrl;
     });
   }
 
   Future<List<_VehicleEntry>> _prepareVehiclesForUpload(String userId) async {
     final updated = <_VehicleEntry>[];
-    for (final vehicle in _vehicles) {
+    for (var vehicleIndex = 0;
+        vehicleIndex < _vehicles.length;
+        vehicleIndex++) {
+      final vehicle = _vehicles[vehicleIndex];
       var current = vehicle;
       final localPath = vehicle.localImagePath;
       if (localPath != null && localPath.trim().isNotEmpty) {
@@ -1851,6 +2014,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           final url = await SupabaseService.uploadVehicleGalleryImage(
             userId: userId,
             file: file,
+            vehicleSlot: vehicleIndex,
           );
           if (url != null && url.isNotEmpty) {
             current = current.copyWith(photoUrl: url, localImagePath: null);

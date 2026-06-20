@@ -48,7 +48,6 @@ class InstructorDiscoveryCard extends StatelessWidget {
         ? instructor.languages.take(2).join(', ').toUpperCase()
         : 'LANGUAGE N/A';
     final serviceAreaText = _serviceArea(instructor);
-    final driveTutorNumber = instructor.driveTutorNumber?.trim();
     final isVerified = instructor.isVerified || instructor.user.isVerified;
     final ratingText = instructor.rating > 0
         ? instructor.rating.toStringAsFixed(1)
@@ -98,9 +97,9 @@ class InstructorDiscoveryCard extends StatelessWidget {
                   ),
                   if (isVerified)
                     const Positioned(
-                      right: -4,
-                      top: -4,
-                      child: VerifiedProfileBadge(size: 28),
+                      right: -2,
+                      top: -2,
+                      child: VerifiedProfileBadge(size: 32, showCutout: true),
                     ),
                 ],
               ),
@@ -132,20 +131,6 @@ class InstructorDiscoveryCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    if (driveTutorNumber != null &&
-                        driveTutorNumber.isNotEmpty) ...[
-                      Text(
-                        'Drive Tutor #$driveTutorNumber',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                    ],
                     Text(
                       vehicle,
                       maxLines: 1,

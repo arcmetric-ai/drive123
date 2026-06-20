@@ -40,6 +40,7 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
   final Set<String> _removingLearnerIds = <String>{};
   late final TextEditingController _searchController;
   String _searchQuery = '';
+  String _learnerFilter = 'active';
 
   static const List<String> _daySequence = [
     'monday',
@@ -66,11 +67,28 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
   };
 
   List<Map<String, dynamic>> get _filteredLearners {
-    if (_searchQuery.isEmpty) return _learners;
-    return _learners.where(_matchesSearch).toList();
+    final filtered = _learners.where((learner) {
+      switch (_learnerFilter) {
+        case 'graduated':
+          return _isGraduatedLearner(learner);
+        case 'g2':
+          return !_isGraduatedLearner(learner) && _licenseTier(learner) == 'g2';
+        case 'g':
+          return !_isGraduatedLearner(learner) && _licenseTier(learner) == 'g';
+        case 'refresher':
+          return !_isGraduatedLearner(learner) && _isRefresherLearner(learner);
+        case 'offline':
+          return !_isGraduatedLearner(learner) && _isExternalLearner(learner);
+        default:
+          return !_isGraduatedLearner(learner);
+      }
+    });
+    if (_searchQuery.isEmpty) return filtered.toList();
+    return filtered.where(_matchesSearch).toList();
   }
 
-  int get _activeLearnerCount => _learners.length;
+  int get _activeLearnerCount =>
+      _learners.where((learner) => !_isGraduatedLearner(learner)).length;
   int get _graduatedCount =>
       _learners.where((learner) => _isGraduatedLearner(learner)).length;
   int get _g2Count =>
@@ -79,6 +97,14 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
       _learners.where((learner) => _licenseTier(learner) == 'g').length;
   int get _refresherCount =>
       _learners.where((learner) => _isRefresherLearner(learner)).length;
+  int get _offlineCount => _learners
+      .where((learner) =>
+          _isExternalLearner(learner) && !_isGraduatedLearner(learner))
+      .length;
+
+  void _selectLearnerFilter(String filter) {
+    setState(() => _learnerFilter = filter);
+  }
 
   @override
   void initState() {
@@ -129,6 +155,7 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
           .toList();
 
       final learnerIds = learners
+          .where((learner) => !_isExternalLearner(learner))
           .map((learner) => _learnerId(learner))
           .whereType<String>()
           .toList();
@@ -185,6 +212,138 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
   }
 
   Future<void> _refresh() => _load();
+
+  Future<void> _showAddExternalLearnerSheet() async {
+    final instructorId = SupabaseService.currentUser?.id;
+    if (instructorId == null) return;
+
+    final draft = await showModalBottomSheet<_ExternalLearnerDraft>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => const _ExternalLearnerSheet(),
+    );
+    if (!mounted || draft == null) return;
+
+    try {
+      await SupabaseService.createExternalLearner(
+        instructorId: instructorId,
+        fullName: draft.fullName,
+        phone: draft.phone,
+        pickupAddress: draft.pickupAddress,
+        learningFocus: draft.learningFocus,
+        transmissionPreference: draft.transmissionPreference,
+        notes: draft.notes,
+        weeklyAvailability: Map<String, dynamic>.from(draft.weeklyAvailability),
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${draft.fullName} added to your roster.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to add offline learner: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showEditExternalLearnerSheet(
+    Map<String, dynamic> learner,
+  ) async {
+    final instructorId = SupabaseService.currentUser?.id;
+    final learnerId = _learnerId(learner);
+    if (instructorId == null || learnerId == null) return;
+
+    final draft = await showModalBottomSheet<_ExternalLearnerDraft>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => _ExternalLearnerSheet(initialLearner: learner),
+    );
+    if (!mounted || draft == null) return;
+
+    try {
+      await SupabaseService.updateExternalLearner(
+        instructorId: instructorId,
+        externalLearnerId: learnerId,
+        fullName: draft.fullName,
+        phone: draft.phone,
+        pickupAddress: draft.pickupAddress,
+        transmissionPreference: draft.transmissionPreference,
+        learningFocus: draft.learningFocus,
+        notes: draft.notes,
+        weeklyAvailability: Map<String, dynamic>.from(draft.weeklyAvailability),
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${draft.fullName} updated.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to update offline learner: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _markLearnerGraduated(Map<String, dynamic> learner) async {
+    final instructorId = SupabaseService.currentUser?.id;
+    final learnerId = _learnerId(learner);
+    if (instructorId == null || learnerId == null) return;
+
+    final name = _learnerName(learner);
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Mark as graduated?'),
+            content: Text(
+              '$name will move out of your active learner count. Any scheduled lessons that have not started will be cancelled.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Mark graduated'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+
+    try {
+      await SupabaseService.markLearnerGraduated(
+        instructorId: instructorId,
+        learnerId: learnerId,
+        isExternalLearner: _isExternalLearner(learner),
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$name moved to graduated learners.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to graduate $name: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
 
   Map<String, dynamic> _prepareLearnerEntry(Map<String, dynamic> learner) {
     final learnerData = Map<String, dynamic>.from(learner);
@@ -313,8 +472,15 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
   }
 
   String? _learnerId(Map<String, dynamic> learner) {
-    return learner['learner_id'] as String? ??
+    return _stringValue(learner['learner_id']) ??
+        _stringValue(learner['external_learner_id']) ??
         (learner['learner'] as Map?)?['id'] as String?;
+  }
+
+  bool _isExternalLearner(Map<String, dynamic> learner) {
+    return learner['is_external_learner'] == true ||
+        learner['is_offline'] == true ||
+        _stringValue(learner['external_learner_id']) != null;
   }
 
   String _licenseTier(Map<String, dynamic> learner) {
@@ -624,6 +790,15 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
   }
 
   void _openLearnerProfile(Map<String, dynamic> learner) {
+    if (_isExternalLearner(learner)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Offline learner details are managed from this roster.'),
+        ),
+      );
+      return;
+    }
     final learnerId = _learnerId(learner);
     if (learnerId == null) return;
     GoRouter.of(context).push(
@@ -688,10 +863,17 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
 
     var removed = false;
     try {
-      await SupabaseService.releaseLearnerFromInstructor(
-        instructorId: instructorId,
-        learnerId: learnerId,
-      );
+      if (_isExternalLearner(learner)) {
+        await SupabaseService.releaseExternalLearnerFromInstructor(
+          instructorId: instructorId,
+          externalLearnerId: learnerId,
+        );
+      } else {
+        await SupabaseService.releaseLearnerFromInstructor(
+          instructorId: instructorId,
+          learnerId: learnerId,
+        );
+      }
       removed = true;
       if (!mounted) return true;
       await _load();
@@ -807,6 +989,8 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
         children: [
           _buildSummaryCards(),
           const SizedBox(height: 16),
+          _buildAddOfflineLearnerButton(),
+          const SizedBox(height: 12),
           _buildSearchField(),
           const SizedBox(height: 20),
           if (learners.isEmpty)
@@ -844,6 +1028,8 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                     valueColor: Colors.white,
                     labelColor: const Color(0xFFDCE6FF),
                     iconRingColor: const Color(0xFF79A1FF),
+                    selected: _learnerFilter == 'active',
+                    onTap: () => _selectLearnerFilter('active'),
                   ),
                 ),
                 const SizedBox(width: spacing),
@@ -861,6 +1047,8 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                     labelColor: const Color(0xFF6B7280),
                     iconRingColor: const Color(0xFFFFF0B8),
                     shadowColor: const Color(0x140F172A),
+                    selected: _learnerFilter == 'graduated',
+                    onTap: () => _selectLearnerFilter('graduated'),
                   ),
                 ),
               ],
@@ -877,6 +1065,8 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                     borderColor: const Color(0xFFD8E2FF),
                     labelColor: const Color(0xFF1E53D5),
                     valueColor: const Color(0xFF1E53D5),
+                    selected: _learnerFilter == 'g2',
+                    onTap: () => _selectLearnerFilter('g2'),
                   ),
                 ),
                 const SizedBox(width: spacing),
@@ -889,6 +1079,8 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                     borderColor: const Color(0xFFF7E6A1),
                     labelColor: Colors.black,
                     valueColor: Colors.black,
+                    selected: _learnerFilter == 'g',
+                    onTap: () => _selectLearnerFilter('g'),
                   ),
                 ),
                 const SizedBox(width: spacing),
@@ -901,9 +1093,21 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                     borderColor: const Color(0xFFDADFE8),
                     labelColor: const Color(0xFF6B7280),
                     valueColor: const Color(0xFF111827),
+                    selected: _learnerFilter == 'refresher',
+                    onTap: () => _selectLearnerFilter('refresher'),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilterChip(
+                avatar: const Icon(Icons.person_off_outlined, size: 18),
+                label: Text('Offline learners ($_offlineCount)'),
+                selected: _learnerFilter == 'offline',
+                onSelected: (_) => _selectLearnerFilter('offline'),
+              ),
             ),
           ],
         );
@@ -941,16 +1145,43 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     );
   }
 
+  Widget _buildAddOfflineLearnerButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _showAddExternalLearnerSheet,
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+        label: const Text('Add offline learner'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primaryBlue,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyLearners() {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: _outlinedSurfaceDecoration(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          Icon(Icons.people_outline, size: 36, color: AppColors.primaryBlue),
-          SizedBox(height: 12),
-          Text(
+        children: [
+          const Icon(
+            Icons.people_outline,
+            size: 36,
+            color: AppColors.primaryBlue,
+          ),
+          const SizedBox(height: 12),
+          const Text(
             'No active learners yet.',
             style: TextStyle(
               fontSize: 16,
@@ -958,10 +1189,16 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
               color: AppColors.primaryBlue,
             ),
           ),
-          SizedBox(height: 6),
-          Text(
-            'Once a learner connects with you, their info and availability will appear here.',
+          const SizedBox(height: 6),
+          const Text(
+            'Learners who connect through the app and offline learners you add will appear here.',
             style: TextStyle(color: Colors.black54),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _showAddExternalLearnerSheet,
+            icon: const Icon(Icons.person_add_alt_1_rounded),
+            label: const Text('Add offline learner'),
           ),
         ],
       ),
@@ -982,9 +1219,20 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     final progress = _progressValue(learner);
     final progressSummary = _progressSummary(learner);
     final nextLesson = _nextLessonLabel(learner);
-    final progressLabel =
-        progress != null ? '${(progress * 100).round()}%' : 'Tracking soon';
-    final lessonsLabel = progressSummary ?? 'No stats yet';
+    final isExternal = _isExternalLearner(learner);
+    final isGraduated = _isGraduatedLearner(learner);
+    final transmission = _stringValue(learner['transmission_preference']) ??
+        _stringValue((learner['learner_profile'] as Map?)?['transmission_preference']) ??
+        _stringValue((learner['learner'] as Map?)?['transmission_preference']);
+    final progressLabel = isExternal
+        ? transmission == null
+            ? 'Not set'
+            : _capitalize(transmission)
+        : progress != null
+            ? '${(progress * 100).round()}%'
+            : 'Tracking soon';
+    final lessonsLabel =
+        isExternal ? 'Offline learner' : progressSummary ?? 'No stats yet';
     final nextLessonLabel =
         nextLesson != null ? 'Next: $nextLesson' : 'Next: TBD';
     final learnerId = _learnerId(learner);
@@ -1030,13 +1278,37 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        name,
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: colors.accentText,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: colors.accentText,
+                              ),
+                            ),
+                          ),
+                          if (isExternal) ...[
+                            const SizedBox(width: 8),
+                            const _FocusBadge(
+                              label: 'Offline',
+                              backgroundColor: Color(0xFFFFF7CC),
+                              foregroundColor: Color(0xFF8A6500),
+                            ),
+                          ],
+                          if (isGraduated) ...[
+                            const SizedBox(width: 8),
+                            const _FocusBadge(
+                              label: 'Graduated',
+                              backgroundColor: Color(0xFFE7F8EF),
+                              foregroundColor: Color(0xFF0B7A3B),
+                            ),
+                          ],
+                        ],
                       ),
                       if (focusLabel != null) ...[
                         const SizedBox(height: 4),
@@ -1190,6 +1462,58 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                 ),
               ],
             ),
+            if (isExternal || !isGraduated) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  if (isExternal)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: isRemoving
+                            ? null
+                            : () => _showEditExternalLearnerSheet(learner),
+                        icon: const Icon(Icons.event_available_outlined),
+                        label: const Text('Edit availability'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: colors.accent,
+                          side: BorderSide(color: colors.border),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (isExternal && !isGraduated) const SizedBox(width: 12),
+                  if (!isGraduated)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: isRemoving
+                            ? null
+                            : () => _markLearnerGraduated(learner),
+                        icon: const Icon(Icons.school_outlined),
+                        label: const Text('Graduated'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0B7A3B),
+                          side: const BorderSide(color: Color(0xFFB7E4C7)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -1200,6 +1524,373 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     final status = _stringValue(learner['status']);
     if (status == null) return false;
     return status.toLowerCase().contains('recurring');
+  }
+}
+
+class _ExternalLearnerDraft {
+  const _ExternalLearnerDraft({
+    required this.fullName,
+    required this.weeklyAvailability,
+    this.phone,
+    this.pickupAddress,
+    this.learningFocus,
+    this.transmissionPreference,
+    this.notes,
+  });
+
+  final String fullName;
+  final String? phone;
+  final String? pickupAddress;
+  final String? learningFocus;
+  final String? transmissionPreference;
+  final String? notes;
+  final Map<String, List<String>> weeklyAvailability;
+}
+
+class _ExternalLearnerSheet extends StatefulWidget {
+  const _ExternalLearnerSheet({this.initialLearner});
+
+  final Map<String, dynamic>? initialLearner;
+
+  @override
+  State<_ExternalLearnerSheet> createState() => _ExternalLearnerSheetState();
+}
+
+class _ExternalLearnerSheetState extends State<_ExternalLearnerSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _pickupController = TextEditingController();
+  final _notesController = TextEditingController();
+  final Map<String, Set<String>> _availability = {};
+  String? _focus;
+  String? _transmission;
+
+  static const List<String> _days = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+
+  static const Map<String, String> _dayLabels = {
+    'monday': 'Mon',
+    'tuesday': 'Tue',
+    'wednesday': 'Wed',
+    'thursday': 'Thu',
+    'friday': 'Fri',
+    'saturday': 'Sat',
+    'sunday': 'Sun',
+  };
+
+  static const Map<String, String> _slotLabels = {
+    'early': 'Early',
+    'morning': 'Morning',
+    'afternoon': 'Afternoon',
+    'evening': 'Evening',
+  };
+
+  bool get _isEditing => widget.initialLearner != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final learner = widget.initialLearner;
+    if (learner == null) return;
+    _nameController.text = _stringValue(learner['learner_name']) ??
+        _stringValue((learner['learner'] as Map?)?['name']) ??
+        '';
+    _phoneController.text = _stringValue(learner['phone']) ??
+        _stringValue((learner['learner'] as Map?)?['phone']) ??
+        '';
+    final preferredLocations = learner['preferred_locations'];
+    if (preferredLocations is List && preferredLocations.isNotEmpty) {
+      final first = preferredLocations.first;
+      if (first is Map) {
+        _pickupController.text = _stringValue(first['address']) ??
+            _stringValue(first['label']) ??
+            '';
+      }
+    }
+    _notesController.text = _stringValue(learner['notes']) ?? '';
+    _focus = _stringValue(learner['learning_focus']);
+    _transmission = _stringValue(learner['transmission_preference']) ??
+        _stringValue((learner['learner'] as Map?)?['transmission_preference']);
+    _seedAvailability(learner['weekly_availability']);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _pickupController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  String? _clean(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static String? _stringValue(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  void _seedAvailability(dynamic raw) {
+    if (raw is! Map) return;
+    for (final entry in raw.entries) {
+      final day = entry.key.toString();
+      if (!_days.contains(day)) continue;
+      final values = entry.value;
+      final slots = <String>{};
+      if (values is Iterable) {
+        for (final value in values) {
+          final slot = value.toString();
+          if (_slotLabels.containsKey(slot)) slots.add(slot);
+        }
+      } else if (values is String && _slotLabels.containsKey(values)) {
+        slots.add(values);
+      }
+      if (slots.isNotEmpty) {
+        _availability[day] = slots;
+      }
+    }
+  }
+
+  void _toggleAvailability(String day, String slot) {
+    setState(() {
+      final slots = _availability.putIfAbsent(day, () => <String>{});
+      if (slots.contains(slot)) {
+        slots.remove(slot);
+      } else {
+        slots.add(slot);
+      }
+      if (slots.isEmpty) {
+        _availability.remove(day);
+      }
+    });
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    Navigator.of(context).pop(
+      _ExternalLearnerDraft(
+        fullName: _nameController.text.trim(),
+        phone: _clean(_phoneController.text),
+        pickupAddress: _clean(_pickupController.text),
+        learningFocus: _focus,
+        transmissionPreference: _transmission,
+        notes: _clean(_notesController.text),
+        weeklyAvailability: _availability.map(
+          (day, slots) => MapEntry(day, slots.toList()..sort()),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom +
+            16,
+      ),
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _isEditing
+                          ? 'Edit offline learner'
+                          : 'Add offline learner',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _isEditing
+                    ? 'Update contact details and availability for this offline learner.'
+                    : 'Use this for learners you manage directly outside the app.',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 18),
+              TextFormField(
+                controller: _nameController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Full name',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) => (value == null || value.trim().isEmpty)
+                    ? 'Enter the learner name'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone number optional',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _pickupController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Pickup address optional',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _focus,
+                decoration: const InputDecoration(
+                  labelText: 'Lesson focus optional',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'G2', child: Text('G2')),
+                  DropdownMenuItem(value: 'G', child: Text('G')),
+                  DropdownMenuItem(
+                    value: 'Refresher',
+                    child: Text('Refresher'),
+                  ),
+                ],
+                onChanged: (value) => setState(() => _focus = value),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _transmission,
+                decoration: const InputDecoration(
+                  labelText: 'Car transmission',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'automatic',
+                    child: Text('Automatic'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'manual',
+                    child: Text('Manual'),
+                  ),
+                ],
+                onChanged: (value) => setState(() => _transmission = value),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Availability optional',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'If this is empty, you can still book them manually in the planner.',
+                style: TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+              ..._days.map(_buildDayAvailability),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _notesController,
+                minLines: 2,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Notes optional',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Text(_isEditing ? 'Save changes' : 'Add learner'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayAvailability(String day) {
+    final selected = _availability[day] ?? const <String>{};
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _dayLabels[day] ?? day,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _slotLabels.entries.map((entry) {
+              final isSelected = selected.contains(entry.key);
+              return FilterChip(
+                label: Text(entry.value),
+                selected: isSelected,
+                onSelected: (_) => _toggleAvailability(day, entry.key),
+                selectedColor: const Color(0xFFEAF1FF),
+                checkmarkColor: AppColors.primaryBlue,
+                labelStyle: TextStyle(
+                  color: isSelected ? AppColors.primaryBlue : Colors.black54,
+                  fontWeight: FontWeight.w600,
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1216,6 +1907,8 @@ class _LearnerHeroStatCard extends StatelessWidget {
     required this.labelColor,
     required this.iconRingColor,
     this.shadowColor = const Color(0x180F172A),
+    required this.selected,
+    required this.onTap,
   });
 
   final String label;
@@ -1229,74 +1922,83 @@ class _LearnerHeroStatCard extends StatelessWidget {
   final Color labelColor;
   final Color iconRingColor;
   final Color shadowColor;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 228,
-      padding: const EdgeInsets.fromLTRB(28, 30, 28, 28),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(34),
+      child: Container(
+        height: 228,
+        padding: const EdgeInsets.fromLTRB(28, 30, 28, 28),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(34),
+          border: Border.all(
+            color: selected ? AppColors.accent : borderColor,
+            width: selected ? 3 : 1,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: iconRingColor,
-              shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: shadowColor,
+              blurRadius: 18,
+              offset: const Offset(0, 8),
             ),
-            child: Center(
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: iconBackground,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 18, color: iconColor),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: iconRingColor,
+                shape: BoxShape.circle,
               ),
-            ),
-          ),
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: FittedBox(
-              alignment: Alignment.centerLeft,
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: labelColor,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2.2,
+              child: Center(
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: iconBackground,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: 18, color: iconColor),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: 42,
-              fontWeight: FontWeight.w800,
-              height: 1,
+            const Spacer(),
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                alignment: Alignment.centerLeft,
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: labelColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2.2,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              value,
+              style: TextStyle(
+                color: valueColor,
+                fontSize: 42,
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1310,6 +2012,8 @@ class _LearnerMiniStatCard extends StatelessWidget {
     required this.borderColor,
     required this.labelColor,
     required this.valueColor,
+    required this.selected,
+    required this.onTap,
   });
 
   final String label;
@@ -1318,48 +2022,57 @@ class _LearnerMiniStatCard extends StatelessWidget {
   final Color borderColor;
   final Color labelColor;
   final Color valueColor;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 106,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: double.infinity,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                style: TextStyle(
-                  color: labelColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        height: 106,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: selected ? AppColors.primaryBlue : borderColor,
+            width: selected ? 2.5 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: labelColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              height: 1,
+            const SizedBox(height: 10),
+            Text(
+              value,
+              style: TextStyle(
+                color: valueColor,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

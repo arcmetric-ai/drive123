@@ -12,6 +12,7 @@ class InstructorDocumentStatusTile extends StatelessWidget {
     required this.onTap,
     this.showTrailingArrow = true,
     this.isComplete = false,
+    this.compact = false,
   });
 
   final String title;
@@ -21,6 +22,7 @@ class InstructorDocumentStatusTile extends StatelessWidget {
   final VoidCallback? onTap;
   final bool showTrailingArrow;
   final bool isComplete;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +30,10 @@ class InstructorDocumentStatusTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(28),
       onTap: onTap,
       child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 12 : 16,
+          vertical: compact ? 9 : 16,
+        ),
         decoration: BoxDecoration(
           color: AppColors.card,
           borderRadius: BorderRadius.circular(20),
@@ -44,13 +49,13 @@ class InstructorDocumentStatusTile extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 52,
-              height: 52,
+              width: compact ? 40 : 52,
+              height: compact ? 40 : 52,
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(icon, color: statusColor, size: 26),
+              child: Icon(icon, color: statusColor, size: compact ? 21 : 26),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -59,8 +64,8 @@ class InstructorDocumentStatusTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 17,
+                    style: TextStyle(
+                      fontSize: compact ? 15 : 17,
                       fontWeight: FontWeight.w800,
                       color: AppColors.foreground,
                     ),

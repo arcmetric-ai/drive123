@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/instructor_document_type.dart';
 import '../models/learner_onboarding_draft.dart';
@@ -118,6 +119,34 @@ class AppRoutes {
   static final GoRouter router = GoRouter(
     navigatorKey: navigatorKey,
     initialLocation: splash,
+    redirect: (context, state) {
+      final protectedPaths = <String>{
+        home,
+        instructorHome,
+        instructorBilling,
+        instructorAvailability,
+        instructorLessonDetail,
+        instructorLessonEdit,
+        instructorLearnerDetail,
+        instructorLearnerRosterPreview,
+        instructorProfilePreview,
+        reviewLearnerRequest,
+        learnerInstructorDetail,
+        findInstructor,
+        myLessons,
+        completedLessonDetail,
+        progressTracker,
+        profile,
+        editProfile,
+        editLearnerAvailability,
+        helpSupport,
+      };
+      if (protectedPaths.contains(state.uri.path) &&
+          Supabase.instance.client.auth.currentSession == null) {
+        return auth;
+      }
+      return null;
+    },
     routes: [
       GoRoute(path: splash, builder: (context, state) => const SplashScreen()),
       GoRoute(
@@ -207,14 +236,12 @@ class AppRoutes {
           final email = extra is String
               ? extra
               : (extra is Map ? extra['email'] as String? : null);
-          final authUserId = extra is Map
-              ? extra['authUserId'] as String?
-              : null;
+          final authUserId =
+              extra is Map ? extra['authUserId'] as String? : null;
           final flowToken = extra is Map ? extra['flowToken'] as String? : null;
           final role = extra is Map ? extra['role'] as String? : null;
-          final learnerAccountType = extra is Map
-              ? extra['learnerAccountType'] as String?
-              : null;
+          final learnerAccountType =
+              extra is Map ? extra['learnerAccountType'] as String? : null;
           final flow = extra is Map
               ? (extra['flow'] as String? ?? 'recovery')
               : 'recovery';
@@ -387,8 +414,8 @@ class AppRoutes {
         path: learnerQuestionnaire,
         builder: (context, state) {
           final extra = state.extra;
-          final queryAccountType = state.uri.queryParameters['accountType']
-              ?.trim();
+          final queryAccountType =
+              state.uri.queryParameters['accountType']?.trim();
           final draft = extra is LearnerOnboardingDraft
               ? extra
               : LearnerOnboardingDraft(
@@ -494,9 +521,8 @@ class AppRoutes {
           final extra = state.extra as Map<String, dynamic>? ?? const {};
           final learner =
               (extra['learner'] as Map<String, dynamic>?) ?? const {};
-          final availabilityLines = (extra['availability'] as List?)
-              ?.whereType<String>()
-              .toList();
+          final availabilityLines =
+              (extra['availability'] as List?)?.whereType<String>().toList();
           final summary =
               (extra['summary'] as Map?)?.cast<String, dynamic>() ?? const {};
           final onViewProfile = extra['onViewProfile'] as VoidCallback?;
@@ -580,7 +606,7 @@ class AppRoutes {
           final extra = state.extra as Map<String, dynamic>? ?? const {};
           final rawAvailability =
               extra['initialAvailability'] as Map<String, dynamic>? ??
-              const <String, dynamic>{};
+                  const <String, dynamic>{};
           final initialAvailability = <String, List<String>>{
             for (final entry in rawAvailability.entries)
               entry.key: entry.value is List

@@ -16,6 +16,9 @@ verify_jwt = true
 [functions.admin-update-review-status]
 verify_jwt = true
 
+[functions.admin-manage-user-account]
+verify_jwt = true
+
 [functions.create-instructor-checkout-session]
 verify_jwt = true
 

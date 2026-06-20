@@ -172,7 +172,10 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
           List<Map<String, dynamic>>? vehicles) async {
         if (vehicles == null) return null;
         final updated = <Map<String, dynamic>>[];
-        for (final vehicle in vehicles) {
+        for (var vehicleIndex = 0;
+            vehicleIndex < vehicles.length;
+            vehicleIndex++) {
+          final vehicle = vehicles[vehicleIndex];
           final localPath = _cleanString(vehicle['localImagePath']);
           if (localPath != null && localPath.isNotEmpty) {
             final file = File(localPath);
@@ -180,6 +183,7 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
               final url = await SupabaseService.uploadVehicleGalleryImage(
                 userId: userId,
                 file: file,
+                vehicleSlot: vehicleIndex,
               );
               if (url != null && url.isNotEmpty) {
                 vehicle['photoUrl'] = url;
@@ -278,7 +282,8 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
           vehicles: vehicles,
           offerings: offerings,
           offeringRates: offeringRates,
-          preferredLocations: pickupPreference == true ? null : preferredLocations,
+          preferredLocations:
+              pickupPreference == true ? null : preferredLocations,
           clearPreferredLocations: pickupPreference == true,
           preferredLocationNotes: preferredLocationNotes,
           yearsOfExperience: yearsOfExperience,

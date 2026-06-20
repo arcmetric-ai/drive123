@@ -12,6 +12,7 @@ import '../../widgets/compact_schedule_lesson_card.dart';
 import '../../widgets/my_lessons_empty_state.dart';
 import '../../widgets/primary_schedule_lesson_card.dart';
 import '../../widgets/schedule_day_card.dart';
+import '../../widgets/lesson_feedback_sheet.dart';
 import 'ongoing_lesson_screen.dart';
 
 class MyLessonsScreen extends StatefulWidget {
@@ -948,6 +949,40 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                   color: Colors.grey[700],
                   fontStyle: FontStyle.italic,
                 ),
+              ),
+            ],
+
+            if (statusLabel == LessonStatus.completed) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => showLessonFeedbackSheet(
+                        context,
+                        lessonId: lesson.id,
+                        revieweeId: lesson.instructor.id,
+                        reviewerRole: 'learner',
+                        revieweeName:
+                            '${lesson.instructor.user.firstName} ${lesson.instructor.user.lastName}',
+                      ),
+                      icon: const Icon(Icons.star_outline_rounded),
+                      label: const Text('Rate lesson'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  IconButton.outlined(
+                    tooltip: 'Report instructor',
+                    onPressed: () => showUserReportSheet(
+                      context,
+                      reportedUserId: lesson.instructor.id,
+                      reportedUserName:
+                          '${lesson.instructor.user.firstName} ${lesson.instructor.user.lastName}',
+                      lessonId: lesson.id,
+                    ),
+                    icon: const Icon(Icons.flag_outlined),
+                  ),
+                ],
               ),
             ],
 

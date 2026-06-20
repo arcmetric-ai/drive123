@@ -3,6 +3,80 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createSignedDocumentUrl, requireAdmin } from '../_shared/admin.ts';
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
 
+const documentLabels: Record<string, string> = {
+  identity_license: 'Identity Licence',
+  guardian_identity_license: 'Guardian Government ID',
+  instructor_license: 'Instructor Licence',
+  insurance_document: '6D Insurance Document',
+  background_check: 'Background Check',
+  municipal_license: 'Municipal Licence',
+};
+
+async function loadDocumentVersions(
+  admin: any,
+  userId: string,
+  documentTypes: string[],
+) {
+  const { data, error } = await admin
+    .from('verification_document_versions')
+    .select(
+      'id, document_type, version_number, storage_bucket, storage_path, original_file_name, mime_type, size_bytes, sha256_hex, expires_at, uploaded_at',
+    )
+    .eq('owner_user_id', userId)
+    .in('document_type', documentTypes)
+    .order('uploaded_at', { ascending: false });
+  if (error != null) throw new Error(error.message);
+
+  const documentIds = (data ?? []).map(
+    (document: Record<string, unknown>) => String(document.id),
+  );
+  const latestScanByDocument = new Map<string, Record<string, unknown>>();
+  if (documentIds.length > 0) {
+    const { data: scanEvents, error: scanError } = await admin
+      .from('verification_document_scan_events')
+      .select('document_version_id, status, provider, engine_version, threat_name, created_at')
+      .in('document_version_id', documentIds)
+      .order('created_at', { ascending: false });
+    if (scanError != null) throw new Error(scanError.message);
+    for (const scan of scanEvents ?? []) {
+      const documentId = String(scan.document_version_id);
+      if (!latestScanByDocument.has(documentId)) {
+        latestScanByDocument.set(documentId, scan);
+      }
+    }
+  }
+
+  return await Promise.all(
+    (data ?? []).map(async (document: Record<string, unknown>) => {
+      const scan = latestScanByDocument.get(String(document.id));
+      const scanStatus = String(scan?.status ?? 'pending');
+      return {
+        id: document.id,
+        key: document.document_type,
+        label: documentLabels[String(document.document_type)] ?? 'Document',
+        version: document.version_number,
+        path: document.storage_path,
+        originalFileName: document.original_file_name,
+        mimeType: document.mime_type,
+        sizeBytes: document.size_bytes,
+        sha256: document.sha256_hex,
+        expiresAt: document.expires_at,
+        uploadedAt: document.uploaded_at,
+        scanStatus,
+        scanProvider: scan?.provider,
+        scanThreatName: scan?.threat_name,
+        signedUrl: scanStatus === 'clean'
+          ? await createSignedDocumentUrl(
+            admin,
+            String(document.storage_bucket),
+            String(document.storage_path),
+          )
+          : null,
+      };
+    }),
+  );
+}
+
 async function readInput(request: Request) {
   if (request.method === 'GET') {
     const url = new URL(request.url);
@@ -69,20 +143,10 @@ serve(async (request) => {
         return jsonResponse({ error: 'Profile not found.' }, 404);
       }
 
-      const licenseUrl = await createSignedDocumentUrl(
-        admin,
-        'identity-verification',
-        profile.identity_license_path as string | null | undefined,
-      );
       const selfieUrl = await createSignedDocumentUrl(
         admin,
         'identity-verification',
         profile.identity_selfie_path as string | null | undefined,
-      );
-      const guardianLicenseUrl = await createSignedDocumentUrl(
-        admin,
-        'identity-verification',
-        profile.guardian_identity_license_path as string | null | undefined,
       );
       const guardianSelfieUrl = await createSignedDocumentUrl(
         admin,
@@ -90,24 +154,17 @@ serve(async (request) => {
         profile.guardian_identity_selfie_path as string | null | undefined,
       );
 
+      const documentVersions = await loadDocumentVersions(admin, userId, [
+        'identity_license',
+        'guardian_identity_license',
+      ]);
       const documents = [
-        {
-          key: 'identity_license',
-          label: 'Identity License',
-          path: profile.identity_license_path,
-          signedUrl: licenseUrl,
-        },
+        ...documentVersions,
         {
           key: 'identity_selfie',
           label: 'Identity Selfie',
           path: profile.identity_selfie_path,
           signedUrl: selfieUrl,
-        },
-        {
-          key: 'guardian_identity_license',
-          label: 'Guardian Government ID',
-          path: profile.guardian_identity_license_path,
-          signedUrl: guardianLicenseUrl,
         },
         {
           key: 'guardian_identity_selfie',
@@ -168,59 +225,17 @@ serve(async (request) => {
         return jsonResponse({ error: 'Instructor profile not found.' }, 404);
       }
 
-      const instructorLicenseUrl = await createSignedDocumentUrl(
-        admin,
-        'instructor-credentials',
-        instructorProfile.instructor_license_path as string | null | undefined,
-      );
-      const insuranceUrl = await createSignedDocumentUrl(
-        admin,
-        'instructor-credentials',
-        instructorProfile.insurance_document_path as string | null | undefined,
-      );
-      const backgroundCheckUrl = await createSignedDocumentUrl(
-        admin,
-        'instructor-credentials',
-        instructorProfile.background_check_path as string | null | undefined,
-      );
-      const municipalLicenseUrl = await createSignedDocumentUrl(
-        admin,
-        'instructor-credentials',
-        instructorProfile.municipal_license_path as string | null | undefined,
-      );
+      const rawProfile = instructorProfile.profile as unknown;
+      const profile = Array.isArray(rawProfile)
+        ? ((rawProfile[0] as Record<string, unknown> | undefined) ?? {})
+        : ((rawProfile as Record<string, unknown> | null) ?? {});
 
-      const profile =
-        (instructorProfile.profile as Record<string, unknown> | null) ?? {};
-
-      const documents = [
-        {
-          key: 'instructor_license',
-          label: 'Instructor License',
-          path: instructorProfile.instructor_license_path,
-          expiresAt: instructorProfile.instructor_license_expires_at,
-          signedUrl: instructorLicenseUrl,
-        },
-        {
-          key: 'insurance_document',
-          label: 'Insurance Document',
-          path: instructorProfile.insurance_document_path,
-          expiresAt: instructorProfile.insurance_document_expires_at,
-          signedUrl: insuranceUrl,
-        },
-        {
-          key: 'background_check',
-          label: 'Background Check',
-          path: instructorProfile.background_check_path,
-          signedUrl: backgroundCheckUrl,
-        },
-        {
-          key: 'municipal_license',
-          label: 'Municipal License',
-          path: instructorProfile.municipal_license_path,
-          expiresAt: instructorProfile.municipal_license_expires_at,
-          signedUrl: municipalLicenseUrl,
-        },
-      ].filter((item) => item.path != null);
+      const documents = await loadDocumentVersions(admin, userId, [
+        'instructor_license',
+        'insurance_document',
+        'background_check',
+        'municipal_license',
+      ]);
 
       return jsonResponse({
         reviewType,

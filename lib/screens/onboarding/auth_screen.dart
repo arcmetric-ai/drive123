@@ -8,8 +8,6 @@ import '../../services/supabase_service.dart';
 import '../../widgets/app_primary_button.dart';
 import '../../widgets/brand_intro_header.dart';
 import '../../widgets/labeled_text_field.dart';
-import '../../widgets/section_divider.dart';
-import '../../widgets/social_auth_button.dart';
 import '../../constants/app_routes.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -126,15 +124,6 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _showUnavailableSocialMessage(String provider) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$provider sign in is not wired up yet.'),
-        backgroundColor: AppColors.foreground,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -154,8 +143,6 @@ class _AuthScreenState extends State<AuthScreen> {
               () => _signInPasswordObscured = !_signInPasswordObscured,
             ),
             onContinue: _handleContinueWithEmail,
-            onGooglePressed: () => _showUnavailableSocialMessage('Google'),
-            onApplePressed: () => _showUnavailableSocialMessage('Apple'),
             onForgotPassword: () => context.go(
               AppRoutes.forgotPassword,
               extra: _signInEmailController.text.trim(),
@@ -181,8 +168,6 @@ class _SignInView extends StatelessWidget {
     required this.errorMessage,
     required this.onTogglePassword,
     required this.onContinue,
-    required this.onGooglePressed,
-    required this.onApplePressed,
     required this.onForgotPassword,
     required this.onSwitchToSignUp,
   });
@@ -196,8 +181,6 @@ class _SignInView extends StatelessWidget {
   final String? errorMessage;
   final VoidCallback onTogglePassword;
   final VoidCallback onContinue;
-  final VoidCallback onGooglePressed;
-  final VoidCallback onApplePressed;
   final VoidCallback onForgotPassword;
   final VoidCallback onSwitchToSignUp;
 
@@ -298,32 +281,6 @@ class _SignInView extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        const SectionDivider(label: 'or'),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: SocialAuthButton(
-                label: 'Google',
-                leading: const _GoogleMark(),
-                onPressed: onGooglePressed,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: SocialAuthButton(
-                label: 'Apple',
-                leading: const Icon(
-                  Icons.apple,
-                  size: 24,
-                  color: AppColors.foreground,
-                ),
-                onPressed: onApplePressed,
-              ),
-            ),
-          ],
-        ),
         Padding(
           padding: const EdgeInsets.only(top: AppSpacing.xl),
           child: Center(
@@ -405,22 +362,6 @@ class _InlineAuthError extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _GoogleMark extends StatelessWidget {
-  const _GoogleMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Text(
-      'G',
-      style: TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.w800,
-        color: Color(0xFF4285F4),
       ),
     );
   }

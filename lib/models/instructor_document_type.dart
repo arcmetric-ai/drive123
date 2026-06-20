@@ -15,8 +15,8 @@ enum InstructorDocumentType {
     storageKey: 'insurance_document',
     columnName: 'insurance_document_path',
     expiryColumnName: 'insurance_document_expires_at',
-    title: 'Insurance Document',
-    uploadTitle: 'Upload Insurance Document',
+    title: '6D Insurance Document',
+    uploadTitle: 'Upload 6D Insurance Document',
     description:
         'Please provide a clear copy of your current vehicle insurance certificate.',
     isRequired: true,

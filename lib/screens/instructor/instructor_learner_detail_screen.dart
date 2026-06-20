@@ -7,6 +7,7 @@ import '../../constants/app_colors.dart';
 import '../../models/learner_progress.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/verified_profile_badge.dart';
+import '../../widgets/lesson_feedback_sheet.dart';
 
 class InstructorLearnerDetailScreen extends StatefulWidget {
   /// Accepts either a full learner map or an object with a 'profile_id' / 'id'.
@@ -660,6 +661,18 @@ class _InstructorLearnerDetailScreenState
                   title: 'Test preparation',
                   child: _buildTestPrep(),
                 ),
+                if (_learnerProfileId != null) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => showUserReportSheet(
+                      context,
+                      reportedUserId: _learnerProfileId!,
+                      reportedUserName: _name,
+                    ),
+                    icon: const Icon(Icons.flag_outlined),
+                    label: const Text('Report learner'),
+                  ),
+                ],
                 const SizedBox(height: 20),
               ],
             ),

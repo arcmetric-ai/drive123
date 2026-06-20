@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
 import '../../models/lesson_model.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/lesson_feedback_sheet.dart';
 
 class InstructorBookingsHistoryScreen extends StatefulWidget {
   const InstructorBookingsHistoryScreen({super.key});
@@ -158,7 +159,7 @@ class _InstructorBookingsHistoryScreenState
         itemCount: _bookings.length,
         itemBuilder: (context, index) {
           final booking = _bookings[index];
-          return _BookingCard(booking: booking);
+          return _BookingCard(booking: booking, onUpdated: _refresh);
         },
       ),
     );
@@ -166,9 +167,47 @@ class _InstructorBookingsHistoryScreenState
 }
 
 class _BookingCard extends StatelessWidget {
-  const _BookingCard({required this.booking});
+  const _BookingCard({required this.booking, required this.onUpdated});
 
   final _BookingHistoryItem booking;
+  final Future<void> Function() onUpdated;
+
+  Future<void> _editNotes(BuildContext context) async {
+    final controller = TextEditingController(text: booking.notes ?? '');
+    final notes = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit lesson notes'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 5,
+          maxLength: 2000,
+          decoration: const InputDecoration(
+            labelText: 'Instructor notes',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Save notes'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (notes == null) return;
+    await SupabaseService.updateCompletedLessonNotes(
+      lessonId: booking.id,
+      notes: notes,
+    );
+    await onUpdated();
+  }
 
   Color _statusColor(String status) {
     switch (status.toLowerCase()) {
@@ -274,6 +313,47 @@ class _BookingCard extends StatelessWidget {
                 ],
               ),
             ],
+            if (booking.notes?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 8),
+              Text('Notes: ${booking.notes}'),
+            ],
+            if (booking.status == 'completed') ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _editNotes(context),
+                    icon: const Icon(Icons.edit_note_outlined),
+                    label: const Text('Edit notes'),
+                  ),
+                  if (booking.learnerId != null) ...[
+                    OutlinedButton.icon(
+                      onPressed: () => showLessonFeedbackSheet(
+                        context,
+                        lessonId: booking.id,
+                        revieweeId: booking.learnerId!,
+                        reviewerRole: 'instructor',
+                        revieweeName: booking.learnerName,
+                      ),
+                      icon: const Icon(Icons.star_outline_rounded),
+                      label: const Text('Rate lesson'),
+                    ),
+                    IconButton.outlined(
+                      tooltip: 'Report learner',
+                      onPressed: () => showUserReportSheet(
+                        context,
+                        reportedUserId: booking.learnerId!,
+                        reportedUserName: booking.learnerName,
+                        lessonId: booking.id,
+                      ),
+                      icon: const Icon(Icons.flag_outlined),
+                    ),
+                  ],
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -290,6 +370,8 @@ class _BookingHistoryItem {
     required this.focus,
     required this.learnerName,
     this.pickupLocation,
+    this.learnerId,
+    this.notes,
   });
 
   final String id;
@@ -299,6 +381,8 @@ class _BookingHistoryItem {
   final String focus;
   final String learnerName;
   final String? pickupLocation;
+  final String? learnerId;
+  final String? notes;
 
   static _BookingHistoryItem? fromMap(Map<String, dynamic>? map) {
     if (map == null) return null;
@@ -398,6 +482,8 @@ class _BookingHistoryItem {
       focus: (map['focus'] ?? 'Driving lesson').toString(),
       learnerName: learnerName,
       pickupLocation: (map['pickup_location'] as String?)?.trim(),
+      learnerId: map['learner_id']?.toString(),
+      notes: map['notes']?.toString(),
     );
   }
 

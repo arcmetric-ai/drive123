@@ -17,7 +17,6 @@ class InstructorAvailabilityScreen extends StatefulWidget {
 
 class _InstructorAvailabilityScreenState
     extends State<InstructorAvailabilityScreen> {
-  static const int _instructorMonthlyCancelLimit = 6;
   static const List<int> _slotHours = [
     7,
     8,
@@ -254,6 +253,7 @@ class _InstructorAvailabilityScreenState
             learnerId: learner.id,
             learnerName: learner.displayName,
             learnerColors: learner.colors,
+            isExternalLearner: learner.isExternalLearner,
             isDraft: true,
             notes: result.notes,
           ),
@@ -284,60 +284,14 @@ class _InstructorAvailabilityScreenState
   }) async {
     final lessonId = slot.lessonId;
     if (lessonId == null) return false;
-    final instructorId = SupabaseService.currentUser?.id;
-    int? remainingCancels;
-    if (instructorId != null) {
-      try {
-        final used = await SupabaseService.getMonthlyCancellationCount(
-          userId: instructorId,
-          isInstructor: true,
-        );
-        final remaining = _instructorMonthlyCancelLimit - used;
-        remainingCancels = remaining < 0 ? 0 : remaining;
-      } catch (_) {}
-    }
-
-    if (!mounted) return false;
-
-    if (remainingCancels != null && remainingCancels <= 0) {
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Cancel limit reached'),
-          content: const Text(
-            'You have used all monthly lesson cancellations. Please reach out to the learner directly to make changes.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Got it'),
-            ),
-          ],
-        ),
-      );
-      return false;
-    }
 
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(title),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  message ??
-                      'Cancel the lesson with ${slot.learnerName} on ${_formatDateTime(slot.start)}?',
-                ),
-                const SizedBox(height: 12),
-                if (remainingCancels != null)
-                  Text(
-                    'You have $remainingCancels of $_instructorMonthlyCancelLimit cancellations left this month. Once you run out, you will need to contact the learner directly to make changes.',
-                    style: const TextStyle(color: Colors.black87, fontSize: 13),
-                  ),
-                if (remainingCancels != null) const SizedBox(height: 4),
-              ],
+            content: Text(
+              message ??
+                  'Cancel the lesson with ${slot.learnerName} on ${_formatDateTime(slot.start)}?',
             ),
             actions: [
               TextButton(
@@ -448,6 +402,7 @@ class _InstructorAvailabilityScreenState
           learnerId: learner.id,
           learnerName: learner.displayName,
           learnerColors: learner.colors,
+          isExternalLearner: learner.isExternalLearner,
           isDraft: true,
           notes: result.notes,
         ),
@@ -615,7 +570,8 @@ class _InstructorAvailabilityScreenState
     final lessonDate = DateTime(start.year, start.month, start.day);
     final notes = draft.notes?.trim();
     return SupabaseService.createLesson(
-      learnerId: draft.learnerId,
+      learnerId: draft.isExternalLearner ? null : draft.learnerId,
+      externalLearnerId: draft.isExternalLearner ? draft.learnerId : null,
       instructorId: instructorId,
       scheduledDate: start,
       startTime: DateFormat('HH:mm').format(start),
@@ -1063,6 +1019,7 @@ class _LearnerOption {
     required this.weeklyAvailability,
     required this.recurring,
     required this.colors,
+    required this.isExternalLearner,
     this.avatarUrl,
     this.learningFocus,
     this.preferredLocations,
@@ -1073,6 +1030,7 @@ class _LearnerOption {
   final Map<String, List<String>> weeklyAvailability;
   final bool recurring;
   final LearnerColorSet colors;
+  final bool isExternalLearner;
   final String? avatarUrl;
   final String? learningFocus;
   final List<dynamic>? preferredLocations;
@@ -1093,8 +1051,12 @@ class _LearnerOption {
     ].where((v) => v.isNotEmpty).join(' ').trim();
     final displayName = formatLessonRequestLearnerName(map);
     final learnerId = clean(map['learner_id']) ??
+        clean(map['external_learner_id']) ??
         clean(profile['id']) ??
         clean(map['profile_id']);
+    final isExternalLearner = map['is_external_learner'] == true ||
+        map['is_offline'] == true ||
+        clean(map['external_learner_id']) != null;
 
     final learnerProfile = map['learner_profile'] as Map<String, dynamic>?;
     final nestedProfile = learnerProfile?['profile'] as Map<String, dynamic>?;
@@ -1146,6 +1108,7 @@ class _LearnerOption {
       })(),
       weeklyAvailability: availability,
       recurring: map['availability_recurring'] == true,
+      isExternalLearner: isExternalLearner,
       colors: learnerColorForKey(
         learnerId ?? clean(profile['email']) ?? fallbackDisplayName,
       ),
@@ -1173,7 +1136,7 @@ class _LearnerOption {
     int durationMinutes,
   ) {
     final slots = weeklyAvailability[dayKey];
-    if (slots == null || slots.isEmpty) return false;
+    if (slots == null || slots.isEmpty) return isExternalLearner;
     final startMinutes = (slotStart.hour * 60) + slotStart.minute;
     final endMinutes = startMinutes + durationMinutes;
 
@@ -1226,6 +1189,7 @@ class _ScheduledSlot {
     required this.learnerColors,
     this.lessonId,
     this.isDraft = false,
+    this.isExternalLearner = false,
     this.notes,
   });
 
@@ -1236,6 +1200,7 @@ class _ScheduledSlot {
   final LearnerColorSet learnerColors;
   final String? lessonId;
   final bool isDraft;
+  final bool isExternalLearner;
   final String? notes;
 
   _ScheduledSlot copyWith({
@@ -1246,6 +1211,7 @@ class _ScheduledSlot {
     LearnerColorSet? learnerColors,
     String? lessonId,
     bool? isDraft,
+    bool? isExternalLearner,
     String? notes,
   }) {
     return _ScheduledSlot(
@@ -1256,6 +1222,7 @@ class _ScheduledSlot {
       learnerColors: learnerColors ?? this.learnerColors,
       lessonId: lessonId ?? this.lessonId,
       isDraft: isDraft ?? this.isDraft,
+      isExternalLearner: isExternalLearner ?? this.isExternalLearner,
       notes: notes ?? this.notes,
     );
   }
@@ -1285,7 +1252,13 @@ class _ScheduledSlot {
       first,
       last,
     ].where((value) => value.isNotEmpty).join(' ').trim();
-    final learnerId = clean(row['learner_id']) ?? clean(learner['id']);
+    final learnerId = clean(row['learner_id']) ??
+        clean(row['external_learner_id']) ??
+        clean(learner['id']);
+    final isExternalLearner = clean(row['external_learner_id']) != null ||
+        row['is_external_learner'] == true ||
+        learner['is_external'] == true ||
+        learner['is_offline'] == true;
 
     return _ScheduledSlot(
       start: start,
@@ -1309,6 +1282,7 @@ class _ScheduledSlot {
       ),
       lessonId: row['id']?.toString(),
       isDraft: false,
+      isExternalLearner: isExternalLearner,
       notes: clean(row['notes']),
     );
   }
@@ -1479,13 +1453,33 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
                               : null,
                         ),
                         const SizedBox(width: 10),
-                        SizedBox(
-                          width: 180,
+                        Flexible(
                           child: Text(
                             option.displayName,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (option.isExternalLearner) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF7CC),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Text(
+                              'Offline',
+                              style: TextStyle(
+                                color: Color(0xFF8A6500),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

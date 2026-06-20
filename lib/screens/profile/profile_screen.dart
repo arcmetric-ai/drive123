@@ -61,6 +61,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isPersonalInfoExpanded = false;
   bool _isLearnerDetailsExpanded = false;
   bool _isInstructorDetailsExpanded = false;
+  Map<String, dynamic>? _graduatedRelationship;
+  bool _resumingTraining = false;
 
   @override
   void initState() {
@@ -99,7 +101,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildPersonalInfoSection(),
                     const SizedBox(height: 18),
                     if (_roleLabel == 'Learner')
-                      _buildLearnerDetailsSection()
+                      Column(
+                        children: [
+                          if (_graduatedRelationship != null) ...[
+                            _buildGraduatedTrainingCard(),
+                            const SizedBox(height: 18),
+                          ],
+                          _buildLearnerDetailsSection(),
+                        ],
+                      )
                     else
                       _buildInstructorDetailsSection(),
                     const SizedBox(height: 18),
@@ -164,12 +174,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         )
                       : null,
                 ),
-                if (_isVerified)
-                  const Positioned(
-                    top: -2,
-                    right: -4,
-                    child: VerifiedProfileBadge(size: 36),
-                  ),
                 if (_isUploadingImage)
                   Positioned.fill(
                     child: Container(
@@ -205,12 +209,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          Text(
-            _displayName,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primaryBlue,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _displayName,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primaryBlue,
+                    ),
+                  ),
+                  if (_isVerified) ...[
+                    const SizedBox(width: 8),
+                    const VerifiedProfileBadge(size: 32),
+                  ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 4),
@@ -384,6 +404,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Edit Profile',
             subtitle: 'Update licence, questionnaire, and preferences',
             onTap: _openEditProfile,
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.privacy_tip_outlined,
+            title: 'Privacy Policy',
+            subtitle: 'Review how Drive Tutor handles your information',
+            onTap: () => _showLegalPlaceholder('Privacy Policy'),
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.gavel_outlined,
+            title: 'Terms & Conditions',
+            subtitle: 'Review the terms for using Drive Tutor',
+            onTap: () => _showLegalPlaceholder('Terms & Conditions'),
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.fact_check_outlined,
+            title: 'Data Consent',
+            subtitle: 'Review your verification and data consent',
+            onTap: () => _showLegalPlaceholder('Data Consent'),
           ),
           _buildActionDivider(),
           _buildActionTile(
@@ -1008,12 +1049,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _populateLearnerDetails(String userId) async {
     try {
       final detail = await SupabaseService.getLearnerProfileDetail(userId);
+      final graduation = await SupabaseService.getCurrentLearnerGraduation();
       if (!mounted || detail == null) return;
 
       final profileMap = detail['profile'] is Map
           ? Map<String, dynamic>.from(detail['profile'] as Map)
           : <String, dynamic>{};
       setState(() {
+        _graduatedRelationship = graduation;
         _licenceNumber = _asString(profileMap['licence_number']);
         final expiry = _asString(profileMap['licence_expiry']);
         _licenceExpiry = expiry != null ? DateTime.tryParse(expiry) : null;
@@ -1069,6 +1112,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // ignore but log? for now just print
       debugPrint('Error loading learner details: $e');
     }
+  }
+
+  Widget _buildGraduatedTrainingCard() {
+    final request = _graduatedRelationship!;
+    final instructor = request['instructor'] is Map
+        ? Map<String, dynamic>.from(request['instructor'] as Map)
+        : const <String, dynamic>{};
+    final name = [instructor['first_name'], instructor['last_name']]
+        .whereType<String>()
+        .where((value) => value.trim().isNotEmpty)
+        .join(' ');
+    return _profileCard(
+      borderColor: AppColors.success.withValues(alpha: 0.45),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Training completed',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+          const SizedBox(height: 6),
+          Text(name.isEmpty
+              ? 'You remain connected to your instructor.'
+              : 'You remain connected to $name and can resume training later.'),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _resumingTraining
+                ? null
+                : () async {
+                    setState(() => _resumingTraining = true);
+                    try {
+                      await SupabaseService.resumeGraduatedTraining(
+                        request['id'].toString(),
+                      );
+                      await _loadProfile();
+                    } finally {
+                      if (mounted) setState(() => _resumingTraining = false);
+                    }
+                  },
+            child: Text(_resumingTraining ? 'Resuming...' : 'Resume training'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLegalPlaceholder(String title) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: const Text(
+          'The final document will be available here before release.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _populateInstructorDetails(String userId) async {

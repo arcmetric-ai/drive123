@@ -55,7 +55,8 @@ class LessonModel {
 
     return LessonModel(
       id: json['id'] as String,
-      learnerId: json['learner_id'] as String,
+      learnerId:
+          (json['learner_id'] ?? json['external_learner_id'] ?? '') as String,
       instructor:
           InstructorModel.fromJson(json['instructor'] as Map<String, dynamic>),
       scheduledDate: DateTime.parse(json['scheduled_at'] as String),

@@ -1,10 +1,30 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  createClient,
+  type SupabaseClient,
+  type User,
+} from 'npm:@supabase/supabase-js@2';
 
 import { jsonResponse } from './cors.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function sessionIdFromAuthorization(authorization: string) {
+  try {
+    const token = authorization.replace(/^Bearer\s+/i, '');
+    const encodedPayload = token.split('.')[1];
+    if (encodedPayload == null) return null;
+    const normalized = encodedPayload.replaceAll('-', '+').replaceAll('_', '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const sessionId = String(payload.session_id ?? '');
+    return uuidPattern.test(sessionId) ? sessionId : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 function createServiceClient() {
   return createClient(supabaseUrl, serviceRoleKey, {
@@ -29,7 +49,17 @@ function createRequestClient(request: Request) {
   });
 }
 
-export async function requireAdmin(request: Request) {
+type AdminAuthResult =
+  | {
+    error: Response;
+  }
+  | {
+    admin: SupabaseClient;
+    user: User;
+    adminUser: { user_id: string; email: string | null };
+  };
+
+export async function requireAdmin(request: Request): Promise<AdminAuthResult> {
   const authorization = request.headers.get('Authorization');
   if (authorization == null || authorization.trim().length === 0) {
     return {
@@ -50,6 +80,21 @@ export async function requireAdmin(request: Request) {
   }
 
   const admin = createServiceClient();
+  const sessionId = sessionIdFromAuthorization(authorization);
+  if (sessionId == null) {
+    return {
+      error: jsonResponse({ error: 'Session identifier is missing.' }, 401),
+    };
+  }
+  const { data: sessionActive, error: sessionError } = await admin.rpc(
+    'is_auth_session_active',
+    { p_session_id: sessionId },
+  );
+  if (sessionError != null || sessionActive !== true) {
+    return {
+      error: jsonResponse({ error: 'Session has been revoked.' }, 401),
+    };
+  }
   const { data: adminRow, error: adminError } = await admin
     .from('admin_users')
     .select('user_id, email')
@@ -68,7 +113,14 @@ export async function requireAdmin(request: Request) {
     };
   }
 
-  return { admin, user, adminUser: adminRow };
+  return {
+    admin,
+    user,
+    adminUser: {
+      user_id: String(adminRow.user_id),
+      email: adminRow.email == null ? null : String(adminRow.email),
+    },
+  };
 }
 
 export async function createSignedDocumentUrl(

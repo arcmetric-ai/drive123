@@ -5,6 +5,7 @@ import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/glass_panel.dart';
 import '../../widgets/verified_profile_badge.dart';
+import '../../widgets/lesson_feedback_sheet.dart';
 
 class LearnerInstructorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -743,9 +744,6 @@ class _LearnerInstructorDetailScreenState
     final int? yearsOfExperience = _asNullableInt(
       _profile['yearsOfExperience'] ?? detailMap?['years_of_experience'],
     );
-    final String? driveTutorNumber = _asNullableString(
-      _profile['driveTutorNumber'] ?? detailMap?['drive_tutor_number'],
-    );
     final String? locationNotes = _asNullableString(
       _profile['locationNotes'] ?? detailMap?['preferred_location_notes'],
     );
@@ -799,6 +797,7 @@ class _LearnerInstructorDetailScreenState
                     _ProfileImage(
                       imageUrl: profileImageUrl,
                       fallbackInitial: name.isNotEmpty ? name[0] : '?',
+                      isVerified: isVerified,
                     ),
                     const SizedBox(height: 16),
                     Wrap(
@@ -815,7 +814,6 @@ class _LearnerInstructorDetailScreenState
                               .headlineSmall
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
-                        if (isVerified) const _VerifiedBadge(),
                       ],
                     ),
                     if (subtitleLine.isNotEmpty) ...[
@@ -826,27 +824,6 @@ class _LearnerInstructorDetailScreenState
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: Colors.grey[700],
                             ),
-                      ),
-                    ],
-                    if (driveTutorNumber != null) ...[
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.ocean.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Drive Tutor #$driveTutorNumber',
-                          style:
-                              Theme.of(context).textTheme.labelLarge?.copyWith(
-                                    color: AppColors.ocean,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                        ),
                       ),
                     ],
                   ],
@@ -863,6 +840,26 @@ class _LearnerInstructorDetailScreenState
                         color: Colors.grey[800],
                         height: 1.5,
                       ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _DetailSection(
+                title: 'Verified details',
+                child: Row(
+                  children: const [
+                    _PublicVerificationItem(
+                      icon: Icons.email_outlined,
+                      label: 'Email',
+                    ),
+                    _PublicVerificationItem(
+                      icon: Icons.phone_outlined,
+                      label: 'Phone',
+                    ),
+                    _PublicVerificationItem(
+                      icon: Icons.badge_outlined,
+                      label: 'Licence',
+                    ),
+                  ],
                 ),
               ),
               if (showContactInfo) ...[
@@ -906,13 +903,6 @@ class _LearnerInstructorDetailScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _DetailRow(label: 'Service area', value: serviceArea),
-                    if (driveTutorNumber != null) ...[
-                      const SizedBox(height: 12),
-                      _DetailRow(
-                        label: 'Drive Tutor number',
-                        value: driveTutorNumber,
-                      ),
-                    ],
                     if (yearsOfExperience != null) ...[
                       const SizedBox(height: 12),
                       _DetailRow(
@@ -1115,6 +1105,23 @@ class _LearnerInstructorDetailScreenState
                             .toList(),
                       ),
               ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () {
+                  final instructorId = (_requestContext?['instructorId'] ??
+                          _profile['id'] ??
+                          _profile['profile_id'])
+                      ?.toString();
+                  if (instructorId == null || instructorId.isEmpty) return;
+                  showUserReportSheet(
+                    context,
+                    reportedUserId: instructorId,
+                    reportedUserName: name,
+                  );
+                },
+                icon: const Icon(Icons.flag_outlined),
+                label: const Text('Report instructor'),
+              ),
               const SizedBox(height: 96),
             ],
           ),
@@ -1285,25 +1292,44 @@ class _VerifiedBadge extends StatelessWidget {
 class _ProfileImage extends StatelessWidget {
   final String imageUrl;
   final String fallbackInitial;
+  final bool isVerified;
 
-  const _ProfileImage({required this.imageUrl, required this.fallbackInitial});
+  const _ProfileImage({
+    required this.imageUrl,
+    required this.fallbackInitial,
+    required this.isVerified,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (imageUrl.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(60),
-        child: Image.network(
-          imageUrl,
-          width: 120,
-          height: 120,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
-              _FallbackAvatar(initial: fallbackInitial),
-        ),
-      );
-    }
-    return _FallbackAvatar(initial: fallbackInitial);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        if (imageUrl.isNotEmpty)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(60),
+            child: Image.network(
+              imageUrl,
+              width: 120,
+              height: 120,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  _FallbackAvatar(initial: fallbackInitial),
+            ),
+          )
+        else
+          _FallbackAvatar(initial: fallbackInitial),
+        if (isVerified)
+          const Positioned(
+            top: -2,
+            right: -2,
+            child: VerifiedProfileBadge(
+              size: 30,
+              showCutout: true,
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -1372,6 +1398,28 @@ class _DetailSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           child,
+        ],
+      ),
+    );
+  }
+}
+
+class _PublicVerificationItem extends StatelessWidget {
+  const _PublicVerificationItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, color: AppColors.primaryBlue),
+          const SizedBox(height: 5),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          const Text('Verified',
+              style: TextStyle(fontSize: 12, color: AppColors.success)),
         ],
       ),
     );

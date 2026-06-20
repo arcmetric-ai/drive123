@@ -130,6 +130,11 @@ class _InstructorCredentialsPortalScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Credentials Portal'),
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.foreground,
+      ),
       body: SafeArea(
         child: FutureBuilder<Map<String, dynamic>?>(
           future: _credentialsFuture,
@@ -141,41 +146,20 @@ class _InstructorCredentialsPortalScreenState
                     .isNotEmpty ==
                 true;
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  IconButton(
-                    onPressed: () => context.pop(),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    style: IconButton.styleFrom(
-                      foregroundColor: AppColors.foreground,
-                      backgroundColor: Colors.white,
-                      side: const BorderSide(color: AppColors.border),
-                    ),
-                    tooltip: 'Back',
-                  ),
-                  const SizedBox(height: 18),
                   const Text(
-                    'Credentials Portal',
+                    'Keep each credential current, then submit everything for review.',
                     style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      height: 1.12,
-                      color: AppColors.foreground,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Upload and manage the documents Drive Tutor needs to review your instructor account.',
-                    style: TextStyle(
-                      fontSize: 15,
-                      height: 1.45,
+                      fontSize: 13,
+                      height: 1.3,
                       color: AppColors.mutedForeground,
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 10),
                   InstructorDocumentStatusTile(
                     title: "Driver's License",
                     statusLabel: identityVerified ? 'VERIFIED' : 'REQUIRED',
@@ -186,14 +170,15 @@ class _InstructorCredentialsPortalScreenState
                     isComplete: identityVerified,
                     showTrailingArrow: false,
                     onTap: null,
+                    compact: true,
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 8),
                   ...InstructorDocumentType.values.map((type) {
                     final path = profile[type.columnName] as String?;
                     final hasUpload = path != null && path.trim().isNotEmpty;
                     final expiryStatus = _expiryStatusFor(profile, type);
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 18),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: InstructorDocumentStatusTile(
                         title: type.title,
                         statusLabel: hasUpload
@@ -206,58 +191,24 @@ class _InstructorCredentialsPortalScreenState
                                 : AppColors.mutedForeground),
                         icon: _iconForType(type),
                         onTap: () => _openUpload(type),
+                        compact: true,
                       ),
                     );
                   }),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.info_rounded,
-                              color: AppColors.mutedForeground,
-                              size: 20,
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Review process',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.foreground,
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'Our team reviews documents within 24 hours. Keep your physical documents ready for quick photo upload.',
-                          style: TextStyle(
-                            fontSize: 14,
-                            height: 1.45,
-                            color: AppColors.mutedForeground,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 28),
+                  const Spacer(),
                   AppPrimaryButton(
-                    label: 'Upload Documents',
+                    label: 'Submit Documents',
                     isLoading: _isSubmitting,
                     onPressed:
                         snapshot.connectionState == ConnectionState.waiting
                             ? null
                             : () => _submitForReview(profile),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'After submission, our team will respond within 24 hours.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
                   ),
                 ],
               ),
