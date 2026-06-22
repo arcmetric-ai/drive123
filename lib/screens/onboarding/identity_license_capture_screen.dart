@@ -91,16 +91,18 @@ class _IdentityLicenseCaptureScreenState
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.role == 'instructor'
+        ? 'Position your Ontario G licence inside the frame'
+        : 'Position your Ontario G1, G2, or G licence inside the frame';
     return IdentityCaptureScene(
       stepLabel: 'Step 2 of 4',
-      title: 'Position ID inside the frame',
+      title: title,
       imagePath: _imagePath,
       shape: CaptureFrameShape.rectangle,
       onClose: () => context.pop(),
       onAction: _captureLicense,
       onCapture: _captureLicense,
-      secondaryActionLabel:
-          _testingBypassEnabled ? 'Skip for testing' : null,
+      secondaryActionLabel: _testingBypassEnabled ? 'Skip for testing' : null,
       onSecondaryAction: _testingBypassEnabled ? _skipForTesting : null,
     );
   }

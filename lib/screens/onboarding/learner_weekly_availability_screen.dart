@@ -144,11 +144,15 @@ class _LearnerWeeklyAvailabilityScreenState
         final pendingReferralCode =
             await InstructorReferralService.pendingCode();
         if (!mounted) return;
-        if (pendingReferralCode != null) {
-          context.go(AppRoutes.learnerReferralProfilePhoto);
-          return;
-        }
-        context.go(AppRoutes.learningFocus, extra: widget.draft.role);
+        context.go(
+          AppRoutes.learnerReferralProfilePhoto,
+          extra: {
+            'nextRoute': pendingReferralCode != null
+                ? AppRoutes.home
+                : AppRoutes.learningFocus,
+            'nextExtra': pendingReferralCode != null ? null : widget.draft.role,
+          },
+        );
       }
     } catch (error) {
       if (!mounted) return;

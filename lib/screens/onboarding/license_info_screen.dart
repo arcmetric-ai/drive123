@@ -8,6 +8,10 @@ import 'package:go_router/go_router.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/ontario_licence.dart';
+import '../../utils/ontario_phone_number.dart';
+
+const double _minimumInstructorLessonRate = 40;
 
 class LicenseInfoScreen extends StatefulWidget {
   final String role;
@@ -41,9 +45,10 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
     super.initState();
     if (widget.initialLicenceNumber?.isNotEmpty ?? false) {
       final pattern =
-          RegExp(r'^A(\d{4})\s+(\d{5})\s+(\d{5})$', caseSensitive: false);
-      final match =
-          pattern.firstMatch(widget.initialLicenceNumber!.trim().toUpperCase());
+          RegExp(r'^([A-Z]\d{4})\s+(\d{5})\s+(\d{5})$', caseSensitive: false);
+      final match = pattern.firstMatch(
+        OntarioLicence.format(widget.initialLicenceNumber!),
+      );
       if (match != null) {
         _segment1Controller.text = match.group(1)!;
         _segment2Controller.text = match.group(2)!;
@@ -68,10 +73,15 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
 
   Future<void> _pickExpiryDate() async {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final initial =
+        _selectedExpiryDate != null && !_selectedExpiryDate!.isBefore(today)
+            ? _selectedExpiryDate!
+            : today;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedExpiryDate ?? now,
-      firstDate: DateTime(now.year - 1),
+      initialDate: initial,
+      firstDate: today,
       lastDate: DateTime(now.year + 10),
     );
 
@@ -102,10 +112,10 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
       return;
     }
 
-    final part1 = _segment1Controller.text.trim();
+    final part1 = _segment1Controller.text.trim().toUpperCase();
     final part2 = _segment2Controller.text.trim();
     final part3 = _segment3Controller.text.trim();
-    final normalizedLicenceNumber = 'A$part1 $part2 $part3';
+    final normalizedLicenceNumber = '$part1 $part2 $part3';
     final expiryDate = _selectedExpiryDate;
 
     if (expiryDate == null) {
@@ -121,10 +131,36 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
       return;
     }
 
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (expiryDate.isBefore(today)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Licence expiry must be today or later.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      setState(() => _isSubmitting = false);
+      return;
+    }
+
     try {
+      if (!OntarioLicence.isValid(normalizedLicenceNumber)) {
+        throw Exception('Use the Ontario format A1234 12345 12345.');
+      }
+      final available = await SupabaseService.isLicenceNumberAvailable(
+        normalizedLicenceNumber,
+      );
+      if (!available) {
+        throw Exception(
+            'That licence number is already attached to an account.');
+      }
+
       Map<String, dynamic> _asMap(dynamic value) {
         if (value is Map) {
-          return Map<String, dynamic>.from(value as Map);
+          return Map<String, dynamic>.from(value);
         }
         return <String, dynamic>{};
       }
@@ -191,6 +227,11 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
             }
             vehicle.remove('localImagePath');
           }
+          final photoUrl = _cleanString(vehicle['photoUrl']) ??
+              _cleanString(vehicle['photo_url']);
+          if (photoUrl == null) {
+            throw Exception('Each instructor vehicle must include a photo.');
+          }
           updated.add(vehicle);
         }
         return updated;
@@ -198,7 +239,7 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
 
       final questionnaire = widget.questionnaireData;
       final profileUpdates = <String, dynamic>{
-        'licence_number': normalizedLicenceNumber,
+        'licence_number': OntarioLicence.format(normalizedLicenceNumber),
         'licence_expiry': expiryDate.toIso8601String(),
       };
 
@@ -211,10 +252,17 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
 
         final profileFirstName = _cleanString(profileSection['first_name']);
         final profileLastName = _cleanString(profileSection['last_name']);
-        final profilePhone = _cleanString(profileSection['phone']);
+        final profilePhone = OntarioPhoneNumber.toE164(
+          _cleanString(profileSection['phone']),
+        );
+        final profileImageLocalPath =
+            _cleanString(profileSection['profileImageLocalPath']);
         final profileCity = _cleanString(profileSection['city']);
         final profileAge = _asInt(profileSection['age']);
         final profileGender = _cleanString(profileSection['gender']);
+        if (profileAge == null || profileAge < 21 || profileAge > 100) {
+          throw Exception('Instructors must be between 21 and 100 years old.');
+        }
         if (profileFirstName != null) {
           profileUpdates['first_name'] = profileFirstName;
         }
@@ -227,11 +275,23 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
         if (profileCity != null) {
           profileUpdates['city'] = profileCity;
         }
-        if (profileAge != null) {
-          profileUpdates['age'] = profileAge;
-        }
+        profileUpdates['age'] = profileAge;
         if (profileGender != null) {
           profileUpdates['gender'] = profileGender;
+        }
+        if (profileImageLocalPath == null) {
+          throw Exception('Profile photo is required for instructors.');
+        }
+        final profileImageFile = File(profileImageLocalPath);
+        if (!await profileImageFile.exists()) {
+          throw Exception('Profile photo is missing. Please choose it again.');
+        }
+        final profileImageUrl = await SupabaseService.uploadProfileImage(
+          userId: userId,
+          file: profileImageFile,
+        );
+        if (profileImageUrl == null || profileImageUrl.isEmpty) {
+          throw Exception('Profile photo upload failed.');
         }
 
         final vehicles = await _ensureVehiclePhotos(
@@ -250,6 +310,9 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
           rawOfferingRates.forEach((key, value) {
             final parsed = _asDouble(value);
             if (parsed != null) {
+              if (parsed < _minimumInstructorLessonRate) {
+                throw Exception('Minimum lesson rate is \$40/hr.');
+              }
               parsedRates[key.toString()] = parsed;
             }
           });
@@ -299,10 +362,22 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
 
         final profileFirstName = _cleanString(profileSection['first_name']);
         final profileLastName = _cleanString(profileSection['last_name']);
-        final profilePhone = _cleanString(profileSection['phone']);
+        final profilePhone = OntarioPhoneNumber.toE164(
+          _cleanString(profileSection['phone']),
+        );
         final profileCity = _cleanString(profileSection['city']);
         final profileAge = _asInt(profileSection['age']);
         final profileGender = _cleanString(profileSection['gender']);
+        final learnerAccountType =
+            _cleanString(learnerSection['account_type']) ?? 'learner';
+        if (profileAge != null) {
+          if (profileAge < 16 || profileAge > 100) {
+            throw Exception('Learner age must be between 16 and 100.');
+          }
+          if (learnerAccountType != 'guardian' && profileAge < 18) {
+            throw Exception('Learners aged 16-17 require a guardian account.');
+          }
+        }
 
         if (profileFirstName != null) {
           profileUpdates['first_name'] = profileFirstName;
@@ -405,10 +480,10 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
     final isLearner = widget.role == 'learner';
     final title = isLearner ? 'Learner Details' : 'Instructor Credentials';
     final subtitle = isLearner
-        ? 'Add your G1 licence information to continue'
-        : 'Add your instructor licence details to continue';
+        ? 'Add your Ontario G1, G2, or G licence information to continue'
+        : 'Add your Ontario G licence details to continue';
     final numberLabel =
-        isLearner ? 'G1 Licence Number' : 'Instructor Licence Number';
+        isLearner ? 'G1/G2/G Licence Number' : 'Ontario G Licence Number';
     final buttonColor = isLearner ? AppColors.ocean : AppColors.golden;
 
     return Scaffold(
@@ -476,18 +551,26 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
                     Expanded(
                       child: TextFormField(
                         controller: _segment1Controller,
-                        keyboardType: TextInputType.number,
+                        keyboardType: TextInputType.text,
                         textInputAction: TextInputAction.next,
-                        maxLength: 4,
+                        textCapitalization: TextCapitalization.characters,
+                        maxLength: 5,
                         inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(4),
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[A-Za-z0-9]'),
+                          ),
+                          LengthLimitingTextInputFormatter(5),
+                          TextInputFormatter.withFunction(
+                            (oldValue, newValue) => newValue.copyWith(
+                              text: newValue.text.toUpperCase(),
+                              selection: newValue.selection,
+                            ),
+                          ),
                         ],
                         decoration: InputDecoration(
                           counterText: '',
-                          prefixText: 'A',
-                          labelText: isLearner ? 'First block' : 'A + 4 digits',
-                          hintText: '1234',
+                          labelText: 'Letter + 4 digits',
+                          hintText: 'A1234',
                           fillColor: Colors.grey[50],
                           filled: true,
                           border: OutlineInputBorder(
@@ -504,10 +587,10 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Enter 4 digits';
+                            return 'Enter letter + 4 digits';
                           }
-                          if (!RegExp(r'^\d{4}$').hasMatch(value)) {
-                            return 'Use 4 digits';
+                          if (!RegExp(r'^[A-Za-z]\d{4}$').hasMatch(value)) {
+                            return 'Use A1234';
                           }
                           return null;
                         },
@@ -596,7 +679,7 @@ class _LicenseInfoScreenState extends State<LicenseInfoScreen> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Format: A1234 12345 12345',
+                  'Ontario format: one letter followed by 14 digits, e.g. A1234 12345 12345.',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 const SizedBox(height: 20),

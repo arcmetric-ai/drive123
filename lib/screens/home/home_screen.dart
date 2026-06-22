@@ -79,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _notificationsError;
   DateTime? _notificationsLastViewedAt;
   bool _hasUnreadNotifications = false;
+  int _profileRefreshToken = 0;
 
   static const _notificationsViewedKey = 'drive_t_notifications_viewed_v1';
 
@@ -193,7 +194,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openTab(int index) {
-    setState(() => _selectedIndex = index);
+    setState(() {
+      _selectedIndex = index;
+      if (index == 4) {
+        _profileRefreshToken++;
+      }
+    });
     if (index == 0) {
       _loadProfileSummary();
       _loadProgressSummary();
@@ -749,7 +755,10 @@ class _HomeScreenState extends State<HomeScreen> {
       1 => FindInstructorScreen(selectedFocus: _selectedFocus),
       2 => const MyLessonsScreen(),
       3 => const ProgressTrackerScreen(),
-      4 => const ProfileScreen(),
+      4 => ProfileScreen(
+          key: ValueKey(_profileRefreshToken),
+          refreshToken: _profileRefreshToken,
+        ),
       _ => const SizedBox.shrink(),
     };
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
@@ -29,6 +30,7 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _emailController;
   bool _isLoading = false;
+  bool _acceptedPolicies = false;
 
   @override
   void initState() {
@@ -44,6 +46,15 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
 
   Future<void> _handleContinue() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!_acceptedPolicies) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Review and accept the required policies to continue.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
     setState(() => _isLoading = true);
 
     try {
@@ -79,6 +90,11 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _openPolicy(String path) async {
+    final uri = Uri.parse('https://www.drivetutor.ca/$path');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -132,6 +148,62 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
                     }
                     return null;
                   },
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F9FF),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CheckboxListTile(
+                        value: _acceptedPolicies,
+                        onChanged: _isLoading
+                            ? null
+                            : (value) => setState(
+                                  () => _acceptedPolicies = value ?? false,
+                                ),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: const Text(
+                          'I agree to Drive Tutor policies and consent to account, verification, safety, and booking data processing.',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            height: 1.35,
+                            color: AppColors.foreground,
+                          ),
+                        ),
+                      ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 0,
+                        children: [
+                          TextButton(
+                            onPressed: () =>
+                                _openPolicy('terms-and-conditions'),
+                            child: const Text('Terms'),
+                          ),
+                          TextButton(
+                            onPressed: () => _openPolicy('privacy-policy'),
+                            child: const Text('Privacy'),
+                          ),
+                          TextButton(
+                            onPressed: () => _openPolicy('data-consent-policy'),
+                            child: const Text('Data Consent'),
+                          ),
+                          TextButton(
+                            onPressed: () => _openPolicy('safety-policy'),
+                            child: const Text('Safety'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 const Spacer(),
                 AppPrimaryButton(

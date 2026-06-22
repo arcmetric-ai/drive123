@@ -61,10 +61,13 @@ class _InstructorDocumentUploadScreenState
 
   Future<void> _pickExpiryDate() async {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _expiryDate ?? now,
-      firstDate: DateTime(now.year, now.month, now.day),
+      initialDate: _expiryDate != null && !_expiryDate!.isBefore(today)
+          ? _expiryDate!
+          : today,
+      firstDate: today,
       lastDate: DateTime(now.year + 10),
     );
     if (picked == null || !mounted) return;
@@ -94,6 +97,24 @@ class _InstructorDocumentUploadScreenState
         ),
       );
       return;
+    }
+    if (widget.documentType.requiresExpiry && _expiryDate != null) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final expiry = DateTime(
+        _expiryDate!.year,
+        _expiryDate!.month,
+        _expiryDate!.day,
+      );
+      if (expiry.isBefore(today)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Document expiry cannot be in the past.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _isSubmitting = true);

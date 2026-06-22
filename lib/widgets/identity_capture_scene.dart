@@ -99,6 +99,16 @@ class IdentityCaptureScene extends StatelessWidget {
                           height: 1.35,
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Tap the shutter to open your device camera.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       SizedBox(height: titleSpacing),
                       Expanded(
                         child: Center(

@@ -331,7 +331,13 @@ class AppRoutes {
       ),
       GoRoute(
         path: learnerReferralProfilePhoto,
-        builder: (context, state) => const LearnerReferralProfilePhotoScreen(),
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? const {};
+          return LearnerReferralProfilePhotoScreen(
+            nextRoute: extra['nextRoute'] as String?,
+            nextExtra: extra['nextExtra'],
+          );
+        },
       ),
       GoRoute(
         path: verification,

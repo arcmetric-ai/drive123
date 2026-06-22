@@ -315,6 +315,9 @@ serve(async (request) => {
         update.verification_approved_at = nowIso;
         update.verification_rejected_at = null;
         update.verification_rejection_reason = null;
+        if (isLearner) {
+          update.onboarding_stage = 'questionnaire_complete';
+        }
       } else {
         update.verification_approved_at = null;
         update.verification_rejected_at = nowIso;

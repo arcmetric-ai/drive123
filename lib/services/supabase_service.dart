@@ -17,6 +17,8 @@ import '../models/instructor_model.dart';
 import '../models/lesson_model.dart';
 import '../utils/drive_tutor_number.dart';
 import '../utils/lesson_request_utils.dart';
+import '../utils/ontario_licence.dart';
+import '../utils/ontario_phone_number.dart';
 import 'push_notification_service.dart';
 
 class AccountAlreadyExistsException implements Exception {
@@ -45,6 +47,18 @@ class _ValidatedUpload {
 }
 
 class SupabaseService {
+  static const double minimumInstructorLessonRate = 40;
+
+  static DateTime _dateOnly(DateTime value) {
+    final local = value.toLocal();
+    return DateTime(local.year, local.month, local.day);
+  }
+
+  static DateTime get _today {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
   static final SupabaseClient _client = Supabase.instance.client;
   static const int learnerSkillCatalogSize = 8;
   static const Set<String> _supportedRoles = {'learner', 'instructor'};
@@ -53,6 +67,7 @@ class SupabaseService {
   static const String _baseAppUrl = 'https://www.drivetutor.ca';
   static const String _authRedirectUrl = '$_baseAppUrl/auth-redirect';
   static const String _signUpRedirectUrl = _authRedirectUrl;
+  static const String agreementVersion = '2026-06-22';
   static const String onboardingStageRoleSelected = 'role_selected';
   static const String onboardingStageVerificationPending =
       'verification_pending';
@@ -173,10 +188,15 @@ class SupabaseService {
     required String lastName,
     String? phone,
   }) async {
+    final normalizedPhone = OntarioPhoneNumber.toE164(phone);
     final response = await _client.auth.signUp(
       email: email,
       password: password,
-      data: {'first_name': firstName, 'last_name': lastName, 'phone': phone},
+      data: {
+        'first_name': firstName,
+        'last_name': lastName,
+        'phone': normalizedPhone,
+      },
     );
     final user = response.user;
     if (user != null) {
@@ -184,7 +204,7 @@ class SupabaseService {
         await _client.from('profiles').upsert({
           'id': user.id,
           'email': email,
-          'phone': phone,
+          'phone': normalizedPhone,
           'first_name': firstName,
           'last_name': lastName,
         });
@@ -416,6 +436,13 @@ class SupabaseService {
       });
     }
 
+    await recordRequiredAgreements(
+      userId: userId,
+      role: normalizedRole,
+      learnerAccountType: learnerAccountType,
+      source: 'mobile_app_signup',
+    );
+
     // Keep auth metadata in sync because multiple screens read role from metadata.
     final currentUser = _client.auth.currentUser;
     if (currentUser?.id == userId) {
@@ -480,6 +507,80 @@ class SupabaseService {
   }
 
   static User? get currentUser => _client.auth.currentUser;
+
+  static List<String> requiredAgreementKeysForRole({
+    required String role,
+    String learnerAccountType = 'learner',
+  }) {
+    final normalizedRole = _normalizeRole(role) ?? 'learner';
+    final keys = <String>[
+      'terms-and-conditions',
+      'privacy-policy',
+      'data-consent-policy',
+      'community-guidelines',
+      'safety-policy',
+    ];
+    if (normalizedRole == 'instructor') {
+      keys.add('instructor-verification-consent');
+    } else {
+      keys.add('identity-verification-consent');
+      if (_normalizeLearnerAccountType(learnerAccountType) == 'guardian') {
+        keys.add('guardian-consent');
+      }
+    }
+    return keys;
+  }
+
+  static Future<void> recordRequiredAgreements({
+    required String userId,
+    required String role,
+    String learnerAccountType = 'learner',
+    required String source,
+  }) async {
+    final keys = requiredAgreementKeysForRole(
+      role: role,
+      learnerAccountType: learnerAccountType,
+    );
+    final existing = await _client
+        .from('user_agreements')
+        .select('agreement_key')
+        .eq('profile_id', userId)
+        .eq('agreement_version', agreementVersion)
+        .inFilter('agreement_key', keys);
+    final existingKeys = {
+      for (final row in List<Map<String, dynamic>>.from(existing))
+        row['agreement_key'] as String,
+    };
+    final now = DateTime.now().toUtc().toIso8601String();
+    final inserts = keys
+        .where((key) => !existingKeys.contains(key))
+        .map((key) => {
+              'profile_id': userId,
+              'agreement_key': key,
+              'agreement_version': agreementVersion,
+              'accepted_at': now,
+              'policy_url': '$_baseAppUrl/$key',
+              'source': source,
+              'role': role,
+              'metadata': {
+                'platform': 'mobile_app',
+                'learner_account_type': learnerAccountType,
+              },
+            })
+        .toList();
+    if (inserts.isNotEmpty) {
+      await _client.from('user_agreements').insert(inserts);
+    }
+  }
+
+  static Future<bool> isLicenceNumberAvailable(String licenceNumber) async {
+    if (!OntarioLicence.isValid(licenceNumber)) return false;
+    final available = await _client.rpc(
+      'is_licence_number_available',
+      params: {'p_licence_number': OntarioLicence.format(licenceNumber)},
+    );
+    return available == true;
+  }
 
   static Future<void> ensureCurrentProfile() async {
     final user = _client.auth.currentUser;
@@ -556,8 +657,23 @@ class SupabaseService {
     }
 
     if (role == 'learner') {
-      if (verificationState?.onboardingStage !=
-          onboardingStageQuestionnaireComplete) {
+      final identityStatus =
+          verificationState?.verificationStatus?.trim().toLowerCase();
+      var questionnaireComplete = verificationState?.onboardingStage ==
+          onboardingStageQuestionnaireComplete;
+
+      if (!questionnaireComplete &&
+          identityStatus == 'approved' &&
+          (verificationState?.isApproved ?? false) &&
+          verificationState?.hasRequiredIdentityDocuments == true) {
+        await updateOnboardingStage(
+          userId: userId,
+          stage: onboardingStageQuestionnaireComplete,
+        );
+        questionnaireComplete = true;
+      }
+
+      if (!questionnaireComplete) {
         final learnerDetail = await getLearnerProfileDetail(userId);
         final accountType = _normalizeLearnerAccountType(
           learnerDetail?['account_type'],
@@ -571,8 +687,6 @@ class SupabaseService {
       try {
         final learnerDetail = await getLearnerProfileDetail(userId);
         final focus = (learnerDetail?['learning_focus'] as String?)?.trim();
-        final identityStatus =
-            verificationState?.verificationStatus?.trim().toLowerCase();
         if (identityStatus == 'referral_approved') {
           final hasReferralInstructor =
               await hasActiveLearnerInstructorRelationship(userId);
@@ -587,8 +701,6 @@ class SupabaseService {
         return AppRoutes.learningFocus;
       }
 
-      final identityStatus =
-          verificationState?.verificationStatus?.trim().toLowerCase();
       if (verificationState?.hasRequiredIdentityDocuments != true ||
           identityStatus == 'rejected') {
         return AppRoutes.identityVerificationIntro;
@@ -659,6 +771,11 @@ class SupabaseService {
     String? guardianSelfieImagePath,
   }) async {
     final submittedAt = DateTime.now().toUtc().toIso8601String();
+    await recordRequiredAgreements(
+      userId: userId,
+      role: role,
+      source: 'mobile_app_identity_verification',
+    );
     final licensePath = await _uploadImmutableIdentityDocument(
       userId: userId,
       file: File(licenseImagePath),
@@ -703,6 +820,12 @@ class SupabaseService {
       updates['guardian_identity_license_path'] = guardianLicensePath;
       updates['guardian_identity_selfie_path'] = guardianSelfiePath;
       updates['guardian_consent_submitted_at'] = submittedAt;
+      await recordRequiredAgreements(
+        userId: userId,
+        role: role,
+        learnerAccountType: 'guardian',
+        source: 'mobile_app_guardian_verification',
+      );
     }
 
     await _client.from('profiles').update(updates).eq('id', userId);
@@ -725,6 +848,9 @@ class SupabaseService {
       'guardian_identity_selfie_path': 'testing://guardian-selfie-skip',
       'guardian_consent_submitted_at': timestamp,
       'is_verified': role == 'learner',
+      'onboarding_stage': role == 'learner'
+          ? onboardingStageQuestionnaireComplete
+          : onboardingStageVerificationPending,
     }).eq('id', userId);
   }
 
@@ -734,6 +860,14 @@ class SupabaseService {
     required File file,
     DateTime? expiresAt,
   }) async {
+    if (documentType.requiresExpiry) {
+      if (expiresAt == null) {
+        throw Exception('${documentType.title} expiry date is required.');
+      }
+      if (_dateOnly(expiresAt).isBefore(_today)) {
+        throw Exception('Document expiry cannot be in the past.');
+      }
+    }
     final upload = await _validateUploadFile(file, allowPdf: true);
     final nonce = _uploadNonce();
     final storagePath =
@@ -1276,6 +1410,9 @@ class SupabaseService {
       data['bio'] = cleanedBio;
     }
     if (defaultRate != null) {
+      if (defaultRate < minimumInstructorLessonRate) {
+        throw Exception('Minimum lesson rate is \$40/hr.');
+      }
       data['default_rate'] = defaultRate;
     } else if (offeringRates != null && offeringRates.isNotEmpty) {
       data['default_rate'] = offeringRates.values.first;
@@ -1287,6 +1424,11 @@ class SupabaseService {
       data['offerings'] = offerings;
     }
     if (offeringRates != null) {
+      for (final rate in offeringRates.values) {
+        if (rate < minimumInstructorLessonRate) {
+          throw Exception('Minimum lesson rate is \$40/hr.');
+        }
+      }
       data['offering_rates'] = offeringRates.map(
         (key, value) => MapEntry(key, value.toDouble()),
       );
@@ -1299,6 +1441,9 @@ class SupabaseService {
       data['preferred_location_notes'] = cleanedLocationNotes;
     }
     if (yearsOfExperience != null) {
+      if (yearsOfExperience < 0 || yearsOfExperience > 80) {
+        throw Exception('Enter a realistic number of years of experience.');
+      }
       data['years_of_experience'] = yearsOfExperience;
     }
     final cleanedVehiclePhotoUrl = cleanString(vehiclePhotoUrl);
@@ -1365,6 +1510,9 @@ class SupabaseService {
       data['learning_focus'] = cleanedFocus;
     }
     if (targetTestDate != null) {
+      if (_dateOnly(targetTestDate).isBefore(_today)) {
+        throw Exception('Test date cannot be in the past.');
+      }
       data['target_test_date'] = targetTestDate.toIso8601String();
     }
     final cleanedCentre = cleanString(targetTestCentre);
@@ -1376,6 +1524,9 @@ class SupabaseService {
       data['notes'] = cleanedNotes;
     }
     if (classesTakenSoFar != null) {
+      if (classesTakenSoFar < 0) {
+        throw Exception('Completed lessons cannot be negative.');
+      }
       data['classes_taken_sofar'] = classesTakenSoFar;
     }
     final cleanedAccountType = cleanString(accountType);
@@ -1391,6 +1542,9 @@ class SupabaseService {
       data['ward_last_name'] = cleanedWardLast;
     }
     if (wardAge != null) {
+      if (wardAge < 16 || wardAge > 100) {
+        throw Exception('Learner age must be between 16 and 100.');
+      }
       data['ward_age'] = wardAge;
     }
     final cleanedWardGender = cleanString(wardGender);
@@ -1398,6 +1552,9 @@ class SupabaseService {
       data['ward_gender'] = cleanedWardGender;
     }
     if (lastClassDate != null) {
+      if (_dateOnly(lastClassDate).isAfter(_today)) {
+        throw Exception('Most recent class date cannot be in the future.');
+      }
       data['last_class_date'] = lastClassDate.toIso8601String();
     }
     if (preferredLocations != null) {
@@ -1436,16 +1593,28 @@ class SupabaseService {
     if (lastName != null && lastName.isNotEmpty) {
       profileUpdates['last_name'] = lastName;
     }
-    final phone = draft.phone?.trim();
+    final phone = OntarioPhoneNumber.toE164(draft.phone);
     if (phone != null && phone.isNotEmpty) {
       profileUpdates['phone'] = phone;
     }
     final licenceNumber = draft.g1LicenceNumber?.trim().toUpperCase();
     if (licenceNumber != null && licenceNumber.isNotEmpty) {
-      profileUpdates['licence_number'] = licenceNumber;
+      if (!OntarioLicence.isValid(licenceNumber)) {
+        throw Exception(
+            'Enter an Ontario licence number as A1234 12345 12345.');
+      }
+      final available = await isLicenceNumberAvailable(licenceNumber);
+      if (!available) {
+        throw Exception(
+            'That licence number is already attached to an account.');
+      }
+      profileUpdates['licence_number'] = OntarioLicence.format(licenceNumber);
     }
     if (draft.g1ExpiryDate != null) {
       final expiry = draft.g1ExpiryDate!;
+      if (_dateOnly(expiry).isBefore(_today)) {
+        throw Exception('Licence expiry cannot be in the past.');
+      }
       final endOfDay = DateTime(
         expiry.year,
         expiry.month,
@@ -1459,6 +1628,14 @@ class SupabaseService {
     final city = draft.city?.trim();
     if (city != null && city.isNotEmpty) {
       profileUpdates['city'] = city;
+    }
+    if (draft.age != null) {
+      if (draft.age! < 16 || draft.age! > 100) {
+        throw Exception('Learner age must be between 16 and 100.');
+      }
+      if (draft.learnerAccountType != 'guardian' && draft.age! < 18) {
+        throw Exception('Learners aged 16-17 require a guardian account.');
+      }
     }
     if (draft.age != null && draft.learnerAccountType != 'guardian') {
       profileUpdates['age'] = draft.age;
@@ -2737,10 +2914,11 @@ class SupabaseService {
     String? learningFocus,
     String? transmissionPreference,
   }) async {
+    final normalizedPhone = OntarioPhoneNumber.toE164(phone);
     final payload = {
       'instructor_id': instructorId,
       'full_name': fullName.trim(),
-      'phone': _nullIfBlank(phone),
+      'phone': normalizedPhone,
       'guardian_or_contact_name': _nullIfBlank(guardianOrContactName),
       'pickup_address': _nullIfBlank(pickupAddress),
       'notes': _nullIfBlank(notes),
@@ -2769,11 +2947,12 @@ class SupabaseService {
     String? learningFocus,
     String? transmissionPreference,
   }) async {
+    final normalizedPhone = OntarioPhoneNumber.toE164(phone);
     final row = await _client
         .from('external_learners')
         .update({
           'full_name': fullName.trim(),
-          'phone': _nullIfBlank(phone),
+          'phone': normalizedPhone,
           'guardian_or_contact_name': _nullIfBlank(guardianOrContactName),
           'pickup_address': _nullIfBlank(pickupAddress),
           'notes': _nullIfBlank(notes),
@@ -3794,22 +3973,30 @@ class SupabaseService {
   }
 
   static Future<void> sendPhoneVerificationCode(String phone) async {
-    await _client.auth.updateUser(UserAttributes(phone: phone.trim()));
+    final normalizedPhone = OntarioPhoneNumber.toE164(phone);
+    if (normalizedPhone == null) {
+      throw const AuthException('Enter a valid 10-digit Ontario phone number.');
+    }
+    await _client.auth.updateUser(UserAttributes(phone: normalizedPhone));
   }
 
   static Future<void> verifyPhoneChangeCode({
     required String phone,
     required String token,
   }) async {
+    final normalizedPhone = OntarioPhoneNumber.toE164(phone);
+    if (normalizedPhone == null) {
+      throw const AuthException('Enter a valid 10-digit Ontario phone number.');
+    }
     final response = await _client.auth.verifyOTP(
-      phone: phone.trim(),
+      phone: normalizedPhone,
       token: token.trim(),
       type: OtpType.phoneChange,
     );
     final userId = response.user?.id ?? currentUser?.id;
     if (userId == null) throw const AuthException('Unable to verify phone');
     await _client.from('profiles').update({
-      'phone': phone.trim(),
+      'phone': normalizedPhone,
       'phone_verified_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', userId);
   }

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../constants/ontario_locations.dart';
 import '../../models/learner_onboarding_draft.dart';
+import '../../utils/ontario_phone_number.dart';
 import '../../widgets/app_circle_icon_button.dart';
 import '../../widgets/app_primary_button.dart';
 
@@ -43,13 +45,20 @@ class _LearnerQuestionnaireScreenState
   bool get _isGuardianAccount =>
       widget.initialDraft.learnerAccountType == 'guardian';
 
+  DateTime get _today {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
   @override
   void initState() {
     super.initState();
     final draft = widget.initialDraft;
     _firstNameController = TextEditingController(text: draft.firstName ?? '');
     _lastNameController = TextEditingController(text: draft.lastName ?? '');
-    _phoneController = TextEditingController(text: draft.phone ?? '');
+    _phoneController = TextEditingController(
+      text: OntarioPhoneNumber.displayLocal(draft.phone),
+    );
     _wardFirstNameController =
         TextEditingController(text: draft.wardFirstName ?? '');
     _wardLastNameController =
@@ -94,17 +103,30 @@ class _LearnerQuestionnaireScreenState
     required DateTime firstDate,
     required DateTime lastDate,
     required ValueChanged<DateTime> onSelected,
+    bool preferLatestInitial = false,
   }) async {
+    final normalizedFirst = DateTime(
+      firstDate.year,
+      firstDate.month,
+      firstDate.day,
+    );
+    final normalizedLast = DateTime(
+      lastDate.year,
+      lastDate.month,
+      lastDate.day,
+    );
     final fallbackDate = currentValue != null &&
-            !currentValue.isBefore(firstDate) &&
-            !currentValue.isAfter(lastDate)
+            !currentValue.isBefore(normalizedFirst) &&
+            !currentValue.isAfter(normalizedLast)
         ? currentValue
-        : lastDate;
+        : preferLatestInitial
+            ? normalizedLast
+            : normalizedFirst;
     final picked = await showDatePicker(
       context: context,
       initialDate: fallbackDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
+      firstDate: normalizedFirst,
+      lastDate: normalizedLast,
     );
 
     if (picked == null) return;
@@ -121,9 +143,8 @@ class _LearnerQuestionnaireScreenState
     if (trimmed.isEmpty) {
       return 'Enter your phone number';
     }
-    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 10) {
-      return 'Enter a valid phone number';
+    if (!OntarioPhoneNumber.isValid(trimmed)) {
+      return 'Enter a valid 10-digit Ontario phone number';
     }
     return null;
   }
@@ -136,8 +157,7 @@ class _LearnerQuestionnaireScreenState
       return;
     }
 
-    final today = DateTime.now();
-    final normalizedToday = DateTime(today.year, today.month, today.day);
+    final normalizedToday = _today;
     final normalizedExpiry = DateTime(
       _g1ExpiryDate!.year,
       _g1ExpiryDate!.month,
@@ -168,9 +188,28 @@ class _LearnerQuestionnaireScreenState
         _showError('Ward learners must be at least 16 years old to continue.');
         return;
       }
+    } else if (age == 16 || age == 17) {
+      final guardianDraft = LearnerOnboardingDraft(
+        role: widget.initialDraft.role,
+        learnerAccountType: 'guardian',
+        wardFirstName: _firstNameController.text.trim(),
+        wardLastName: _lastNameController.text.trim(),
+        g1LicenceNumber: _g1NumberController.text.trim().toUpperCase(),
+        g1ExpiryDate: _g1ExpiryDate,
+        city: _selectedCity?.trim(),
+        age: age,
+        gender: _selectedGender?.trim(),
+        classesTakenSoFar: int.tryParse(_classesTakenController.text.trim()),
+        lastClassDate: _lastClassDate,
+      );
+      _showError(
+        'You are $age years old and require a guardian account instead of a learner account.',
+      );
+      context.go(AppRoutes.learnerQuestionnaire, extra: guardianDraft);
+      return;
     } else if (age < 18) {
       _showError(
-        'Learners under 18 need a guardian to create and manage the account.',
+        'Learners must be at least 16 years old to use Drive Tutor.',
       );
       return;
     }
@@ -186,13 +225,21 @@ class _LearnerQuestionnaireScreenState
       _showError('Enter a valid number of completed lessons.');
       return;
     }
+    if (classesTaken != null && classesTaken < 0) {
+      _showError('Completed lessons cannot be negative.');
+      return;
+    }
+    if (_lastClassDate != null && _lastClassDate!.isAfter(normalizedToday)) {
+      _showError('Most recent class date cannot be in the future.');
+      return;
+    }
 
     final draft = widget.initialDraft.copyWith(
       role: widget.initialDraft.role,
       learnerAccountType: widget.initialDraft.learnerAccountType,
       firstName: _firstNameController.text.trim(),
       lastName: _lastNameController.text.trim(),
-      phone: _phoneController.text.trim(),
+      phone: OntarioPhoneNumber.toE164(_phoneController.text),
       wardFirstName:
           _isGuardianAccount ? _wardFirstNameController.text.trim() : null,
       wardLastName:
@@ -221,6 +268,7 @@ class _LearnerQuestionnaireScreenState
   InputDecoration _fieldDecoration({
     required String label,
     Widget? suffixIcon,
+    String? prefixText,
   }) {
     const border = OutlineInputBorder(
       borderRadius: BorderRadius.all(Radius.circular(18)),
@@ -228,6 +276,7 @@ class _LearnerQuestionnaireScreenState
     );
     return InputDecoration(
       labelText: label,
+      prefixText: prefixText,
       labelStyle: const TextStyle(
         color: AppColors.mutedForeground,
         fontSize: 15,
@@ -320,7 +369,9 @@ class _LearnerQuestionnaireScreenState
             children: [
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -328,7 +379,7 @@ class _LearnerQuestionnaireScreenState
                         children: [
                           AppCircleIconButton(
                             icon: Icons.arrow_back_rounded,
-                            size: 56,
+                            size: 48,
                             onPressed: () =>
                                 context.go(AppRoutes.learnerApprovalSuccess),
                           ),
@@ -356,29 +407,29 @@ class _LearnerQuestionnaireScreenState
                           ),
                         ],
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 18),
                       Text(
                         _isGuardianAccount
                             ? 'Guardian and learner details'
                             : 'Tell us about you',
                         style: const TextStyle(
-                          fontSize: 28,
+                          fontSize: 24,
                           fontWeight: FontWeight.w800,
                           color: AppColors.foreground,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 6),
                       Text(
                         _isGuardianAccount
                             ? "We'll use your guardian account for notifications and your ward's details for lessons."
                             : 'We need a few learner details before we set your pickup and weekly schedule.',
                         style: const TextStyle(
-                          fontSize: 18,
-                          height: 1.45,
+                          fontSize: 15,
+                          height: 1.35,
                           color: AppColors.mutedForeground,
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 18),
                       _sectionCard(
                         title: _isGuardianAccount
                             ? 'Guardian information'
@@ -414,7 +465,14 @@ class _LearnerQuestionnaireScreenState
                           TextFormField(
                             controller: _phoneController,
                             keyboardType: TextInputType.phone,
-                            decoration: _fieldDecoration(label: 'Phone number'),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(10),
+                            ],
+                            decoration: _fieldDecoration(
+                              label: 'Phone number',
+                              prefixText: '+1 ',
+                            ),
                             validator: _validatePhone,
                           ),
                         ],
@@ -492,8 +550,8 @@ class _LearnerQuestionnaireScreenState
                                 onPressed: () => _pickDate(
                                   controller: _g1ExpiryController,
                                   currentValue: _g1ExpiryDate,
-                                  firstDate: DateTime.now(),
-                                  lastDate: DateTime(DateTime.now().year + 10),
+                                  firstDate: _today,
+                                  lastDate: DateTime(_today.year + 10),
                                   onSelected: (value) =>
                                       setState(() => _g1ExpiryDate = value),
                                 ),
@@ -604,7 +662,8 @@ class _LearnerQuestionnaireScreenState
                                   controller: _lastClassController,
                                   currentValue: _lastClassDate,
                                   firstDate: DateTime(1970),
-                                  lastDate: DateTime.now(),
+                                  lastDate: _today,
+                                  preferLatestInitial: true,
                                   onSelected: (value) =>
                                       setState(() => _lastClassDate = value),
                                 ),
@@ -619,11 +678,11 @@ class _LearnerQuestionnaireScreenState
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: AppPrimaryButton(
                   label: 'Continue',
                   onPressed: _handleContinue,
-                  height: 64,
+                  height: 56,
                 ),
               ),
             ],

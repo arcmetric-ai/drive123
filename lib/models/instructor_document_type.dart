@@ -3,8 +3,8 @@ enum InstructorDocumentType {
     storageKey: 'instructor_license',
     columnName: 'instructor_license_path',
     expiryColumnName: 'instructor_license_expires_at',
-    title: 'Instructor License',
-    uploadTitle: 'Upload Instructor License',
+    title: 'Instructor Licence',
+    uploadTitle: 'Upload Instructor Licence',
     description:
         'Please provide a clear copy of your certified instructor licence.',
     isRequired: true,

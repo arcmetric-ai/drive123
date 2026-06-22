@@ -1530,6 +1530,8 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
             controller: _notesController,
             minLines: 2,
             maxLines: 4,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: const InputDecoration(
               labelText: 'Notes',
               hintText: 'Add lesson notes (optional)',

@@ -586,6 +586,30 @@ class _LearnerInstructorDetailScreenState
     return sanitized;
   }
 
+  String _labelForOffering(String code) {
+    switch (code.trim().toUpperCase()) {
+      case 'G2':
+        return 'G2 Road Test';
+      case 'G':
+        return 'G Road Test';
+      case 'PR':
+        return 'Practice Sessions';
+      default:
+        return code.trim().isEmpty ? 'Lesson' : code.trim();
+    }
+  }
+
+  String _formatLanguage(String language) {
+    final trimmed = language.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed
+        .split(RegExp(r'\s+'))
+        .map((word) => word.isEmpty
+            ? ''
+            : word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .join(' ');
+  }
+
   List<_VehicleRequestOption> _vehicleRequestOptions({
     required bool concealPlate,
   }) {
@@ -778,362 +802,366 @@ class _LearnerInstructorDetailScreenState
 
     return WillPopScope(
       onWillPop: _handleWillPop,
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _closeWithResult,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _closeWithResult,
+            ),
+            title: const Text('Instructor Details'),
           ),
-          title: const Text('Instructor Details'),
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Column(
-                  children: [
-                    _ProfileImage(
-                      imageUrl: profileImageUrl,
-                      fallbackInitial: name.isNotEmpty ? name[0] : '?',
-                      isVerified: isVerified,
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
+          body: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Column(
+                    children: [
+                      _ProfileImage(
+                        imageUrl: profileImageUrl,
+                        fallbackInitial: name.isNotEmpty ? name[0] : '?',
+                        isVerified: isVerified,
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            name,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      if (subtitleLine.isNotEmpty) ...[
+                        const SizedBox(height: 8),
                         Text(
-                          name,
+                          subtitleLine,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey[700],
+                                  ),
                         ),
                       ],
-                    ),
-                    if (subtitleLine.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        subtitleLine,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[700],
-                            ),
-                      ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              _DetailSection(
-                title: 'Bio',
-                child: Text(
-                  bio?.isNotEmpty == true
-                      ? bio!
-                      : 'This instructor hasn\'t added a bio yet.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey[800],
-                        height: 1.5,
-                      ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _DetailSection(
-                title: 'Verified details',
-                child: Row(
-                  children: const [
-                    _PublicVerificationItem(
-                      icon: Icons.email_outlined,
-                      label: 'Email',
-                    ),
-                    _PublicVerificationItem(
-                      icon: Icons.phone_outlined,
-                      label: 'Phone',
-                    ),
-                    _PublicVerificationItem(
-                      icon: Icons.badge_outlined,
-                      label: 'Licence',
-                    ),
-                  ],
-                ),
-              ),
-              if (showContactInfo) ...[
                 const SizedBox(height: 16),
                 _DetailSection(
-                  title: 'Contact',
-                  child: _DetailRow(label: 'Phone', value: phone!),
-                ),
-              ],
-              if (showContactInfo) const SizedBox(height: 16),
-              _DetailSection(
-                title: 'Vehicle',
-                trailingImage: vehiclePhotoUrl,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      vehicleSummary,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey[800]),
-                    ),
-                    for (final extra in vehicleSummaries.skip(1))
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          extra,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: Colors.grey[600]),
+                  title: 'Bio',
+                  child: Text(
+                    bio?.isNotEmpty == true
+                        ? bio!
+                        : 'This instructor hasn\'t added a bio yet.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[800],
+                          height: 1.5,
                         ),
-                      ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              _DetailSection(
-                title: 'Service Details',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _DetailRow(label: 'Service area', value: serviceArea),
-                    if (yearsOfExperience != null) ...[
-                      const SizedBox(height: 12),
-                      _DetailRow(
-                        label: 'Years of experience',
-                        value: yearsOfExperience == 1
-                            ? '1 year'
-                            : '$yearsOfExperience years',
-                      ),
-                    ],
-                    if (pickupPreference != null) ...[
-                      const SizedBox(height: 12),
-                      _DetailRow(
-                        label: 'Learner pickup',
-                        value: pickupPreference ? 'Offered' : 'Not offered',
-                      ),
-                    ],
-                    if (preferredLocations.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'Preferred locations',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              color: Colors.grey[600],
-                            ),
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: preferredLocations
-                            .map(
-                              (location) => Chip(
-                                label: Text(location),
-                                backgroundColor: AppColors.ocean.withOpacity(
-                                  0.08,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ],
-                    if (offerings.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'Services offered',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              color: Colors.grey[600],
-                            ),
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: offerings
-                            .map(
-                              (offering) => Chip(
-                                label: Text(offering),
-                                backgroundColor: AppColors.golden.withOpacity(
-                                  0.12,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ],
-                    if (showLocationNotes) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'Location notes',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              color: Colors.grey[600],
-                            ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        locationNotes,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[700],
-                            ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              _DetailSection(
-                title: 'Languages',
-                child: languages.isEmpty
-                    ? Text(
-                        'Languages not provided yet.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[700],
-                            ),
-                      )
-                    : Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: languages
-                            .map(
-                              (language) => Chip(
-                                label: Text(language),
-                                backgroundColor: AppColors.ocean.withOpacity(
-                                  0.1,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-              ),
-              const SizedBox(height: 16),
-              if (canRequest && vehicleOptions.isNotEmpty) ...[
+                const SizedBox(height: 16),
                 _DetailSection(
-                  title: 'Preferred Vehicle',
-                  child: DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    value: vehicleOptions.any(
-                      (option) => option.label == _selectedVehicleLabel,
-                    )
-                        ? _selectedVehicleLabel
-                        : null,
+                  title: 'Verified details',
+                  child: Row(
+                    children: const [
+                      _PublicVerificationItem(
+                        icon: Icons.email_outlined,
+                        label: 'Email',
+                      ),
+                      _PublicVerificationItem(
+                        icon: Icons.phone_outlined,
+                        label: 'Phone',
+                      ),
+                      _PublicVerificationItem(
+                        icon: Icons.badge_outlined,
+                        label: 'Licence',
+                      ),
+                    ],
+                  ),
+                ),
+                if (showContactInfo) ...[
+                  const SizedBox(height: 16),
+                  _DetailSection(
+                    title: 'Contact',
+                    child: _DetailRow(label: 'Phone', value: phone!),
+                  ),
+                ],
+                if (showContactInfo) const SizedBox(height: 16),
+                _DetailSection(
+                  title: 'Teaching Vehicle',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (vehiclePhotoUrl != null &&
+                          vehiclePhotoUrl.trim().isNotEmpty) ...[
+                        _VehiclePhotoPreview(imageUrl: vehiclePhotoUrl),
+                        const SizedBox(height: 12),
+                      ],
+                      Text(
+                        vehicleSummary,
+                        style: Theme.of(
+                          context,
+                        )
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: Colors.grey[800]),
+                      ),
+                      for (final extra in vehicleSummaries.skip(1))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            extra,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: Colors.grey[600]),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _DetailSection(
+                  title: 'Service Details',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _DetailRow(label: 'Service area', value: serviceArea),
+                      if (yearsOfExperience != null) ...[
+                        const SizedBox(height: 12),
+                        _DetailRow(
+                          label: 'Years of experience',
+                          value: yearsOfExperience == 1
+                              ? '1 year'
+                              : '$yearsOfExperience years',
+                        ),
+                      ],
+                      if (pickupPreference != null) ...[
+                        const SizedBox(height: 12),
+                        _DetailRow(
+                          label: 'Learner pickup',
+                          value: pickupPreference ? 'Offered' : 'Not offered',
+                        ),
+                      ],
+                      if (preferredLocations.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Preferred locations',
+                          style:
+                              Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: preferredLocations
+                              .map(
+                                (location) => Chip(
+                                  label: Text(location),
+                                  backgroundColor: AppColors.ocean.withOpacity(
+                                    0.08,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                      if (offerings.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Services offered',
+                          style:
+                              Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: offerings
+                              .map(
+                                (offering) => Chip(
+                                  label: Text(_labelForOffering(offering)),
+                                  backgroundColor: AppColors.golden.withOpacity(
+                                    0.12,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                      if (showLocationNotes) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Location notes',
+                          style:
+                              Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          locationNotes,
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey[700],
+                                  ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _DetailSection(
+                  title: 'Languages',
+                  child: languages.isEmpty
+                      ? Text(
+                          'Languages not provided yet.',
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey[700],
+                                  ),
+                        )
+                      : Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: languages
+                              .map(_formatLanguage)
+                              .where((language) => language.isNotEmpty)
+                              .map(
+                                (language) => Chip(
+                                  label: Text(language),
+                                  backgroundColor: AppColors.ocean.withOpacity(
+                                    0.1,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                ),
+                const SizedBox(height: 16),
+                if (canRequest && vehicleOptions.isNotEmpty) ...[
+                  _DetailSection(
+                    title: 'Preferred Vehicle',
+                    child: DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: vehicleOptions.any(
+                        (option) => option.label == _selectedVehicleLabel,
+                      )
+                          ? _selectedVehicleLabel
+                          : null,
+                      decoration: const InputDecoration(
+                        hintText: 'Choose the vehicle you want to learn in',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: vehicleOptions
+                          .map(
+                            (option) => DropdownMenuItem<String>(
+                              value: option.label,
+                              child: Text(
+                                option.label,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _processing
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              final selected = vehicleOptions.firstWhere(
+                                (option) => option.label == value,
+                              );
+                              setState(() {
+                                _selectedVehicleLabel = selected.label;
+                                _selectedVehicleType = selected.type;
+                              });
+                            },
+                      selectedItemBuilder: (context) => vehicleOptions
+                          .map(
+                            (option) => Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                option.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                _DetailSection(
+                  title: 'Message to Instructor',
+                  child: TextField(
+                    controller: _messageController,
+                    enabled: canEditMessage && !_processing,
+                    maxLines: 3,
+                    minLines: 2,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
+                    textCapitalization: TextCapitalization.sentences,
                     decoration: const InputDecoration(
-                      hintText: 'Choose the vehicle you want to learn in',
+                      hintText:
+                          'Share your goals, availability, or anything else the instructor should know.',
                       border: OutlineInputBorder(),
                     ),
-                    items: vehicleOptions
-                        .map(
-                          (option) => DropdownMenuItem<String>(
-                            value: option.label,
-                            child: Text(
-                              option.label,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: _processing
-                        ? null
-                        : (value) {
-                            if (value == null) return;
-                            final selected = vehicleOptions.firstWhere(
-                              (option) => option.label == value,
-                            );
-                            setState(() {
-                              _selectedVehicleLabel = selected.label;
-                              _selectedVehicleType = selected.type;
-                            });
-                          },
-                    selectedItemBuilder: (context) => vehicleOptions
-                        .map(
-                          (option) => Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              option.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
                   ),
                 ),
                 const SizedBox(height: 16),
-              ],
-              _DetailSection(
-                title: 'Message to Instructor',
-                child: TextField(
-                  controller: _messageController,
-                  enabled: canEditMessage && !_processing,
-                  maxLines: 4,
-                  minLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Share your goals, availability, or anything else the instructor should know.',
-                    border: OutlineInputBorder(),
-                  ),
+                _RatesSection(
+                  rates: offeringRates,
+                  fallback: ratesFallback,
+                  labelForOffering: _labelForOffering,
                 ),
-              ),
-              const SizedBox(height: 16),
-              _DetailSection(
-                title: 'Rates',
-                child: offeringRates.isEmpty
-                    ? Text(
-                        ratesFallback,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[800],
-                            ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: offeringRates.entries
-                            .map(
-                              (entry) => Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: _DetailRow(
-                                  label: entry.key,
-                                  value: entry.value,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () {
-                  final instructorId = (_requestContext?['instructorId'] ??
-                          _profile['id'] ??
-                          _profile['profile_id'])
-                      ?.toString();
-                  if (instructorId == null || instructorId.isEmpty) return;
-                  showUserReportSheet(
-                    context,
-                    reportedUserId: instructorId,
-                    reportedUserName: name,
-                  );
-                },
-                icon: const Icon(Icons.flag_outlined),
-                label: const Text('Report instructor'),
-              ),
-              const SizedBox(height: 96),
-            ],
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    final instructorId = (_requestContext?['instructorId'] ??
+                            _profile['id'] ??
+                            _profile['profile_id'])
+                        ?.toString();
+                    if (instructorId == null || instructorId.isEmpty) return;
+                    showUserReportSheet(
+                      context,
+                      reportedUserId: instructorId,
+                      reportedUserName: name,
+                    );
+                  },
+                  icon: const Icon(Icons.flag_outlined),
+                  label: const Text('Report instructor'),
+                ),
+                const SizedBox(height: 96),
+              ],
+            ),
           ),
-        ),
-        bottomNavigationBar: SafeArea(
-          minimum: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: _buildBottomAction(
-            isPending: isPending,
-            isAccepted: isAccepted,
-            hasActiveRelationship: _hasActiveRelationship,
-            canRequest: canRequest,
-            requestLabel: requestButtonLabel,
+          bottomNavigationBar: SafeArea(
+            minimum: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: _buildBottomAction(
+              isPending: isPending,
+              isAccepted: isAccepted,
+              hasActiveRelationship: _hasActiveRelationship,
+              canRequest: canRequest,
+              requestLabel: requestButtonLabel,
+            ),
           ),
         ),
       ),
@@ -1310,8 +1338,8 @@ class _ProfileImage extends StatelessWidget {
             borderRadius: BorderRadius.circular(60),
             child: Image.network(
               imageUrl,
-              width: 120,
-              height: 120,
+              width: 96,
+              height: 96,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) =>
                   _FallbackAvatar(initial: fallbackInitial),
@@ -1324,7 +1352,7 @@ class _ProfileImage extends StatelessWidget {
             top: -2,
             right: -2,
             child: VerifiedProfileBadge(
-              size: 30,
+              size: 26,
               showCutout: true,
             ),
           ),
@@ -1341,7 +1369,7 @@ class _FallbackAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CircleAvatar(
-      radius: 60,
+      radius: 48,
       backgroundColor: AppColors.ocean.withOpacity(0.15),
       child: Text(
         initial.toUpperCase(),
@@ -1356,18 +1384,16 @@ class _FallbackAvatar extends StatelessWidget {
 class _DetailSection extends StatelessWidget {
   final String title;
   final Widget child;
-  final String? trailingImage;
 
   const _DetailSection({
     required this.title,
     required this.child,
-    this.trailingImage,
   });
 
   @override
   Widget build(BuildContext context) {
     return GlassPanel(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1383,22 +1409,40 @@ class _DetailSection extends StatelessWidget {
                       ),
                 ),
               ),
-              if (trailingImage != null && trailingImage!.isNotEmpty)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    trailingImage!,
-                    width: 72,
-                    height: 72,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  ),
-                ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _VehiclePhotoPreview extends StatelessWidget {
+  const _VehiclePhotoPreview({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: AppColors.ocean.withValues(alpha: 0.08),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.directions_car_filled_outlined,
+              color: AppColors.primaryBlue,
+              size: 34,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1431,6 +1475,113 @@ class _VehicleRequestOption {
 
   final String label;
   final String type;
+}
+
+class _RatesSection extends StatelessWidget {
+  const _RatesSection({
+    required this.rates,
+    required this.fallback,
+    required this.labelForOffering,
+  });
+
+  final Map<String, String> rates;
+  final String fallback;
+  final String Function(String code) labelForOffering;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rates.isEmpty) {
+      return _DetailSection(
+        title: 'Lesson pricing',
+        child: Text(
+          fallback,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[800],
+              ),
+        ),
+      );
+    }
+
+    return _DetailSection(
+      title: 'Lesson pricing',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: rates.entries
+                .map(
+                  (entry) => _RatePill(
+                    label: labelForOffering(entry.key),
+                    value: entry.value,
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Rates are shown per hour. Final lesson details are confirmed after your request is accepted.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[600],
+                  height: 1.35,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RatePill extends StatelessWidget {
+  const _RatePill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedValue =
+        value.trim().startsWith(r'$') ? value.trim() : '\$${value.trim()}';
+    final displayValue = normalizedValue.toLowerCase().contains('/hr')
+        ? normalizedValue
+        : '$normalizedValue/hr';
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 128),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBlue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.primaryBlue.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Colors.grey[700],
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            displayValue,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppColors.primaryBlue,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DetailRow extends StatelessWidget {

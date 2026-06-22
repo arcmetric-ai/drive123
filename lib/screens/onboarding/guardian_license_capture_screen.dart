@@ -88,7 +88,7 @@ class _GuardianLicenseCaptureScreenState
   Widget build(BuildContext context) {
     return IdentityCaptureScene(
       stepLabel: 'Guardian Step 1 of 2',
-      title: 'Guardian ID inside the frame',
+      title: 'Position guardian government ID inside the frame',
       imagePath: _imagePath,
       shape: CaptureFrameShape.rectangle,
       onClose: () => context.pop(),

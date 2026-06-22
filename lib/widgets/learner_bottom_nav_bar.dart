@@ -46,7 +46,7 @@ class LearnerBottomNavBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+          padding: const EdgeInsets.fromLTRB(8, 5, 8, 4),
           child: Row(
             children: List.generate(_items.length, (index) {
               final item = _items[index];
@@ -54,9 +54,9 @@ class LearnerBottomNavBar extends StatelessWidget {
               return Expanded(
                 child: InkWell(
                   onTap: () => onTap(index),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(14),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -65,7 +65,7 @@ class LearnerBottomNavBar extends StatelessWidget {
                           children: [
                             Icon(
                               isActive ? item.activeIcon : item.icon,
-                              size: 34,
+                              size: 28,
                               color: isActive
                                   ? AppColors.primary
                                   : AppColors.mutedForeground,
@@ -79,19 +79,18 @@ class LearnerBottomNavBar extends StatelessWidget {
                                     color: AppColors.accent,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: SizedBox(width: 12, height: 12),
+                                  child: SizedBox(width: 10, height: 10),
                                 ),
                               ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 3),
                         Text(
                           item.label,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 10.5,
                             fontWeight:
                                 isActive ? FontWeight.w800 : FontWeight.w500,
-                            letterSpacing: 0.8,
                             color: isActive
                                 ? AppColors.primary
                                 : AppColors.mutedForeground,

@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
+import '../../utils/ontario_phone_number.dart';
 
 const Color _qBg = Color(0xFFF1F3F6);
 const Color _qCardBg = Colors.white;
@@ -14,6 +16,7 @@ const Color _qBorder = Color(0xFFE2E8F0);
 const Color _qPrimary = Color(0xFF2F8BE6);
 const Color _qText = Color(0xFF0F172A);
 const Color _qMuted = Color(0xFF5C6472);
+const double _minimumInstructorLessonRate = 40;
 
 class InstructorQuestionnaireScreen extends StatefulWidget {
   final String role;
@@ -39,10 +42,16 @@ class _InstructorQuestionnaireScreenState
   final _licenceExpiryController = TextEditingController();
 
   final _ageController = TextEditingController();
+  String? _profileImagePath;
 
   DateTime? _licenceExpiry;
 
   String? _gender;
+
+  DateTime get _today {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
 
   final List<String> _vehicleTypes = const [
     'Sedan',
@@ -118,11 +127,14 @@ class _InstructorQuestionnaireScreenState
   }
 
   Future<void> _pickLicenceExpiry() async {
+    final today = _today;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _licenceExpiry ?? DateTime.now(),
-      firstDate: DateTime(DateTime.now().year - 1),
-      lastDate: DateTime(DateTime.now().year + 10),
+      initialDate: _licenceExpiry != null && !_licenceExpiry!.isBefore(today)
+          ? _licenceExpiry!
+          : today,
+      firstDate: today,
+      lastDate: DateTime(today.year + 10),
     );
 
     if (picked != null) {
@@ -155,6 +167,27 @@ class _InstructorQuestionnaireScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to pick image: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickProfileImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1200,
+      );
+      if (picked != null) {
+        setState(() => _profileImagePath = picked.path);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to pick profile photo: $e'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -275,6 +308,18 @@ class _InstructorQuestionnaireScreenState
       );
       return;
     }
+    final parsedYear = int.parse(year);
+    final maxVehicleYear = DateTime.now().year + 1;
+    if (parsedYear < 1990 || parsedYear > maxVehicleYear) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('Vehicle year must be between 1990 and $maxVehicleYear.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     if (make.isEmpty || model.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -300,6 +345,17 @@ class _InstructorQuestionnaireScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Number plate is required.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_pendingVehicleImagePath == null ||
+        _pendingVehicleImagePath!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add a vehicle photo before adding this vehicle.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -342,10 +398,28 @@ class _InstructorQuestionnaireScreenState
 
   void _handleContinue() {
     if (!_formKey.currentState!.validate()) return;
+    if (_profileImagePath == null || _profileImagePath!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add a profile photo to continue.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
     if (_licenceExpiry == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select your licence expiry date.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    if (_licenceExpiry!.isBefore(_today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Licence expiry cannot be in the past.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -394,6 +468,15 @@ class _InstructorQuestionnaireScreenState
             content: Text(
               'Please provide a valid hourly rate for ${entry.key}.',
             ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+      if (parsed < _minimumInstructorLessonRate) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Minimum lesson rate is \$40/hr.'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -461,22 +544,30 @@ class _InstructorQuestionnaireScreenState
     }
 
     final ageValue = int.tryParse(_ageController.text.trim());
+    if (ageValue == null || ageValue < 21 || ageValue > 100) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Instructors must be between 21 and 100 years old.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
     final profileData = <String, dynamic>{};
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
-    final phone = _phoneController.text.trim();
+    final phone = OntarioPhoneNumber.toE164(_phoneController.text);
     if (firstName.isNotEmpty) {
       profileData['first_name'] = firstName;
     }
     if (lastName.isNotEmpty) {
       profileData['last_name'] = lastName;
     }
-    if (phone.isNotEmpty) {
+    if (phone != null && phone.isNotEmpty) {
       profileData['phone'] = phone;
     }
-    if (ageValue != null) {
-      profileData['age'] = ageValue;
-    }
+    profileData['profileImageLocalPath'] = _profileImagePath;
+    profileData['age'] = ageValue;
     if (_gender != null && _gender!.trim().isNotEmpty) {
       profileData['gender'] = _gender!.trim();
     }
@@ -535,6 +626,7 @@ class _InstructorQuestionnaireScreenState
   InputDecoration _fieldDecoration({
     required String label,
     Widget? suffixIcon,
+    String? prefixText,
   }) {
     const border = OutlineInputBorder(
       borderRadius: BorderRadius.all(Radius.circular(16)),
@@ -542,6 +634,7 @@ class _InstructorQuestionnaireScreenState
     );
     return InputDecoration(
       labelText: label,
+      prefixText: prefixText,
       labelStyle: const TextStyle(
         color: _qMuted,
         fontSize: 15,
@@ -645,9 +738,8 @@ class _InstructorQuestionnaireScreenState
     if (trimmed.isEmpty) {
       return 'Phone number is required';
     }
-    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 10) {
-      return 'Enter a valid phone number';
+    if (!OntarioPhoneNumber.isValid(trimmed)) {
+      return 'Enter a valid 10-digit Ontario phone number';
     }
     return null;
   }
@@ -677,7 +769,8 @@ class _InstructorQuestionnaireScreenState
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: Align(
@@ -692,8 +785,8 @@ class _InstructorQuestionnaireScreenState
                           Row(
                             children: [
                               Container(
-                                width: 60,
-                                height: 60,
+                                width: 48,
+                                height: 48,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(17),
                                   color: Colors.white,
@@ -721,7 +814,7 @@ class _InstructorQuestionnaireScreenState
                                   child: Text(
                                     'DriveTutor',
                                     style: TextStyle(
-                                      fontSize: 42,
+                                      fontSize: 32,
                                       fontWeight: FontWeight.w800,
                                       color: _qPrimary,
                                       letterSpacing: 0.2,
@@ -831,21 +924,86 @@ class _InstructorQuestionnaireScreenState
                               TextFormField(
                                 controller: _phoneController,
                                 keyboardType: TextInputType.phone,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(10),
+                                ],
                                 decoration: _fieldDecoration(
                                   label: 'Phone Number *',
+                                  prefixText: '+1 ',
                                 ),
                                 validator: _validatePhone,
+                              ),
+                              const SizedBox(height: 14),
+                              const Text(
+                                'Profile photo *',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: _qText,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Center(
+                                child: Container(
+                                  width: 132,
+                                  height: 132,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _qBg,
+                                    border: Border.all(color: _qBorder),
+                                    image: _profileImagePath == null
+                                        ? null
+                                        : DecorationImage(
+                                            image: FileImage(
+                                              File(_profileImagePath!),
+                                            ),
+                                            fit: BoxFit.cover,
+                                          ),
+                                  ),
+                                  child: _profileImagePath == null
+                                      ? const Icon(
+                                          Icons.person_rounded,
+                                          size: 64,
+                                          color: _qPrimary,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 10,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _pickProfileImage(ImageSource.camera),
+                                    icon: const Icon(
+                                      Icons.photo_camera_outlined,
+                                    ),
+                                    label: const Text('Take photo'),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _pickProfileImage(ImageSource.gallery),
+                                    icon: const Icon(
+                                      Icons.photo_library_outlined,
+                                    ),
+                                    label: const Text('Choose photo'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                           const SizedBox(height: 14),
                           _sectionCard(
-                            title: 'Driving licence',
+                            title: 'Ontario G licence',
                             children: [
                               TextFormField(
                                 controller: _licenceNumberController,
                                 decoration: _fieldDecoration(
-                                  label: 'Licence Number *',
+                                  label: 'Ontario G Licence Number *',
                                 ),
                                 textCapitalization:
                                     TextCapitalization.characters,
@@ -1239,6 +1397,12 @@ class _InstructorQuestionnaireScreenState
                                   }
                                   final parsed = int.tryParse(value.trim());
                                   if (parsed == null || parsed <= 0) {
+                                    return 'Enter a valid age';
+                                  }
+                                  if (parsed < 21) {
+                                    return 'Instructors must be at least 21 years old';
+                                  }
+                                  if (parsed > 100) {
                                     return 'Enter a valid age';
                                   }
                                   return null;

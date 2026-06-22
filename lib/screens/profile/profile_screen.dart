@@ -16,13 +16,19 @@ import '../../widgets/verified_profile_badge.dart';
 import '../instructor/instructor_bookings_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({
+    super.key,
+    this.refreshToken = 0,
+  });
+
+  final int refreshToken;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with WidgetsBindingObserver {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -67,11 +73,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadProfile();
   }
 
   @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshToken != oldWidget.refreshToken) {
+      _loadProfile();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadProfile();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _firstNameController.dispose();
     _lastNameController.dispose();
     _emailController.dispose();
@@ -803,7 +826,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 _buildInfoRow(
                   icon: Icons.credit_card,
-                  label: 'G1 Licence',
+                  label: 'G1/G2/G Licence',
                   value: licenceParts.isEmpty
                       ? 'Not provided'
                       : licenceParts.join(' - '),
@@ -1015,16 +1038,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _phoneController.text = profile.phone ?? '';
         _profileImageUrl = profile.profileImageUrl;
         _isVerified = profile.isVerified;
-        _roleLabel = _formatRole(profile.role);
-        if (profile.role == 'learner') {
+        final normalizedRole = _normalizeRole(profile.role);
+        _roleLabel = _formatRole(normalizedRole);
+        if (normalizedRole == 'learner') {
           await _populateLearnerDetails(profile.id);
-        } else if (profile.role == 'instructor') {
+        } else if (normalizedRole == 'instructor') {
           await _populateInstructorDetails(profile.id);
         }
       } else {
         _emailController.text = user.email ?? '';
-        _roleLabel = _formatRole(_asString(user.userMetadata?['role']));
-        final fallbackRole = _asString(user.userMetadata?['role']);
+        final fallbackRole = _normalizeRole(user.userMetadata?['role']);
+        _roleLabel = _formatRole(fallbackRole);
         if (fallbackRole == 'learner') {
           await _populateLearnerDetails(user.id);
         } else if (fallbackRole == 'instructor') {
@@ -1048,65 +1072,91 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _populateLearnerDetails(String userId) async {
     try {
-      final detail = await SupabaseService.getLearnerProfileDetail(userId);
-      final graduation = await SupabaseService.getCurrentLearnerGraduation();
-      if (!mounted || detail == null) return;
+      final results = await Future.wait<dynamic>([
+        SupabaseService.getLearnerProfileDetail(userId),
+        SupabaseService.getRawProfile(userId),
+      ]);
+      if (!mounted) return;
 
-      final profileMap = detail['profile'] is Map
+      final detail = results[0] is Map
+          ? Map<String, dynamic>.from(results[0] as Map)
+          : <String, dynamic>{};
+      final rawProfile = results[1] is Map
+          ? Map<String, dynamic>.from(results[1] as Map)
+          : <String, dynamic>{};
+      final nestedProfile = detail['profile'] is Map
           ? Map<String, dynamic>.from(detail['profile'] as Map)
           : <String, dynamic>{};
+      Map<String, dynamic>? graduation;
+      try {
+        final row = await SupabaseService.getCurrentLearnerGraduation();
+        if (row != null) {
+          graduation = Map<String, dynamic>.from(row);
+        }
+      } catch (error) {
+        debugPrint('Unable to load learner graduation state: $error');
+      }
+      final profileMap = _mergeNonNull(rawProfile, nestedProfile);
+      final learnerMap = _mergeNonNull(detail, profileMap);
+      final locations = _locationSummaries(
+        detail['preferred_locations'] ??
+            profileMap['preferred_locations'] ??
+            learnerMap['preferredLocations'],
+      );
       setState(() {
         _graduatedRelationship = graduation;
-        _licenceNumber = _asString(profileMap['licence_number']);
-        final expiry = _asString(profileMap['licence_expiry']);
-        _licenceExpiry = expiry != null ? DateTime.tryParse(expiry) : null;
-        _learnerCity = _asString(profileMap['city']);
-        final age = profileMap['age'];
-        if (age is int) {
-          _learnerAge = age;
-        } else if (age is String) {
-          _learnerAge = int.tryParse(age);
-        }
-        _learnerGender = _asString(profileMap['gender']);
-        final classesTaken = detail['classes_taken_sofar'];
-        if (classesTaken is int) {
-          _learnerClassesTaken = classesTaken;
-        } else if (classesTaken is String) {
-          _learnerClassesTaken = int.tryParse(classesTaken);
-        }
-        final lastClass = _asString(detail['last_class_date']);
-        _learnerLastClassDate =
-            lastClass != null ? DateTime.tryParse(lastClass) : null;
-        final testDate = _asString(detail['target_test_date']);
-        _learnerTestDate =
-            testDate != null ? DateTime.tryParse(testDate) : null;
-        final locations = detail['preferred_locations'];
-        _learnerLocations = [];
-        if (locations is List) {
-          for (final entry in locations) {
-            if (entry is Map) {
-              final label = _asString(entry['label'])?.trim();
-              final address = _asString(entry['address'])?.trim();
-              if ((label?.isNotEmpty ?? false) ||
-                  (address?.isNotEmpty ?? false)) {
-                final title = (label != null && label.isNotEmpty)
-                    ? label
-                    : (_asString(entry['type']) ?? 'Location');
-                final combined = address != null && address.isNotEmpty
-                    ? '$title: $address'
-                    : title;
-                _learnerLocations.add(combined);
-              }
-            } else if (entry is String) {
-              _learnerLocations.add(entry);
-            }
-          }
-        }
+        _licenceNumber = _firstString([
+          profileMap['licence_number'],
+          learnerMap['licence_number'],
+          learnerMap['licenseNumber'],
+        ]);
+        _licenceExpiry = _firstDate([
+          profileMap['licence_expiry'],
+          learnerMap['licence_expiry'],
+          learnerMap['licenseExpiry'],
+        ]);
+        _learnerCity = _firstString([
+          profileMap['city'],
+          learnerMap['city'],
+          detail['city'],
+        ]);
+        _learnerAge = _firstInt([
+          profileMap['age'],
+          detail['age'],
+          detail['ward_age'],
+          learnerMap['age'],
+        ]);
+        _learnerGender = _firstString([
+          profileMap['gender'],
+          detail['gender'],
+          detail['ward_gender'],
+          learnerMap['gender'],
+        ]);
+        _learnerClassesTaken = _firstInt([
+          detail['classes_taken_sofar'],
+          detail['classes_taken'],
+          learnerMap['classes_taken_sofar'],
+          learnerMap['classes_taken'],
+        ]);
+        _learnerLastClassDate = _firstDate([
+          detail['last_class_date'],
+          learnerMap['last_class_date'],
+        ]);
+        _learnerTestDate = _firstDate([
+          detail['target_test_date'],
+          detail['g1_test_date'],
+          detail['test_date'],
+          learnerMap['target_test_date'],
+        ]);
+        _learnerLocations = locations;
         _learnerWeeklyAvailability = _parseWeeklyAvailability(
-          detail['weekly_availability'],
+          detail['weekly_availability'] ??
+              profileMap['weekly_availability'] ??
+              learnerMap['weeklyAvailability'],
         );
         _learnerAvailabilityRecurring =
-            detail['availability_recurring'] == true;
+            detail['availability_recurring'] == true ||
+                profileMap['availability_recurring'] == true;
       });
     } catch (e) {
       // ignore but log? for now just print
@@ -2344,6 +2394,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return null;
   }
 
+  String? _firstString(List<dynamic> values) {
+    for (final value in values) {
+      final string = _asString(value);
+      if (string != null && string.isNotEmpty) return string;
+    }
+    return null;
+  }
+
+  int? _firstInt(List<dynamic> values) {
+    for (final value in values) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      final string = _asString(value);
+      if (string == null) continue;
+      final parsed = int.tryParse(string);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  DateTime? _firstDate(List<dynamic> values) {
+    for (final value in values) {
+      if (value is DateTime) return value;
+      final string = _asString(value);
+      if (string == null) continue;
+      final parsed = DateTime.tryParse(string);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  List<String> _locationSummaries(dynamic source) {
+    final results = <String>[];
+    if (source is List) {
+      for (final entry in source) {
+        if (entry is Map) {
+          final label = _asString(entry['label']);
+          final address = _asString(entry['address']);
+          final type = _asString(entry['type']);
+          final value = label != null && address != null
+              ? '$label - $address'
+              : address ?? label ?? type;
+          if (value != null && value.isNotEmpty) {
+            results.add(value);
+          }
+        } else {
+          final value = _asString(entry);
+          if (value != null && value.isNotEmpty) {
+            results.add(value);
+          }
+        }
+      }
+    } else {
+      final value = _asString(source);
+      if (value != null && value.isNotEmpty) {
+        results.add(value);
+      }
+    }
+    return results;
+  }
+
+  Map<String, dynamic> _mergeNonNull(
+    Map<String, dynamic> base,
+    Map<String, dynamic> overlay,
+  ) {
+    final merged = Map<String, dynamic>.from(base);
+    for (final entry in overlay.entries) {
+      if (entry.value != null) {
+        merged[entry.key] = entry.value;
+      }
+    }
+    return merged;
+  }
+
   String _titleCase(String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return '';
@@ -2361,5 +2485,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final value = (role ?? 'learner').trim();
     if (value.isEmpty) return 'Learner';
     return value[0].toUpperCase() + value.substring(1);
+  }
+
+  String _normalizeRole(dynamic role) {
+    final value = _asString(role)?.toLowerCase();
+    if (value == 'instructor') return 'instructor';
+    return 'learner';
   }
 }

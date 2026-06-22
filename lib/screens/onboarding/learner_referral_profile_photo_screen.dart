@@ -12,7 +12,14 @@ import '../../widgets/app_circle_icon_button.dart';
 import '../../widgets/app_primary_button.dart';
 
 class LearnerReferralProfilePhotoScreen extends StatefulWidget {
-  const LearnerReferralProfilePhotoScreen({super.key});
+  const LearnerReferralProfilePhotoScreen({
+    super.key,
+    this.nextRoute,
+    this.nextExtra,
+  });
+
+  final String? nextRoute;
+  final Object? nextExtra;
 
   @override
   State<LearnerReferralProfilePhotoScreen> createState() =>
@@ -61,14 +68,13 @@ class _LearnerReferralProfilePhotoScreenState
         file: File(selectedImage.path),
       );
 
-      final claimed =
-          await InstructorReferralService.claimPendingCodeIfAvailable();
-      if (!claimed) {
-        throw Exception('Instructor invite code was not found on this device.');
-      }
+      await InstructorReferralService.claimPendingCodeIfAvailable();
 
       if (!mounted) return;
-      context.go(AppRoutes.home);
+      context.go(
+        widget.nextRoute ?? AppRoutes.home,
+        extra: widget.nextExtra,
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -116,7 +122,7 @@ class _LearnerReferralProfilePhotoScreenState
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Your invited instructor will see this photo in their learner list. ID and selfie verification are only needed if you later remove this instructor and use open instructor search.',
+                      'Learners and instructors need a clear profile photo before using Drive Tutor. Instructors will see this photo when reviewing lesson requests.',
                       style: TextStyle(
                         fontSize: 18,
                         height: 1.45,
@@ -172,7 +178,7 @@ class _LearnerReferralProfilePhotoScreenState
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
               child: AppPrimaryButton(
-                label: 'Connect Instructor',
+                label: 'Continue',
                 onPressed: photo == null || _isSaving ? null : _continue,
                 isLoading: _isSaving,
                 height: 64,

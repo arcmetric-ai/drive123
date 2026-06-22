@@ -1222,7 +1222,8 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     final isExternal = _isExternalLearner(learner);
     final isGraduated = _isGraduatedLearner(learner);
     final transmission = _stringValue(learner['transmission_preference']) ??
-        _stringValue((learner['learner_profile'] as Map?)?['transmission_preference']) ??
+        _stringValue(
+            (learner['learner_profile'] as Map?)?['transmission_preference']) ??
         _stringValue((learner['learner'] as Map?)?['transmission_preference']);
     final progressLabel = isExternal
         ? transmission == null
@@ -1708,6 +1709,7 @@ class _ExternalLearnerSheetState extends State<_ExternalLearnerSheet> {
       child: Form(
         key: _formKey,
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1825,6 +1827,9 @@ class _ExternalLearnerSheetState extends State<_ExternalLearnerSheet> {
                 controller: _notesController,
                 minLines: 2,
                 maxLines: 4,
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
                 textCapitalization: TextCapitalization.sentences,
                 decoration: const InputDecoration(
                   labelText: 'Notes optional',

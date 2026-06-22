@@ -1,12 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/ontario_locations.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/ontario_licence.dart';
+import '../../utils/ontario_phone_number.dart';
+
+const double _minimumInstructorLessonRate = 40;
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -28,9 +33,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _phoneController = TextEditingController();
   String _email = '';
   bool _phoneVerified = false;
+  String? _profileImageUrl;
+  String? _pendingProfileImagePath;
   final _licenceNumberController = TextEditingController();
   final _licenceExpiryController = TextEditingController();
   DateTime? _licenceExpiryDate;
+  bool _licenceNumberLocked = false;
 
   // Learner fields
   final _g1TestDateController = TextEditingController();
@@ -106,6 +114,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
     final converted = value.toString().trim();
     return converted.isEmpty ? null : converted;
+  }
+
+  DateTime get _today {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
   }
 
   String _titleCase(String value) {
@@ -199,8 +212,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _email = _stringOrNull(rawProfile?['email']) ?? currentUser.email ?? '';
       _firstNameController.text = firstName;
       _lastNameController.text = lastName;
-      _phoneController.text = phone;
+      _phoneController.text = OntarioPhoneNumber.displayLocal(phone);
       _phoneVerified = _stringOrNull(rawProfile?['phone_verified_at']) != null;
+      _profileImageUrl = _stringOrNull(rawProfile?['profile_image_url']);
 
       final role = _stringOrNull(rawProfile?['role']) ??
           currentUser.userMetadata?['role'];
@@ -240,7 +254,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final targetTestDate = _stringOrNull(detail['target_test_date']);
     final lastClass = _stringOrNull(detail['last_class_date']);
 
-    _licenceNumberController.text = licenceNumber ?? '';
+    _licenceNumberController.text =
+        licenceNumber == null ? '' : OntarioLicence.format(licenceNumber);
+    _licenceNumberLocked =
+        _stringOrNull(profileMap['verification_submitted_at']) != null &&
+            (licenceNumber?.trim().isNotEmpty ?? false);
     if (licenceExpiry != null) {
       final parsed = DateTime.tryParse(licenceExpiry);
       if (parsed != null) {
@@ -340,7 +358,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final licenceNumber = _stringOrNull(profileMap['licence_number']);
     final licenceExpiry = _stringOrNull(profileMap['licence_expiry']);
 
-    _licenceNumberController.text = licenceNumber ?? '';
+    _licenceNumberController.text =
+        licenceNumber == null ? '' : OntarioLicence.format(licenceNumber);
+    _licenceNumberLocked =
+        _stringOrNull(profileMap['verification_submitted_at']) != null &&
+            (licenceNumber?.trim().isNotEmpty ?? false);
     if (licenceExpiry != null) {
       final parsed = DateTime.tryParse(licenceExpiry);
       if (parsed != null) {
@@ -602,8 +624,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _phoneController,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(10),
+              ],
               decoration: const InputDecoration(
                 labelText: 'Phone Number',
+                prefixText: '+1 ',
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.phone,
@@ -622,17 +649,98 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       label: const Text('Verify phone number'),
                     ),
             ),
+            const SizedBox(height: 12),
+            _buildProfilePhotoPicker(),
           ],
         ),
       ),
     );
   }
 
+  Widget _buildProfilePhotoPicker() {
+    ImageProvider<Object>? image;
+    final pendingPath = _pendingProfileImagePath;
+    if (pendingPath != null && pendingPath.isNotEmpty) {
+      image = FileImage(File(pendingPath));
+    } else if (_profileImageUrl != null && _profileImageUrl!.isNotEmpty) {
+      image = NetworkImage(_profileImageUrl!);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Profile Photo',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryBlue,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 42,
+              backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.12),
+              backgroundImage: image,
+              child: image == null
+                  ? const Icon(
+                      Icons.person_rounded,
+                      size: 42,
+                      color: AppColors.primaryBlue,
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _pickProfileImage(ImageSource.camera),
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('Take photo'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _pickProfileImage(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Choose photo'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickProfileImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1200,
+      );
+      if (picked != null) {
+        setState(() => _pendingProfileImagePath = picked.path);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showInlineError('Unable to pick profile photo: $e');
+    }
+  }
+
   Future<void> _verifyPhoneNumber() async {
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty || !phone.startsWith('+')) {
-      _showInlineError(
-          'Enter the phone in international format, for example +14165551234.');
+    final rawPhone = _phoneController.text.trim();
+    final phone = OntarioPhoneNumber.toE164(rawPhone);
+    if (rawPhone.isNotEmpty && phone == null) {
+      _showInlineError('Enter a valid 10-digit Ontario phone number.');
+      return;
+    }
+    if (phone == null) {
+      _showInlineError('Enter a valid 10-digit Ontario phone number.');
       return;
     }
     try {
@@ -694,18 +802,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('G1 Licence Details'),
+        _buildSectionTitle('G1/G2/G Licence Details'),
         const SizedBox(height: 12),
         TextFormField(
           controller: _licenceNumberController,
+          enabled: !_licenceNumberLocked,
           textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
-            labelText: 'G1 Licence Number',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: 'G1/G2/G Licence Number',
+            helperText: _licenceNumberLocked
+                ? 'Licence number is locked after verification submission.'
+                : 'Ontario format: A1234 12345 12345',
+            border: const OutlineInputBorder(),
           ),
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
               return 'Licence number is required';
+            }
+            if (!OntarioLicence.isValid(value)) {
+              return 'Use Ontario format A1234 12345 12345';
             }
             return null;
           },
@@ -722,6 +837,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           onTap: () => _pickDate(
             controller: _licenceExpiryController,
             currentValue: _licenceExpiryDate,
+            firstDate: DateTime.now(),
             onSelected: (value) => setState(() {
               _licenceExpiryDate = value;
             }),
@@ -729,6 +845,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           validator: (value) {
             if ((value ?? '').isEmpty) {
               return 'Select an expiry date';
+            }
+            final expiry = _licenceExpiryDate;
+            if (expiry != null) {
+              final now = DateTime.now();
+              final today = DateTime(now.year, now.month, now.day);
+              if (expiry.isBefore(today)) {
+                return 'Expiry cannot be in the past';
+              }
             }
             return null;
           },
@@ -745,6 +869,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           onTap: () => _pickDate(
             controller: _g1TestDateController,
             currentValue: _g1TestDate,
+            firstDate: _today,
+            lastDate: DateTime(_today.year + 10),
             onSelected: (value) => setState(() {
               _g1TestDate = value;
             }),
@@ -838,6 +964,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             }
             final parsed = int.tryParse(value.trim());
             if (parsed == null || parsed <= 0) {
+              return 'Enter a valid age';
+            }
+            if (parsed < 18) {
+              return parsed == 16 || parsed == 17
+                  ? 'Ages 16-17 require a guardian account'
+                  : 'Learners must be at least 16 years old';
+            }
+            if (parsed > 100) {
               return 'Enter a valid age';
             }
             return null;
@@ -981,6 +1115,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           onTap: () => _pickDate(
             controller: _lastClassDateController,
             currentValue: _lastClassDate,
+            firstDate: DateTime(1970),
+            lastDate: _today,
+            preferLatestInitial: true,
             onSelected: (value) => setState(() {
               _lastClassDate = value;
             }),
@@ -995,18 +1132,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Instructor Licence'),
+        _buildSectionTitle('Ontario G Licence'),
         const SizedBox(height: 12),
         TextFormField(
           controller: _licenceNumberController,
+          enabled: !_licenceNumberLocked,
           textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
-            labelText: 'Licence Number',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: 'Ontario G Licence Number',
+            helperText: _licenceNumberLocked
+                ? 'Licence number is locked after verification submission.'
+                : 'Ontario format: A1234 12345 12345',
+            border: const OutlineInputBorder(),
           ),
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
               return 'Licence number is required';
+            }
+            if (!OntarioLicence.isValid(value)) {
+              return 'Use Ontario format A1234 12345 12345';
             }
             return null;
           },
@@ -1023,6 +1167,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           onTap: () => _pickDate(
             controller: _licenceExpiryController,
             currentValue: _licenceExpiryDate,
+            firstDate: DateTime.now(),
             onSelected: (value) => setState(() {
               _licenceExpiryDate = value;
             }),
@@ -1030,6 +1175,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           validator: (value) {
             if ((value ?? '').isEmpty) {
               return 'Select an expiry date';
+            }
+            final expiry = _licenceExpiryDate;
+            if (expiry != null) {
+              final now = DateTime.now();
+              final today = DateTime(now.year, now.month, now.day);
+              if (expiry.isBefore(today)) {
+                return 'Expiry cannot be in the past';
+              }
             }
             return null;
           },
@@ -1098,6 +1251,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             final parsed = int.tryParse(value.trim());
             if (parsed == null || parsed < 0) {
               return 'Enter a valid number of years';
+            }
+            final instructorAge =
+                int.tryParse(_instructorAgeController.text.trim());
+            if (instructorAge != null && parsed > instructorAge) {
+              return 'Experience cannot be greater than age';
+            }
+            if (parsed > 80) {
+              return 'Enter a realistic number of years';
             }
             return null;
           },
@@ -1392,6 +1553,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             if (parsed == null || parsed <= 0) {
               return 'Enter a valid age';
             }
+            if (parsed < 21) {
+              return 'Instructors must be at least 21 years old';
+            }
+            if (parsed > 100) {
+              return 'Enter a valid age';
+            }
             return null;
           },
         ),
@@ -1480,6 +1647,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _saveLearnerProfile() async {
+    if ((_pendingProfileImagePath == null ||
+            _pendingProfileImagePath!.trim().isEmpty) &&
+        (_profileImageUrl == null || _profileImageUrl!.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add a profile photo to continue.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     if (_licenceExpiryDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1510,7 +1689,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final classesTaken = int.tryParse(_classesTakenController.text.trim());
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
-    final phone = _phoneController.text.trim();
+    final rawPhone = _phoneController.text.trim();
+    final phone = OntarioPhoneNumber.toE164(rawPhone);
+    if (rawPhone.isNotEmpty && phone == null) {
+      _showInlineError('Enter a valid 10-digit Ontario phone number.');
+      return;
+    }
+    if (age != null && age < 18) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            age == 16 || age == 17
+                ? 'You are $age years old and require a guardian account instead of a learner account.'
+                : 'Learners must be at least 16 years old.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    if (_lastClassDate != null && _lastClassDate!.isAfter(_today)) {
+      _showInlineError('Most recent class date cannot be in the future.');
+      return;
+    }
+    if (_g1TestDate != null && _g1TestDate!.isBefore(_today)) {
+      _showInlineError('Test date cannot be in the past.');
+      return;
+    }
     final locations = <Map<String, String>>[];
     if (!_pickupPreference) {
       if (_homeLocationSelected) {
@@ -1560,15 +1765,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isSaving = true);
 
     try {
+      final uploadedProfileImageUrl = await _uploadPendingProfilePhoto(userId);
       final profileUpdates = <String, dynamic>{
         'role': 'learner',
         'first_name': firstName,
         'last_name': lastName,
-        'phone': phone.isNotEmpty ? phone : null,
+        'phone': phone,
       };
+      if (uploadedProfileImageUrl != null) {
+        profileUpdates['profile_image_url'] = uploadedProfileImageUrl;
+      }
       final licenceNumber = _licenceNumberController.text.trim();
-      if (licenceNumber.isNotEmpty) {
-        profileUpdates['licence_number'] = licenceNumber;
+      if (!_licenceNumberLocked && licenceNumber.isNotEmpty) {
+        final available = await SupabaseService.isLicenceNumberAvailable(
+          licenceNumber,
+        );
+        if (!available) {
+          throw Exception(
+              'That licence number is already attached to an account.');
+        }
+        profileUpdates['licence_number'] = OntarioLicence.format(licenceNumber);
       }
       if (_licenceExpiryDate != null) {
         profileUpdates['licence_expiry'] =
@@ -1621,6 +1837,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _saveInstructorProfile() async {
+    if ((_pendingProfileImagePath == null ||
+            _pendingProfileImagePath!.trim().isEmpty) &&
+        (_profileImageUrl == null || _profileImageUrl!.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add a profile photo to continue.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     if (_licenceExpiryDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1635,6 +1863,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Add at least one vehicle you teach with.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_vehicles.any((vehicle) => !vehicle.hasPhoto)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Every instructor vehicle must include a photo.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -1685,6 +1923,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
         return;
       }
+      if (parsed < _minimumInstructorLessonRate) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Minimum lesson rate is \$40/hr.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
       rates[code] = parsed;
     }
 
@@ -1693,7 +1940,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (userId == null) return;
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
-    final phone = _phoneController.text.trim();
+    final phone = OntarioPhoneNumber.toE164(_phoneController.text);
+    if (age != null && age < 21) {
+      _showInlineError('Instructors must be at least 21 years old.');
+      return;
+    }
     final languages = _languagesController.text
         .split(',')
         .map((value) => _titleCase(value))
@@ -1749,16 +2000,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isSaving = true);
 
     try {
+      final uploadedProfileImageUrl = await _uploadPendingProfilePhoto(userId);
       final profileUpdates = <String, dynamic>{
         'first_name': firstName,
         'last_name': lastName,
-        'phone': phone.isNotEmpty ? phone : null,
+        'phone': phone,
         'languages': languages.isNotEmpty ? languages : null,
       };
+      if (uploadedProfileImageUrl != null) {
+        profileUpdates['profile_image_url'] = uploadedProfileImageUrl;
+      }
 
       final licenceNumber = _licenceNumberController.text.trim();
-      if (licenceNumber.isNotEmpty) {
-        profileUpdates['licence_number'] = licenceNumber;
+      if (!_licenceNumberLocked && licenceNumber.isNotEmpty) {
+        final available = await SupabaseService.isLicenceNumberAvailable(
+          licenceNumber,
+        );
+        if (!available) {
+          throw Exception(
+              'That licence number is already attached to an account.');
+        }
+        profileUpdates['licence_number'] = OntarioLicence.format(licenceNumber);
       }
       if (_licenceExpiryDate != null) {
         profileUpdates['licence_expiry'] =
@@ -1814,6 +2076,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final yearsExperience = int.tryParse(
         _yearsExperienceController.text.trim(),
       );
+      if (yearsExperience != null) {
+        if (yearsExperience < 0) {
+          throw Exception('Years of experience cannot be negative.');
+        }
+        if (age != null && yearsExperience > age) {
+          throw Exception('Years of experience cannot be greater than age.');
+        }
+        if (yearsExperience > 80) {
+          throw Exception('Enter a realistic number of years of experience.');
+        }
+      }
 
       await SupabaseService.upsertInstructorProfile(
         userId: userId,
@@ -1861,12 +2134,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required TextEditingController controller,
     required DateTime? currentValue,
     required ValueChanged<DateTime> onSelected,
+    DateTime? firstDate,
+    DateTime? lastDate,
+    bool preferLatestInitial = false,
   }) async {
+    final earliest = firstDate == null
+        ? DateTime(1970)
+        : DateTime(firstDate.year, firstDate.month, firstDate.day);
+    final latest = lastDate == null
+        ? DateTime(2100)
+        : DateTime(lastDate.year, lastDate.month, lastDate.day);
+    final initial = currentValue != null &&
+            !currentValue.isBefore(earliest) &&
+            !currentValue.isAfter(latest)
+        ? currentValue
+        : preferLatestInitial
+            ? latest
+            : earliest.isAfter(latest)
+                ? latest
+                : earliest;
     final picked = await showDatePicker(
       context: context,
-      initialDate: currentValue ?? DateTime.now(),
-      firstDate: DateTime(1970),
-      lastDate: DateTime(2100),
+      initialDate: initial,
+      firstDate: earliest,
+      lastDate: latest,
     );
 
     if (picked != null) {
@@ -1914,6 +2205,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  Future<String?> _uploadPendingProfilePhoto(String userId) async {
+    final path = _pendingProfileImagePath;
+    if (path == null || path.trim().isEmpty) return null;
+    final file = File(path);
+    if (!await file.exists()) {
+      throw Exception('Profile photo is missing. Please choose it again.');
+    }
+    final url = await SupabaseService.uploadProfileImage(
+      userId: userId,
+      file: file,
+    );
+    if (url == null || url.isEmpty) {
+      throw Exception('Profile photo upload failed.');
+    }
+    if (mounted) {
+      setState(() {
+        _profileImageUrl = url;
+        _pendingProfileImagePath = null;
+      });
+    } else {
+      _profileImageUrl = url;
+      _pendingProfileImagePath = null;
+    }
+    return url;
+  }
+
   void _handleAddVehicle() {
     final type = _selectedVehicleType?.trim();
     final year = _vehicleYearController.text.trim();
@@ -1931,6 +2248,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _showInlineError('Enter a valid 4-digit vehicle year.');
       return;
     }
+    final parsedYear = int.parse(year);
+    final maxVehicleYear = DateTime.now().year + 1;
+    if (parsedYear < 1990 || parsedYear > maxVehicleYear) {
+      _showInlineError(
+          'Vehicle year must be between 1990 and $maxVehicleYear.');
+      return;
+    }
 
     if (make.isEmpty || model.isEmpty) {
       _showInlineError('Add both the vehicle make and model.');
@@ -1943,6 +2267,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
     if (transmission == null) {
       _showInlineError('Select automatic or manual transmission.');
+      return;
+    }
+    if ((_pendingVehicleImagePath == null ||
+            _pendingVehicleImagePath!.trim().isEmpty) &&
+        (_editingVehiclePhotoUrl == null ||
+            _editingVehiclePhotoUrl!.trim().isEmpty)) {
+      _showInlineError('Add a vehicle photo before saving this vehicle.');
       return;
     }
 

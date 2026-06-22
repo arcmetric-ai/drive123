@@ -18,6 +18,12 @@ class IdentityVerificationIntroScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isInstructor = role == 'instructor';
+    final licenceLabel =
+        isInstructor ? 'Ontario G licence' : 'Ontario G1, G2, or G licence';
+    final cardLabel =
+        isInstructor ? 'ONTARIO G LICENCE' : 'ONTARIO G1 / G2 / G LICENCE';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -52,8 +58,8 @@ class IdentityVerificationIntroScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              const Text(
-                "To keep our community safe, we need to verify the account holder's driver's license before lessons can be requested.",
+              Text(
+                'To keep our community safe, we need to verify the account holder\'s $licenceLabel before lessons can be requested.',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w500,
@@ -100,18 +106,18 @@ class IdentityVerificationIntroScreen extends StatelessWidget {
                                 width: 3,
                               ),
                             ),
-                            child: const Column(
+                            child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.circle,
                                   size: 72,
                                   color: AppColors.mutedForeground,
                                 ),
-                                SizedBox(height: AppSpacing.lg),
+                                const SizedBox(height: AppSpacing.lg),
                                 Text(
-                                  "ONTARIO DRIVER'S LICENSE",
-                                  style: TextStyle(
+                                  cardLabel,
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 2.2,

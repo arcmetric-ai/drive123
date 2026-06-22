@@ -221,7 +221,7 @@ class _InstructorCredentialsPortalScreenState
                     const SizedBox(height: 8),
                   ],
                   InstructorDocumentStatusTile(
-                    title: "Driver's License",
+                    title: 'Ontario G Licence',
                     statusLabel: identityVerified ? 'VERIFIED' : 'REQUIRED',
                     statusColor: identityVerified
                         ? AppColors.success

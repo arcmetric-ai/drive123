@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
-import '../../utils/constants.dart';
 import '../../constants/ontario_locations.dart';
 import '../../models/instructor_model.dart';
 import '../../models/lesson_model.dart';
@@ -53,9 +52,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
   bool _isLoading = false;
   String? _error;
   final TextEditingController _searchController = TextEditingController();
-  double _searchRadiusKm = 20;
-  static const double _minRadiusKm = 5;
-  static const double _maxRadiusKm = 75;
   String? _selectedAreaFilter;
   String? _selectedCityFilter;
   String? _homeCity;
@@ -65,6 +61,17 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
   bool _syncingRequests = false;
   Timer? _requestStatusTimer;
   bool _isOpeningProfile = false;
+  static const Map<String, String> _carTypeOptions = {
+    'sedan': 'Sedan',
+    'hatchback': 'Hatchback',
+    'suv': 'SUV',
+    'truck': 'Truck',
+    'van': 'Van',
+    'coupe': 'Coupe',
+    'convertible': 'Convertible',
+    'electric': 'Electric',
+    'other': 'Other',
+  };
 
   @override
   void initState() {
@@ -193,57 +200,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.radar_rounded,
-                          size: 22,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'RADIUS ${_searchRadiusKm.round()} KM',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.6,
-                            color: AppColors.foreground,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              overlayShape: SliderComponentShape.noOverlay,
-                              thumbShape: const RoundSliderThumbShape(
-                                enabledThumbRadius: 8,
-                              ),
-                              trackHeight: 6,
-                            ),
-                            child: Slider(
-                              value: _searchRadiusKm,
-                              min: _minRadiusKm,
-                              max: _maxRadiusKm,
-                              onChanged: (value) => setState(() {
-                                _searchRadiusKm = value;
-                              }),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -295,7 +251,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                                     padding:
                                         EdgeInsets.symmetric(horizontal: 24),
                                     child: Text(
-                                      'No instructors match your filters yet. Try adjusting the search radius or filters.',
+                                      'No instructors match your filters yet. Try adjusting your filters.',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         fontSize: 16,
@@ -386,16 +342,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     }
   }
 
-  String _formatCarTypeLabel(String value) {
-    final parts = value.split(RegExp(r'[_\\s-]+'));
-    String normalize(String part) {
-      if (part.length <= 3) return part.toUpperCase();
-      return '${part[0].toUpperCase()}${part.length > 1 ? part.substring(1) : ''}';
-    }
-
-    return parts.where((part) => part.isNotEmpty).map(normalize).join(' ');
-  }
-
   List<InstructorModel> _filteredInstructors() {
     _focusFilter ??= widget.selectedFocus;
     final searchTerm = _searchController.text.trim().toLowerCase();
@@ -429,9 +375,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
       if (_selectedCityFilter != null &&
           _selectedCityFilter!.isNotEmpty &&
           !_matchesCitySelection(instructor, _selectedCityFilter!)) {
-        return false;
-      }
-      if (!_matchesRadiusCriteria(instructor)) {
         return false;
       }
       if (hasSearch && !_matchesSearchTerm(instructor, searchTerm)) {
@@ -782,33 +725,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     return false;
   }
 
-  bool _matchesRadiusCriteria(InstructorModel instructor) {
-    if (_searchRadiusKm >= _maxRadiusKm) {
-      return true;
-    }
-    final areas = _areasOfOperation(instructor);
-    if (areas.isEmpty) {
-      return true;
-    }
-    double? maxRadius;
-    for (final area in areas) {
-      final radius = area.radiusKm;
-      if (radius == null || radius <= 0) {
-        continue;
-      }
-      if (radius >= _searchRadiusKm) {
-        return true;
-      }
-      if (maxRadius == null || radius > maxRadius) {
-        maxRadius = radius;
-      }
-    }
-    if (maxRadius != null) {
-      return _searchRadiusKm <= maxRadius + 5;
-    }
-    return true;
-  }
-
   List<InstructorArea> _areasOfOperation(InstructorModel instructor) {
     return instructor.areasOfOperation;
   }
@@ -842,11 +758,18 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
+                runSpacing: 8,
                 children: [
-                  for (final type in ['all', ...AppConstants.carTypes]) ...[
+                  _buildFilterOption(
+                    'All',
+                    'all',
+                    _selectedCarType,
+                    (value) => setModalState(() => _selectedCarType = value),
+                  ),
+                  for (final entry in _carTypeOptions.entries) ...[
                     _buildFilterOption(
-                      type == 'all' ? 'All' : _formatCarTypeLabel(type),
-                      type,
+                      entry.value,
+                      entry.key,
                       _selectedCarType,
                       (value) => setModalState(() => _selectedCarType = value),
                     ),
@@ -889,10 +812,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                 ),
                 isExpanded: true,
                 items: [
-                  const DropdownMenuItem<String>(
-                    value: null,
-                    child: Text('All areas'),
-                  ),
+                  const DropdownMenuItem<String>(child: Text('All areas')),
                   ...OntarioLocations.areaNames.map(
                     (area) => DropdownMenuItem<String>(
                       value: area,
@@ -920,10 +840,7 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                 ),
                 isExpanded: true,
                 items: [
-                  const DropdownMenuItem<String>(
-                    value: null,
-                    child: Text('All cities'),
-                  ),
+                  const DropdownMenuItem<String>(child: Text('All cities')),
                   ...(_selectedAreaFilter == null
                           ? OntarioLocations.allCities
                           : OntarioLocations.citiesForArea(_selectedAreaFilter))
@@ -939,37 +856,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                 }),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Search radius',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Within ${_searchRadiusKm.round()} km',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ocean,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => setModalState(() => _searchRadiusKm = 20),
-                    child: const Text('Reset'),
-                  ),
-                ],
-              ),
-              Slider(
-                value: _searchRadiusKm,
-                onChanged: (value) =>
-                    setModalState(() => _searchRadiusKm = value),
-                min: _minRadiusKm,
-                max: _maxRadiusKm,
-                divisions: (_maxRadiusKm - _minRadiusKm).round(),
-                label: '${_searchRadiusKm.round()} km',
-              ),
-              const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerRight,
                 child: ElevatedButton(
@@ -994,14 +880,41 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
     ValueChanged<String> onSelected,
   ) {
     final isActive = groupValue == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isActive,
-      onSelected: (_) => onSelected(value),
-      selectedColor: AppColors.primaryBlue.withOpacity(0.15),
-      labelStyle: TextStyle(
-        color: isActive ? AppColors.primaryBlue : Colors.grey[700],
-        fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+    return InkWell(
+      onTap: () => onSelected(value),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppColors.primaryBlue.withValues(alpha: 0.14)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive ? AppColors.primaryBlue : AppColors.border,
+            width: isActive ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isActive) ...[
+              const Icon(
+                Icons.check,
+                size: 18,
+                color: AppColors.primaryBlue,
+              ),
+              const SizedBox(width: 8),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? AppColors.primaryBlue : Colors.grey[700],
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -634,15 +634,6 @@ class _InstructorLearnerDetailScreenState
                 _buildLearnerSummaryCard(),
                 const SizedBox(height: 12),
                 _buildInfoCard(
-                  title: 'About',
-                  child: Text(
-                    (_learner['notes'] as String?) ??
-                        'No additional notes provided.',
-                    style: const TextStyle(height: 1.5),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildInfoCard(
                   title: 'Progress & focus areas',
                   child: _buildProgressEditor(),
                 ),
@@ -650,16 +641,6 @@ class _InstructorLearnerDetailScreenState
                 _buildInfoCard(
                   title: 'Weekly availability',
                   child: _buildWeeklyAvailability(),
-                ),
-                const SizedBox(height: 12),
-                _buildInfoCard(
-                  title: 'Recent lessons',
-                  child: _buildRecentLessons(),
-                ),
-                const SizedBox(height: 12),
-                _buildInfoCard(
-                  title: 'Test preparation',
-                  child: _buildTestPrep(),
                 ),
                 if (_learnerProfileId != null) ...[
                   const SizedBox(height: 12),
@@ -955,58 +936,6 @@ class _InstructorLearnerDetailScreenState
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildRecentLessons() {
-    final recent = (_learner['recentLessons'] as List?) ??
-        (_learner['recent_lessons'] as List?) ??
-        [];
-    if (recent.isEmpty) {
-      return const Text('No recent lessons recorded.');
-    }
-
-    return Column(
-      children: recent.whereType<Map<String, dynamic>>().map((r) {
-        final title =
-            (r['title'] as String?) ?? (r['time'] as String?) ?? 'Lesson';
-        final notes = (r['notes'] as String?) ?? '';
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(title),
-            subtitle: notes.isNotEmpty ? Text(notes) : null,
-            trailing: Text((r['status'] as String?) ?? ''),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildTestPrep() {
-    final prep =
-        (_learner['testPrep'] as Map?) ?? (_learner['test_prep'] as Map?) ?? {};
-    final target = prep['targetDate'] ?? prep['target_date'] ?? 'Not set';
-    final centre = prep['testCentre'] ?? prep['test_centre'] ?? 'Not set';
-    final readiness = prep['readiness'] ?? 'Unknown';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Target date: $target'),
-            Text(
-              readiness,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text('Test centre: $centre'),
-      ],
     );
   }
 

@@ -111,6 +111,7 @@ class _LessonFeedbackSheetState extends State<_LessonFeedbackSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottom),
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,6 +179,8 @@ class _LessonFeedbackSheetState extends State<_LessonFeedbackSheet> {
               controller: _commentController,
               maxLines: 3,
               maxLength: 2000,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               decoration: const InputDecoration(
                 labelText: 'Additional comments (optional)',
                 border: OutlineInputBorder(),

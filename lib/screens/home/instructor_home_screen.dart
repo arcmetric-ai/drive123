@@ -359,6 +359,7 @@ class _DashboardTabState extends State<_DashboardTab> {
   bool _loading = true;
   List<Map<String, dynamic>> _upcomingLessons = [];
   List<Map<String, dynamic>> _requests = [];
+  int _activeLearners = 0;
   int _monthlyClasses = 0;
   int _totalClasses = 0;
   double _totalHours = 0;
@@ -400,6 +401,7 @@ class _DashboardTabState extends State<_DashboardTab> {
       setState(() {
         _loading = false;
         _monthlyClasses = 0;
+        _activeLearners = 0;
         _totalClasses = 0;
         _totalHours = 0;
         _profileImageUrl = null;
@@ -429,6 +431,7 @@ class _DashboardTabState extends State<_DashboardTab> {
           end: notificationsRangeEnd,
         ),
         SupabaseService.getAccountNotificationEvents(userId),
+        SupabaseService.getExternalLearners(userId),
       ]);
 
       final lessons = (results[0] as List)
@@ -446,6 +449,8 @@ class _DashboardTabState extends State<_DashboardTab> {
           .map(_withDerivedLessonStatus)
           .toList();
       final accountEvents = List<Map<String, dynamic>>.from(results[5] as List);
+      final externalLearners =
+          List<Map<String, dynamic>>.from(results[6] as List);
 
       final pendingRequests = requests
           .where(
@@ -499,6 +504,7 @@ class _DashboardTabState extends State<_DashboardTab> {
             )
             .toList();
         _requests = pendingRequests;
+        _activeLearners = _countActiveLearners(requests, externalLearners);
         _monthlyClasses = summary['monthlyClasses'] is int
             ? summary['monthlyClasses'] as int
             : (summary['monthlyClasses'] as num?)?.toInt() ?? 0;
@@ -522,6 +528,7 @@ class _DashboardTabState extends State<_DashboardTab> {
       setState(() {
         _loading = false;
         _monthlyClasses = 0;
+        _activeLearners = 0;
         _totalClasses = 0;
         _totalHours = 0;
         _profileImageUrl = null;
@@ -934,6 +941,32 @@ class _DashboardTabState extends State<_DashboardTab> {
     return total;
   }
 
+  int _countActiveLearners(
+    List<Map<String, dynamic>> requests,
+    List<Map<String, dynamic>> externalLearners,
+  ) {
+    const activeStatuses = {'accepted', 'active', 'in_progress'};
+    final learnerIds = <String>{};
+    for (final request in requests) {
+      final status = (request['status'] as String?)?.trim().toLowerCase();
+      if (!activeStatuses.contains(status)) continue;
+      final learnerId = request['learner_id']?.toString().trim();
+      if (learnerId != null && learnerId.isNotEmpty) {
+        learnerIds.add('learner:$learnerId');
+      }
+    }
+    for (final learner in externalLearners) {
+      final isActive = learner['is_active'] != false;
+      final status = (learner['status'] as String?)?.trim().toLowerCase();
+      if (!isActive || status == 'graduated' || status == 'removed') continue;
+      final learnerId = learner['id']?.toString().trim();
+      if (learnerId != null && learnerId.isNotEmpty) {
+        learnerIds.add('external:$learnerId');
+      }
+    }
+    return learnerIds.length;
+  }
+
   String _formatHours(double hours) {
     if (hours == hours.roundToDouble()) {
       return hours.toInt().toString();
@@ -945,11 +978,6 @@ class _DashboardTabState extends State<_DashboardTab> {
   Widget build(BuildContext context) {
     final todayLessons = _lessonsForToday();
     final topInset = MediaQuery.of(context).padding.top;
-    final activeLearners = _upcomingLessons
-        .map((lesson) => lesson['learner']?['id'] ?? lesson['learner_id'])
-        .where((id) => id != null)
-        .toSet()
-        .length;
     return Scaffold(
       backgroundColor: Colors.white,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -990,7 +1018,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                                 metrics: [
                                   _OverviewMetric(
                                     label: 'ACTIVE LEARNERS',
-                                    value: activeLearners.toString(),
+                                    value: _activeLearners.toString(),
                                   ),
                                   _OverviewMetric(
                                     label: 'TOTAL LESSONS',

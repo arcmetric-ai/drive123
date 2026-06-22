@@ -157,6 +157,7 @@ class _BookingScreenState extends State<BookingScreen> {
         ],
       ),
       body: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,7 +230,8 @@ class _BookingScreenState extends State<BookingScreen> {
                 children: [
                   Text(
                     instr != null
-                        ? '${instr.user.firstName} ${instr.user.lastName}'.trim()
+                        ? '${instr.user.firstName} ${instr.user.lastName}'
+                            .trim()
                         : 'John Smith',
                     style: const TextStyle(
                       fontSize: 18,
@@ -241,7 +243,9 @@ class _BookingScreenState extends State<BookingScreen> {
                   const SizedBox.shrink(),
                   const SizedBox(height: 4),
                   Text(
-                    instr != null ? '${instr.yearsOfExperience} years experience' : '10 years experience',
+                    instr != null
+                        ? '${instr.yearsOfExperience} years experience'
+                        : '10 years experience',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[600],
@@ -254,7 +258,9 @@ class _BookingScreenState extends State<BookingScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  instr != null ? '\$${instr.hourlyRate.toStringAsFixed(0)}/hr' : '\$45/hr',
+                  instr != null
+                      ? '\$${instr.hourlyRate.toStringAsFixed(0)}/hr'
+                      : '\$45/hr',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -296,9 +302,8 @@ class _BookingScreenState extends State<BookingScreen> {
               color: Colors.grey[50],
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: _selectedDate != null
-                    ? AppColors.ocean
-                    : Colors.grey[300]!,
+                color:
+                    _selectedDate != null ? AppColors.ocean : Colors.grey[300]!,
                 width: _selectedDate != null ? 2 : 1,
               ),
             ),
@@ -356,8 +361,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   color: isSelected ? AppColors.ocean : Colors.grey[50],
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color:
-                        isSelected ? AppColors.ocean : Colors.grey[300]!,
+                    color: isSelected ? AppColors.ocean : Colors.grey[300]!,
                   ),
                 ),
                 child: Text(
@@ -497,6 +501,8 @@ class _BookingScreenState extends State<BookingScreen> {
         TextField(
           controller: _notesController,
           maxLines: 3,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           decoration: InputDecoration(
             hintText: 'Any specific skills you want to focus on?',
             filled: true,
@@ -596,7 +602,8 @@ class _BookingScreenState extends State<BookingScreen> {
     final learnerId = SupabaseService.currentUser?.id;
     if (learnerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must be signed in to book a lesson.')),
+        const SnackBar(
+            content: Text('You must be signed in to book a lesson.')),
       );
       return;
     }
@@ -619,24 +626,32 @@ class _BookingScreenState extends State<BookingScreen> {
     // Compute start/end times (simple approximation using selected time + duration)
     final startParts = (_selectedTime ?? '09:00').split(':');
     final startHour = int.tryParse(startParts[0]) ?? 9;
-    final startMinute = int.tryParse(startParts.length > 1 ? startParts[1] : '0') ?? 0;
+    final startMinute =
+        int.tryParse(startParts.length > 1 ? startParts[1] : '0') ?? 0;
     final scheduledDate = DateTime(
       _selectedDate!.year,
       _selectedDate!.month,
       _selectedDate!.day,
     );
-    final startTime = '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
-    final endDateTime = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, startHour, startMinute).add(Duration(minutes: (durationHours * 60).toInt()));
-    final endTime = '${endDateTime.hour.toString().padLeft(2, '0')}:${endDateTime.minute.toString().padLeft(2, '0')}';
+    final startTime =
+        '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
+    final endDateTime = DateTime(_selectedDate!.year, _selectedDate!.month,
+            _selectedDate!.day, startHour, startMinute)
+        .add(Duration(minutes: (durationHours * 60).toInt()));
+    final endTime =
+        '${endDateTime.hour.toString().padLeft(2, '0')}:${endDateTime.minute.toString().padLeft(2, '0')}';
 
     // Prepare UI state and strings before async call to avoid using BuildContext across async gaps
-  final confirmationInstructorName = _instructor != null
-    ? ('${_instructor!.user.firstName} ${_instructor!.user.lastName}').trim()
-    : 'John Smith';
+    final confirmationInstructorName = _instructor != null
+        ? ('${_instructor!.user.firstName} ${_instructor!.user.lastName}')
+            .trim()
+        : 'John Smith';
     final confirmationWhen = DateFormat('EEEE, MMMM d').format(_selectedDate!);
     final confirmationTime = _selectedTime ?? '';
-    final confirmationDuration = _selectedDuration != null ? ' (${_selectedDuration})' : '';
-    final confirmationLocation = _selectedLocation != null ? '\nLocation: $_selectedLocation' : '';
+    final confirmationDuration =
+        _selectedDuration != null ? ' (${_selectedDuration})' : '';
+    final confirmationLocation =
+        _selectedLocation != null ? '\nLocation: $_selectedLocation' : '';
 
     // Show loading dialog
     showDialog<void>(
@@ -653,14 +668,17 @@ class _BookingScreenState extends State<BookingScreen> {
       endTime: endTime,
       duration: durationHours,
       cost: (_instructor?.hourlyRate ?? 45.0) * durationHours,
-      notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+      notes: _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim(),
       location: _selectedLocation,
     ).then((lesson) {
       if (!mounted) return;
       Navigator.pop(context); // remove loading
       if (lesson == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to create lesson. Please try again.')),
+          const SnackBar(
+              content: Text('Failed to create lesson. Please try again.')),
         );
         return;
       }
@@ -699,4 +717,3 @@ class _BookingScreenState extends State<BookingScreen> {
     });
   }
 }
-
