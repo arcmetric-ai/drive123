@@ -31,7 +31,16 @@ class _InstructorCredentialsPortalScreenState
   Future<Map<String, dynamic>?> _loadCredentials() async {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) return null;
-    return SupabaseService.getInstructorProfileDetail(userId);
+    final results = await Future.wait<dynamic>([
+      SupabaseService.getInstructorProfileDetail(userId),
+      SupabaseService.getPendingDocumentRequests(userId),
+    ]);
+    final profile = results[0] as Map<String, dynamic>?;
+    if (profile == null) return null;
+    return {
+      ...profile,
+      '_document_requests': List<Map<String, dynamic>>.from(results[1] as List),
+    };
   }
 
   Future<void> _refresh() async {
@@ -140,6 +149,18 @@ class _InstructorCredentialsPortalScreenState
           future: _credentialsFuture,
           builder: (context, snapshot) {
             final profile = snapshot.data ?? const <String, dynamic>{};
+            final documentRequests = List<Map<String, dynamic>>.from(
+              (profile['_document_requests'] as List?) ?? const [],
+            )
+                .where(
+                  (request) =>
+                      request['review_type'] == 'instructor_credentials',
+                )
+                .toList();
+            final requestedTypes = documentRequests
+                .map((request) => request['document_type']?.toString())
+                .whereType<String>()
+                .toSet();
             final identityVerified = ((profile['profile']
                         as Map?)?['identity_license_path'] as String?)
                     ?.trim()
@@ -160,6 +181,45 @@ class _InstructorCredentialsPortalScreenState
                     ),
                   ),
                   const SizedBox(height: 10),
+                  if (documentRequests.isNotEmpty) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.24),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Drive Tutor requested an update',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            documentRequests
+                                .map((request) =>
+                                    request['admin_message']?.toString().trim())
+                                .whereType<String>()
+                                .where((message) => message.isNotEmpty)
+                                .join('\n'),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.mutedForeground,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   InstructorDocumentStatusTile(
                     title: "Driver's License",
                     statusLabel: identityVerified ? 'VERIFIED' : 'REQUIRED',
@@ -182,13 +242,17 @@ class _InstructorCredentialsPortalScreenState
                       child: InstructorDocumentStatusTile(
                         title: type.title,
                         statusLabel: hasUpload
-                            ? (expiryStatus ?? 'UPLOADED')
+                            ? (requestedTypes.contains(type.storageKey)
+                                ? 'UPDATE REQUESTED'
+                                : (expiryStatus ?? 'UPLOADED'))
                             : (type.isRequired ? 'REQUIRED' : 'OPTIONAL'),
-                        statusColor: hasUpload
-                            ? AppColors.primary
-                            : (type.isRequired
+                        statusColor: requestedTypes.contains(type.storageKey)
+                            ? AppColors.error
+                            : hasUpload
                                 ? AppColors.primary
-                                : AppColors.mutedForeground),
+                                : (type.isRequired
+                                    ? AppColors.primary
+                                    : AppColors.mutedForeground),
                         icon: _iconForType(type),
                         onTap: () => _openUpload(type),
                         compact: true,

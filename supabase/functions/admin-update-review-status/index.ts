@@ -5,6 +5,9 @@ import { requireAdmin } from '../_shared/admin.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const requireDocumentScan =
+  String(Deno.env.get('REQUIRE_DOCUMENT_SCAN') ?? 'false').toLowerCase() !==
+  'false';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -126,7 +129,7 @@ async function appendDocumentReviewEvents(
   }
 
   const latestVersions = [...latestByType.values()];
-  if (status === 'approved') {
+  if (status === 'approved' && requireDocumentScan) {
     const ids = latestVersions.map((version) => String(version.id));
     const { data: scans, error: scanError } = await admin
       .from('verification_document_scan_events')
@@ -285,7 +288,7 @@ serve(async (request) => {
       }
 
 
-      if (status === 'approved') {
+      if (status === 'approved' && requireDocumentScan) {
         await assertCurrentDocumentsScanned(
           admin,
           userId,
@@ -416,7 +419,7 @@ serve(async (request) => {
         return jsonResponse({ error: 'Instructor profile not found.' }, 404);
       }
 
-      if (status === 'approved') {
+      if (status === 'approved' && requireDocumentScan) {
         await assertCurrentDocumentsScanned(
           admin,
           userId,

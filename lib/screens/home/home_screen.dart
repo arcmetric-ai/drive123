@@ -28,6 +28,7 @@ enum LearnerNotificationType {
   lessonStarted,
   lessonEnded,
   ratePrompt,
+  accountUpdate,
 }
 
 class LearnerNotification {
@@ -429,17 +430,41 @@ class _HomeScreenState extends State<HomeScreen> {
     if (userId == null) {
       return const [];
     }
-    final requests = await SupabaseService.getLessonRequestsForLearner(userId);
-    final lessons = await SupabaseService.getLessons(userId);
-    return _buildNotificationsFromData(requests, lessons);
+    final results = await Future.wait<dynamic>([
+      SupabaseService.getLessonRequestsForLearner(userId),
+      SupabaseService.getLessons(userId),
+      SupabaseService.getAccountNotificationEvents(userId),
+    ]);
+    return _buildNotificationsFromData(
+      List<Map<String, dynamic>>.from(results[0] as List),
+      List<LessonModel>.from(results[1] as List),
+      List<Map<String, dynamic>>.from(results[2] as List),
+    );
   }
 
   List<LearnerNotification> _buildNotificationsFromData(
     List<Map<String, dynamic>> requests,
     List<LessonModel> lessons,
+    List<Map<String, dynamic>> accountEvents,
   ) {
     final now = DateTime.now();
     final Map<String, LearnerNotification> notifications = {};
+
+    for (final event in accountEvents) {
+      if (event['event_key'] != 'verification.document.requested') continue;
+      final timestamp = _parseDateTime(event['created_at']) ?? now;
+      notifications['account-${event['id']}'] = LearnerNotification(
+        id: 'account-${event['id']}',
+        type: LearnerNotificationType.accountUpdate,
+        title: (event['title'] as String?)?.trim().isNotEmpty == true
+            ? event['title'] as String
+            : 'Document requested',
+        message: (event['body'] as String?)?.trim().isNotEmpty == true
+            ? event['body'] as String
+            : 'Drive Tutor needs an updated verification document.',
+        timestamp: timestamp.toLocal(),
+      );
+    }
 
     for (final request in requests) {
       final status = (request['status'] as String?)?.toLowerCase();
@@ -1359,6 +1384,8 @@ class _NotificationsSheet extends StatelessWidget {
         return Icons.flag_outlined;
       case LearnerNotificationType.ratePrompt:
         return Icons.star_border;
+      case LearnerNotificationType.accountUpdate:
+        return Icons.description_outlined;
     }
   }
 
@@ -1376,6 +1403,8 @@ class _NotificationsSheet extends StatelessWidget {
         return Colors.teal;
       case LearnerNotificationType.ratePrompt:
         return Colors.orangeAccent;
+      case LearnerNotificationType.accountUpdate:
+        return AppColors.primaryBlue;
     }
   }
 }

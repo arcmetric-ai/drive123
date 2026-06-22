@@ -12,6 +12,10 @@ const documentLabels: Record<string, string> = {
   municipal_license: 'Municipal Licence',
 };
 
+const requireDocumentScan =
+  String(Deno.env.get('REQUIRE_DOCUMENT_SCAN') ?? 'false').toLowerCase() !==
+  'false';
+
 async function loadDocumentVersions(
   admin: any,
   userId: string,
@@ -49,7 +53,9 @@ async function loadDocumentVersions(
   return await Promise.all(
     (data ?? []).map(async (document: Record<string, unknown>) => {
       const scan = latestScanByDocument.get(String(document.id));
-      const scanStatus = String(scan?.status ?? 'pending');
+      const scanStatus = requireDocumentScan
+        ? String(scan?.status ?? 'pending')
+        : 'manual_review_allowed';
       return {
         id: document.id,
         key: document.document_type,
@@ -65,7 +71,7 @@ async function loadDocumentVersions(
         scanStatus,
         scanProvider: scan?.provider,
         scanThreatName: scan?.threat_name,
-        signedUrl: scanStatus === 'clean'
+        signedUrl: scanStatus === 'clean' || !requireDocumentScan
           ? await createSignedDocumentUrl(
             admin,
             String(document.storage_bucket),
@@ -164,18 +170,25 @@ serve(async (request) => {
           key: 'identity_selfie',
           label: 'Identity Selfie',
           path: profile.identity_selfie_path,
+          scanStatus: requireDocumentScan
+            ? 'manual_review_required'
+            : 'manual_review_allowed',
           signedUrl: selfieUrl,
         },
         {
           key: 'guardian_identity_selfie',
-          label: 'Guardian Selfie',
+          label: 'Guardian Verification Selfie',
           path: profile.guardian_identity_selfie_path,
+          scanStatus: requireDocumentScan
+            ? 'manual_review_required'
+            : 'manual_review_allowed',
           signedUrl: guardianSelfieUrl,
         },
       ].filter((item) => item.path != null);
 
       return jsonResponse({
         reviewType,
+        scanningRequired: requireDocumentScan,
         user: {
           id: profile.id,
           email: profile.email,
@@ -239,6 +252,7 @@ serve(async (request) => {
 
       return jsonResponse({
         reviewType,
+        scanningRequired: requireDocumentScan,
         user: {
           id: profile.id,
           email: profile.email,

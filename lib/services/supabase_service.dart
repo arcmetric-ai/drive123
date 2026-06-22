@@ -107,6 +107,31 @@ class SupabaseService {
     return 'learner';
   }
 
+  static Future<List<Map<String, dynamic>>> getAccountNotificationEvents(
+    String profileId, {
+    int limit = 50,
+  }) async {
+    final rows = await _client
+        .from('notification_events')
+        .select('id, event_key, title, body, data, status, created_at')
+        .eq('recipient_profile_id', profileId)
+        .order('created_at', ascending: false)
+        .limit(limit);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  static Future<List<Map<String, dynamic>>> getPendingDocumentRequests(
+    String profileId,
+  ) async {
+    final rows = await _client
+        .from('verification_document_requests')
+        .select('id, review_type, document_type, admin_message, created_at')
+        .eq('profile_id', profileId)
+        .eq('status', 'requested')
+        .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
   static bool _isMissingLearnerAccountColumnsError(Object error) {
     final message = error.toString();
     return message.contains('PGRST204') &&

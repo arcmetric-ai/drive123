@@ -428,6 +428,7 @@ class _DashboardTabState extends State<_DashboardTab> {
           start: notificationsRangeStart,
           end: notificationsRangeEnd,
         ),
+        SupabaseService.getAccountNotificationEvents(userId),
       ]);
 
       final lessons = (results[0] as List)
@@ -444,6 +445,7 @@ class _DashboardTabState extends State<_DashboardTab> {
           .map((row) => Map<String, dynamic>.from(row as Map))
           .map(_withDerivedLessonStatus)
           .toList();
+      final accountEvents = List<Map<String, dynamic>>.from(results[5] as List);
 
       final pendingRequests = requests
           .where(
@@ -485,6 +487,7 @@ class _DashboardTabState extends State<_DashboardTab> {
       final notifications = _buildInstructorNotifications(
         requests,
         lessonsForNotifications,
+        accountEvents,
       );
 
       setState(() {
@@ -630,21 +633,41 @@ class _DashboardTabState extends State<_DashboardTab> {
         start: start,
         end: end,
       ),
+      SupabaseService.getAccountNotificationEvents(userId),
     ]);
     final requests = List<Map<String, dynamic>>.from(results[0] as List);
     final lessons = (results[1] as List)
         .map((row) => Map<String, dynamic>.from(row as Map))
         .map(_withDerivedLessonStatus)
         .toList();
-    return _buildInstructorNotifications(requests, lessons);
+    final accountEvents = List<Map<String, dynamic>>.from(results[2] as List);
+    return _buildInstructorNotifications(requests, lessons, accountEvents);
   }
 
   List<InstructorNotification> _buildInstructorNotifications(
     List<Map<String, dynamic>> requests,
     List<Map<String, dynamic>> lessons,
+    List<Map<String, dynamic>> accountEvents,
   ) {
     final now = DateTime.now();
     final map = <String, InstructorNotification>{};
+
+    for (final event in accountEvents) {
+      if (event['event_key'] != 'verification.document.requested') continue;
+      final timestamp = _parseDateTime(event['created_at']) ?? now;
+      map['account-${event['id']}'] = InstructorNotification(
+        id: 'account-${event['id']}',
+        title: (event['title'] as String?)?.trim().isNotEmpty == true
+            ? event['title'] as String
+            : 'Document requested',
+        message: (event['body'] as String?)?.trim().isNotEmpty == true
+            ? event['body'] as String
+            : 'Drive Tutor needs an updated credential document.',
+        timestamp: timestamp.toLocal(),
+        icon: Icons.description_outlined,
+        color: AppColors.primaryBlue,
+      );
+    }
 
     for (final request in requests) {
       final status = (request['status'] as String?)?.toLowerCase();
