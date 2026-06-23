@@ -142,7 +142,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     SelectionOptionCard(
                       title: "I'm an Instructor",
                       subtitle:
-                          'I am a certified driving instructor and will apply through the website.',
+                          'Instructor accounts are created and verified on our website first.',
                       illustrationBackgroundColor: const Color(0xFFF3F7FF),
                       illustration: SvgPicture.asset(
                         'assets/images/role_instructor.svg',
@@ -151,6 +151,52 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       onTap: () => setState(() => _selectedRole = 'instructor'),
                       isEnabled: !_isSaving,
                     ),
+                    if (_selectedRole == 'instructor') ...[
+                      const SizedBox(height: 18),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F9FF),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              color: AppColors.primaryBlue,
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Instructor access is login-only in the app.',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.foreground,
+                                    ),
+                                  ),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    'Apply, verify your documents, and complete your instructor profile on drivetutor.ca. After approval, return here and sign in.',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.35,
+                                      color: AppColors.mutedForeground,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (_selectedRole == 'learner') ...[
                       const SizedBox(height: 18),
                       Container(
@@ -214,7 +260,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     ],
                     const SizedBox(height: AppSpacing.xxl),
                     AppPrimaryButton(
-                      label: 'Confirm Selection',
+                      label: _selectedRole == 'instructor'
+                          ? 'Go to website'
+                          : 'Confirm Selection',
                       isLoading: _isSaving,
                       onPressed: _selectedRole == null || _isSaving
                           ? null

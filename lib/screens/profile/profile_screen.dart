@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
@@ -14,6 +15,92 @@ import '../../services/supabase_service.dart';
 import '../../widgets/profile_expandable_section.dart';
 import '../../widgets/verified_profile_badge.dart';
 import '../instructor/instructor_bookings_history_screen.dart';
+
+class _LegalPolicy {
+  final String title;
+  final String path;
+  final String summary;
+  final List<String> bullets;
+
+  const _LegalPolicy({
+    required this.title,
+    required this.path,
+    required this.summary,
+    required this.bullets,
+  });
+}
+
+const _policyTerms = _LegalPolicy(
+  title: 'Terms & Conditions',
+  path: 'terms-and-conditions',
+  summary:
+      'The rules for using Drive Tutor, creating an account, booking lessons, and using instructor or learner features.',
+  bullets: [
+    'Use accurate account, licence, vehicle, and booking information.',
+    'Follow platform rules, instructor requirements, payment terms, and cancellation rules.',
+    'Drive Tutor may restrict accounts that misuse the platform or create safety, fraud, or compliance risk.',
+  ],
+);
+
+const _policyPrivacy = _LegalPolicy(
+  title: 'Privacy Policy',
+  path: 'privacy-policy',
+  summary:
+      'How Drive Tutor collects, uses, stores, and shares personal information needed to run the platform.',
+  bullets: [
+    'We use account, contact, profile, booking, location, and verification information to operate Drive Tutor.',
+    'Verification documents and selfies are used for trust, safety, and compliance review.',
+    'You can request account deletion or data help from your profile or support.',
+  ],
+);
+
+const _policyDataConsent = _LegalPolicy(
+  title: 'Data Consent',
+  path: 'data-consent-policy',
+  summary:
+      'Consent for Drive Tutor to process account, licence, verification, booking, and safety information.',
+  bullets: [
+    'Learners and instructors consent to licence and identity verification checks required by their role.',
+    'Guardians consent to manage a learner account and provide required guardian identity information.',
+    'Verification status may affect whether public profile, booking, or request features are available.',
+  ],
+);
+
+const _policySafety = _LegalPolicy(
+  title: 'Safety Policy',
+  path: 'safety-policy',
+  summary:
+      'Safety expectations for lessons, communications, vehicle readiness, and account conduct.',
+  bullets: [
+    'Instructors must keep licence, insurance, vehicle, and profile information accurate.',
+    'Learners should only book lessons they can safely attend and should follow instructor safety guidance.',
+    'Unsafe, abusive, fraudulent, or non-compliant conduct can lead to removal from Drive Tutor.',
+  ],
+);
+
+const _policyCommunity = _LegalPolicy(
+  title: 'Community Guidelines',
+  path: 'community-guidelines',
+  summary:
+      'Behaviour standards for respectful, lawful, and safe use of Drive Tutor.',
+  bullets: [
+    'Be respectful in messages, bookings, lessons, reviews, and support requests.',
+    'Do not harass, discriminate, impersonate others, or bypass platform safety controls.',
+    'Report safety concerns, suspicious behaviour, or incorrect profile information.',
+  ],
+);
+
+const _policyCookie = _LegalPolicy(
+  title: 'Cookie Policy',
+  path: 'cookie-policy',
+  summary:
+      'How Drive Tutor website cookies and similar technologies support login, analytics, and service reliability.',
+  bullets: [
+    'Cookies may be used on the website for authentication, preferences, analytics, and security.',
+    'Mobile app behaviour may still rely on secure tokens and device-level platform services.',
+    'Browser cookie controls may affect website login and portal functionality.',
+  ],
+);
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -430,24 +517,52 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
           _buildActionDivider(),
           _buildActionTile(
+            icon: Icons.notifications_active_outlined,
+            title: 'Notification Centre',
+            subtitle: 'Choose reminders, updates, and general alerts',
+            onTap: () => context.push(AppRoutes.notificationPreferences),
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
             icon: Icons.privacy_tip_outlined,
             title: 'Privacy Policy',
             subtitle: 'Review how Drive Tutor handles your information',
-            onTap: () => _showLegalPlaceholder('Privacy Policy'),
+            onTap: () => _showLegalPolicy(_policyPrivacy),
           ),
           _buildActionDivider(),
           _buildActionTile(
             icon: Icons.gavel_outlined,
             title: 'Terms & Conditions',
             subtitle: 'Review the terms for using Drive Tutor',
-            onTap: () => _showLegalPlaceholder('Terms & Conditions'),
+            onTap: () => _showLegalPolicy(_policyTerms),
           ),
           _buildActionDivider(),
           _buildActionTile(
             icon: Icons.fact_check_outlined,
             title: 'Data Consent',
             subtitle: 'Review your verification and data consent',
-            onTap: () => _showLegalPlaceholder('Data Consent'),
+            onTap: () => _showLegalPolicy(_policyDataConsent),
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.health_and_safety_outlined,
+            title: 'Safety Policy',
+            subtitle: 'Review safety expectations for lessons',
+            onTap: () => _showLegalPolicy(_policySafety),
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.groups_2_outlined,
+            title: 'Community Guidelines',
+            subtitle: 'Review conduct rules for learners and instructors',
+            onTap: () => _showLegalPolicy(_policyCommunity),
+          ),
+          _buildActionDivider(),
+          _buildActionTile(
+            icon: Icons.cookie_outlined,
+            title: 'Cookie Policy',
+            subtitle: 'Review website cookie and analytics use',
+            onTap: () => _showLegalPolicy(_policyCookie),
           ),
           _buildActionDivider(),
           _buildActionTile(
@@ -559,11 +674,17 @@ class _ProfileScreenState extends State<ProfileScreen>
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.verified_user_outlined,
-                          color: AppColors.primaryBlue,
-                          size: 18,
-                        ),
+                        if (_isVerified)
+                          const VerifiedProfileBadge(
+                            size: 22,
+                            showCutout: false,
+                          )
+                        else
+                          const Icon(
+                            Icons.verified_user_outlined,
+                            color: AppColors.primaryBlue,
+                            size: 18,
+                          ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -1206,15 +1327,36 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Future<void> _showLegalPlaceholder(String title) async {
+  Future<void> _showLegalPolicy(_LegalPolicy policy) async {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(title),
-        content: const Text(
-          'The final document will be available here before release.',
+        title: Text(policy.title),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(policy.summary),
+              const SizedBox(height: 14),
+              for (final bullet in policy.bullets) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('• '),
+                    Expanded(child: Text(bullet)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ),
         ),
         actions: [
+          TextButton(
+            onPressed: () => _openPolicy(policy.path),
+            child: const Text('View full policy'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
@@ -1222,6 +1364,11 @@ class _ProfileScreenState extends State<ProfileScreen>
         ],
       ),
     );
+  }
+
+  Future<void> _openPolicy(String path) async {
+    final uri = Uri.parse('https://www.drivetutor.ca/$path');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _populateInstructorDetails(String userId) async {
@@ -1661,6 +1808,8 @@ class _ProfileScreenState extends State<ProfileScreen>
       'name': name,
       'email': email,
       'phone': phone,
+      'phoneVerifiedAt': clean(profileMap['phone_verified_at']) ?? '',
+      'phone_verified_at': clean(profileMap['phone_verified_at']) ?? '',
       'bio': bio,
       'profileImageUrl':
           _profileImageUrl ?? clean(profileMap['profile_image_url']) ?? '',

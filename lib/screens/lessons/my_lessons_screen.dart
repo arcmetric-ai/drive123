@@ -356,13 +356,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
             shape: BoxShape.circle,
           ),
           child: IconButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Calendar shortcuts are coming soon.'),
-                ),
-              );
-            },
+            onPressed: _openCalendarPicker,
             icon: const Icon(
               Icons.calendar_month_rounded,
               size: 34,
@@ -372,6 +366,119 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
         ),
       ],
     );
+  }
+
+  Future<void> _openCalendarPicker() async {
+    final dates = _scheduleDates;
+    if (dates.isEmpty) return;
+
+    final first = dates.first;
+    final last = dates.last;
+    final initial = _selectedUpcomingDate ?? first;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate:
+          initial.isBefore(first) || initial.isAfter(last) ? first : initial,
+      firstDate: first,
+      lastDate: last,
+      selectableDayPredicate: (day) =>
+          dates.any((scheduled) => _isSameDay(scheduled, day)),
+      helpText: 'Select a lesson date',
+      builder: (context, child) {
+        if (child == null) return const SizedBox.shrink();
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: AppColors.primaryForeground,
+              secondary: AppColors.accent,
+              onSecondary: AppColors.accentForeground,
+              surface: AppColors.card,
+              onSurface: AppColors.foreground,
+            ),
+            dialogTheme: DialogThemeData(
+              backgroundColor: AppColors.card,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadii.lg),
+              ),
+            ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: AppColors.card,
+              surfaceTintColor: Colors.transparent,
+              elevation: 18,
+              shadowColor: AppColors.primary.withValues(alpha: 0.18),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadii.lg),
+              ),
+              headerBackgroundColor: AppColors.primary,
+              headerForegroundColor: AppColors.primaryForeground,
+              dividerColor: Colors.transparent,
+              dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return AppColors.primaryForeground;
+                }
+                if (states.contains(WidgetState.disabled)) {
+                  return AppColors.grey300;
+                }
+                return AppColors.foreground;
+              }),
+              dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return AppColors.primary;
+                }
+                return Colors.transparent;
+              }),
+              todayForegroundColor: const WidgetStatePropertyAll(
+                AppColors.foreground,
+              ),
+              todayBorder: const BorderSide(
+                color: AppColors.accent,
+                width: 2,
+              ),
+              weekdayStyle: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+              dayStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+              yearStyle: const TextStyle(letterSpacing: 0),
+              headerHeadlineStyle: const TextStyle(
+                color: AppColors.primaryForeground,
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+              headerHelpStyle: TextStyle(
+                color: AppColors.primaryForeground.withValues(alpha: 0.82),
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+              cancelButtonStyle: TextButton.styleFrom(
+                foregroundColor: AppColors.mutedForeground,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+              confirmButtonStyle: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+          ),
+          child: child,
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _selectedUpcomingDate = _dateOnly(picked));
   }
 
   Widget _buildUpcomingLessons() {
@@ -412,7 +519,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
         ),
         children: [
           SizedBox(
-            height: 152,
+            height: 108,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: scheduleDates.length,
@@ -430,14 +537,14 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
               },
             ),
           ),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: AppSpacing.lg),
           _buildScheduleSectionHeader(
             title: _isToday(selectedDate)
                 ? 'Today\'s Lessons'
                 : DateFormat('EEEE, MMM d').format(selectedDate),
             dotColor: AppColors.accent,
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.md),
           PrimaryScheduleLessonCard(
             avatarUrl: primaryLesson.instructor.user.profileImageUrl,
             fallbackInitials: _initialsForLesson(primaryLesson),
@@ -448,7 +555,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
             locationLabel: primaryLesson.location ?? 'Location to be confirmed',
             primaryLabel:
                 primaryLesson.isInProgress ? 'LIVE LESSON' : 'VIEW LESSON',
-            onPrimaryPressed: () => _startLesson(primaryLesson),
+            onPrimaryPressed: () => _openLessonDetails(primaryLesson),
             onCallPressed: _callActionForLesson(primaryLesson),
           ),
           if (remainingSelectedLessons.isNotEmpty) ...[
@@ -461,8 +568,8 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                 subtitle: _lessonSubtitle(lesson),
                 focusLabel: _lessonFocusLabel(lesson),
                 dateTimeLabel: _lessonDateTimeLabel(lesson),
-                actionLabel: 'Reschedule',
-                onActionPressed: () => _showRescheduleNotice(lesson),
+                actionLabel: 'View',
+                onActionPressed: () => _openLessonDetails(lesson),
               ),
               const SizedBox(height: AppSpacing.lg),
             ],
@@ -482,8 +589,8 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                 subtitle: _lessonSubtitle(lesson),
                 focusLabel: _lessonFocusLabel(lesson),
                 dateTimeLabel: _lessonDateTimeLabel(lesson),
-                actionLabel: 'Reschedule',
-                onActionPressed: () => _showRescheduleNotice(lesson),
+                actionLabel: 'View',
+                onActionPressed: () => _openLessonDetails(lesson),
                 isMuted: true,
               ),
               const SizedBox(height: AppSpacing.lg),
@@ -644,8 +751,8 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     LessonModel lesson, {
     bool includeDuration = false,
   }) {
-    final start = lesson.startTime.toUpperCase();
-    final end = lesson.endTime.toUpperCase();
+    final start = _formatClockLabel(lesson.startTime);
+    final end = _formatClockLabel(lesson.endTime);
     if (!includeDuration) return '$start - $end';
     final durationMinutes = (lesson.duration * 60).round();
     return '$start - $end ($durationMinutes mins)';
@@ -655,8 +762,24 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     final dateLabel = DateFormat('MMM d')
         .format(lesson.scheduledDate.toLocal())
         .toUpperCase();
-    final timeLabel = lesson.startTime.toUpperCase();
+    final timeLabel = _formatClockLabel(lesson.startTime);
     return '$dateLabel, $timeLabel';
+  }
+
+  String _formatClockLabel(String raw) {
+    final formats = <DateFormat>[
+      DateFormat('h:mm a'),
+      DateFormat('hh:mm a'),
+      DateFormat('H:mm'),
+      DateFormat('HH:mm'),
+      DateFormat('HH:mm:ss'),
+    ];
+    for (final format in formats) {
+      try {
+        return DateFormat('h:mm a').format(format.parse(raw.trim()));
+      } catch (_) {}
+    }
+    return raw.trim().toUpperCase();
   }
 
   String _upcomingSectionLabel(DateTime date) {
@@ -682,17 +805,6 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
         );
       }
     };
-  }
-
-  void _showRescheduleNotice(LessonModel lesson) {
-    final name = lesson.instructor.user.firstName;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Rescheduling with $name will be available soon. For now, contact your instructor directly.',
-        ),
-      ),
-    );
   }
 
   Widget _buildCompletedLessons() {
@@ -1014,7 +1126,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
                     child: ElevatedButton(
                       onPressed: _isProcessingAction
                           ? null
-                          : () => _startLesson(lesson),
+                          : () => _openLessonDetails(lesson),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.ocean,
                         shape: RoundedRectangleBorder(
@@ -1182,7 +1294,7 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     );
   }
 
-  Future<void> _startLesson(LessonModel lesson) async {
+  Future<void> _openLessonDetails(LessonModel lesson) async {
     await Navigator.of(context).push<LessonModel?>(
       MaterialPageRoute(
         builder: (context) => OngoingLessonScreen(

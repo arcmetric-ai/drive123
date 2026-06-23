@@ -2375,27 +2375,27 @@ class _BookingsTabState extends State<_BookingsTab>
       color: AppColors.primaryBlue,
       onRefresh: _loadLessons,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
         children: [
           Container(
             decoration: BoxDecoration(
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(22),
               border: Border.all(color: AppColors.border),
               boxShadow: AppShadows.subtle,
             ),
             child: GlassPanel(
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(22),
               opacity: 0.42,
               borderColor: AppColors.border,
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
                     'Month',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                       color: AppColors.primaryBlue,
                     ),
@@ -2418,7 +2418,11 @@ class _BookingsTabState extends State<_BookingsTab>
                       ),
                       Text(
                         DateFormat.yMMMM().format(_currentMonth),
-                        style: const TextStyle(color: Colors.black54),
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       IconButton(
                         onPressed: () {
@@ -2440,28 +2444,28 @@ class _BookingsTabState extends State<_BookingsTab>
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(color: AppColors.border),
               boxShadow: AppShadows.subtle,
             ),
             child: GlassPanel(
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: BorderRadius.circular(24),
               opacity: 0.42,
               borderColor: AppColors.border,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
               child: GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: totalCells,
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 7,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 0.58,
+                  mainAxisSpacing: 6,
+                  crossAxisSpacing: 6,
+                  childAspectRatio: 0.76,
                 ),
                 itemBuilder: (context, index) {
                   final dayNumber = index - firstWeekday + 1;
@@ -2777,42 +2781,82 @@ class _BookingsTabState extends State<_BookingsTab>
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
         final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    IconButton.filledTonal(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      tooltip: 'Back to month',
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        DateFormat.yMMMMEEEEd().format(date),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primaryBlue,
+        final maxHeight = MediaQuery.of(context).size.height * 0.86;
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(20, 14, 20, 20 + bottomInset),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: AppColors.border,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ...slots.map(
-                  (slot) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildLessonTile(slot),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          IconButton.filledTonal(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.arrow_back_rounded),
+                            tooltip: 'Back to month',
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  DateFormat('EEEE, MMMM d, y').format(date),
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.primaryBlue,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${slots.length} ${slots.length == 1 ? 'lesson' : 'lessons'} scheduled',
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      ...slots.map(
+                        (slot) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildLessonTile(slot),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         );
@@ -2911,37 +2955,171 @@ class _BookingsTabState extends State<_BookingsTab>
   }
 
   void _showLessonSummary(BuildContext context, _LessonSlot slot) {
+    final colors = slot.learnerColors;
+    final now = DateTime.now();
+    final statusLabel = switch (slot.status) {
+      LessonStatus.inProgress => 'In progress',
+      LessonStatus.completed => 'Completed',
+      LessonStatus.cancelled => 'Cancelled',
+      LessonStatus.scheduled => 'Scheduled',
+    };
+    final canStart = slot.status != LessonStatus.completed &&
+        slot.status != LessonStatus.inProgress &&
+        !now.isBefore(slot.start);
+    final canComplete = slot.status == LessonStatus.inProgress;
+
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                slot.learner,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primaryBlue,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DecoratedBox(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(slot.timeLabel),
-              const SizedBox(height: 8),
-              Text(slot.focus),
-              const SizedBox(height: 16),
-              Text(
-                slot.status == LessonStatus.inProgress
-                    ? 'This lesson is currently in progress.'
-                    : 'This lesson is scheduled.',
-                style: const TextStyle(color: Colors.black54),
-              ),
-            ],
+                const SizedBox(height: 18),
+                Text(
+                  slot.learner,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlue,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _LessonSummaryRow(
+                  icon: Icons.schedule_rounded,
+                  label: 'Time',
+                  value: slot.timeLabel,
+                ),
+                _LessonSummaryRow(
+                  icon: Icons.flag_outlined,
+                  label: 'Focus',
+                  value: slot.focus,
+                ),
+                _LessonSummaryRow(
+                  icon: Icons.place_outlined,
+                  label: 'Pickup',
+                  value: slot.address,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.pillBackground,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: colors.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (canStart || canComplete) ...[
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        if (canComplete) {
+                          _completeInstructorLesson(slot);
+                        } else {
+                          _startInstructorLesson(slot);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: canComplete
+                            ? AppColors.success
+                            : AppColors.primaryBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      icon: Icon(
+                        canComplete
+                            ? Icons.check_circle_outline
+                            : Icons.play_arrow_rounded,
+                      ),
+                      label: Text(
+                          canComplete ? 'Complete Lesson' : 'Start Lesson'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _LessonSummaryRow extends StatelessWidget {
+  const _LessonSummaryRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: AppColors.primaryBlue),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.black45,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value.trim().isEmpty ? 'Not provided' : value.trim(),
+                  style: const TextStyle(
+                    color: AppColors.foreground,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3907,8 +4085,8 @@ class _InstructorOverviewHeader extends StatelessWidget {
                 ),
                 if (isVerified)
                   const Positioned(
-                    top: -7,
-                    right: -7,
+                    top: -9,
+                    right: -15,
                     child: VerifiedProfileBadge(size: 30, showCutout: true),
                   ),
               ],

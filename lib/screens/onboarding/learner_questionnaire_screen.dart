@@ -380,8 +380,7 @@ class _LearnerQuestionnaireScreenState
                           AppCircleIconButton(
                             icon: Icons.arrow_back_rounded,
                             size: 48,
-                            onPressed: () =>
-                                context.go(AppRoutes.learnerApprovalSuccess),
+                            onPressed: () => context.go(AppRoutes.accountEntry),
                           ),
                           const SizedBox(width: 16),
                           Expanded(

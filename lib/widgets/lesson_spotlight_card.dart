@@ -5,6 +5,7 @@ import '../constants/app_colors.dart';
 import '../constants/app_radii.dart';
 import '../constants/app_shadows.dart';
 import '../models/lesson_model.dart';
+import 'verified_profile_badge.dart';
 
 class LessonSpotlightCard extends StatelessWidget {
   const LessonSpotlightCard({
@@ -80,11 +81,7 @@ class LessonSpotlightCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        const Icon(
-                          Icons.verified_rounded,
-                          size: 20,
-                          color: AppColors.primary,
-                        ),
+                        const VerifiedProfileBadge(size: 20),
                         const SizedBox(width: 6),
                         Text(
                           user.isVerified || instructor.isVerified

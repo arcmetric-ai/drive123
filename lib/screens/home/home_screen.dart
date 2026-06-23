@@ -881,7 +881,7 @@ class HomeDashboard extends StatelessWidget {
   Widget _buildGreetingCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
       decoration: const BoxDecoration(
         color: AppColors.card,
         border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -896,7 +896,7 @@ class HomeDashboard extends StatelessWidget {
                 Text(
                   'Hi, $name',
                   style: const TextStyle(
-                    fontSize: 34,
+                    fontSize: 30,
                     fontWeight: FontWeight.w800,
                     color: AppColors.foreground,
                   ),
@@ -920,7 +920,7 @@ class HomeDashboard extends StatelessWidget {
               clipBehavior: Clip.none,
               children: [
                 CircleAvatar(
-                  radius: 38,
+                  radius: 34,
                   backgroundColor: const Color(0xFF5B6BC8),
                   backgroundImage: profileImageUrl != null &&
                           profileImageUrl!.trim().isNotEmpty
@@ -942,8 +942,8 @@ class HomeDashboard extends StatelessWidget {
                 ),
                 if (isVerified)
                   const Positioned(
-                    top: -7,
-                    right: -7,
+                    top: -8,
+                    right: -14,
                     child: VerifiedProfileBadge(size: 30, showCutout: true),
                   ),
                 const Positioned(
@@ -1028,9 +1028,9 @@ class HomeDashboard extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: LearnerActionTile(
-                title: 'Theory',
-                subtitle: 'Practice tests',
-                icon: Icons.menu_book_rounded,
+                title: 'Training',
+                subtitle: 'Focus',
+                icon: Icons.track_changes_rounded,
                 onTap: onChangeFocus,
                 accentColor: AppColors.grey700,
               ),
@@ -1048,7 +1048,7 @@ class HomeDashboard extends StatelessWidget {
         const Text(
           'Upcoming Lesson',
           style: TextStyle(
-            fontSize: 24,
+            fontSize: 22,
             fontWeight: FontWeight.w800,
             color: AppColors.foreground,
           ),

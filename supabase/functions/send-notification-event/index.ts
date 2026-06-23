@@ -91,6 +91,38 @@ function notificationDataForFcm(data: JsonRow) {
   );
 }
 
+function preferenceKeyForEvent(eventKey: string) {
+  const key = eventKey.toLowerCase();
+  if (key.startsWith('lesson.reminder')) return 'lesson_reminders_enabled';
+  if (
+    key.startsWith('lesson.') ||
+    key.startsWith('learner.request') ||
+    key.includes('booking') ||
+    key.includes('schedule')
+  ) {
+    return 'lesson_updates_enabled';
+  }
+  if (
+    key.includes('review') ||
+    key.includes('verification') ||
+    key.includes('document') ||
+    key.includes('credential')
+  ) {
+    return 'review_updates_enabled';
+  }
+  if (key.startsWith('instructor.pass')) return 'pass_updates_enabled';
+  if (key.includes('marketing') || key.includes('promotion')) {
+    return 'marketing_enabled';
+  }
+  return 'support_updates_enabled';
+}
+
+function eventAllowedByPreferences(event: JsonRow, prefs: JsonRow | null) {
+  if (prefs == null) return true;
+  const preferenceKey = preferenceKeyForEvent(String(event.event_key ?? ''));
+  return prefs[preferenceKey] !== false;
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll('&', '&amp;')
@@ -355,6 +387,18 @@ Deno.serve(async (request) => {
       .select('*')
       .eq('profile_id', event.recipient_profile_id)
       .maybeSingle();
+
+    if (!eventAllowedByPreferences(event, prefs)) {
+      await admin
+        .from('notification_events')
+        .update({
+          status: 'cancelled',
+          processed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', event.id);
+      return;
+    }
 
     const channels = Array.isArray(event.channels) ? event.channels : ['fcm'];
     const results: JsonRow[] = [];

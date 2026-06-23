@@ -403,6 +403,8 @@ class _InstructorProfilePreviewScreenState
     final gender = _readString('gender', fallback: 'Add your gender');
     final profileImageUrl = _readString('profileImageUrl');
     final isVerified = _readBool('isVerified') || _readBool('is_verified');
+    final phoneVerified = _readString('phoneVerifiedAt').isNotEmpty ||
+        _readString('phone_verified_at').isNotEmpty;
     final vehiclePhotoUrl = _resolveVehiclePhotoUrl();
 
     final languages = _asStringList('languages');
@@ -435,7 +437,7 @@ class _InstructorProfilePreviewScreenState
             title: 'Contact & credentials',
             content: _VerifiedIdentityStrip(
               emailVerified: isVerified && email.isNotEmpty,
-              phoneVerified: isVerified && phone.isNotEmpty,
+              phoneVerified: phoneVerified,
               licenceVerified: isVerified,
             ),
           ),
@@ -793,8 +795,8 @@ class _HeaderCard extends StatelessWidget {
                   ),
                   if (isVerified)
                     const Positioned(
-                      top: -2,
-                      right: -2,
+                      top: -6,
+                      right: -10,
                       child: VerifiedProfileBadge(
                         size: 26,
                         showCutout: true,

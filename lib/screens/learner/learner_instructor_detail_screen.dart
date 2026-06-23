@@ -172,6 +172,7 @@ class _LearnerInstructorDetailScreenState
           _profile['last_name'] ??= profileMap['last_name'];
           _profile['email'] ??= profileMap['email'];
           _profile['phone'] ??= profileMap['phone'];
+          _profile['phoneVerifiedAt'] ??= profileMap['phone_verified_at'];
           _profile['isVerified'] ??= profileMap['is_verified'];
           _profile['licenseNumber'] ??= profileMap['licence_number'];
           _profile['licenseExpiry'] ??= profileMap['licence_expiry'];
@@ -782,6 +783,13 @@ class _LearnerInstructorDetailScreenState
     final bool showLocationNotes = _hasActiveRelationship &&
         (locationNotes != null && locationNotes.isNotEmpty);
     final bool isVerified = _isVerifiedInstructor;
+    final bool phoneVerified = _asNullableString(
+          _profile['phoneVerifiedAt'] ??
+              _profile['phone_verified_at'] ??
+              (_profile['user'] as Map?)?['phone_verified_at'] ??
+              profileRecord?['phone_verified_at'],
+        ) !=
+        null;
     final String? displayAge = age == 'Age not provided' ? null : age;
     final String? displayGender =
         gender == 'Gender not provided' ? null : gender;
@@ -875,18 +883,21 @@ class _LearnerInstructorDetailScreenState
                 _DetailSection(
                   title: 'Verified details',
                   child: Row(
-                    children: const [
+                    children: [
                       _PublicVerificationItem(
                         icon: Icons.email_outlined,
                         label: 'Email',
+                        verified: isVerified,
                       ),
                       _PublicVerificationItem(
                         icon: Icons.phone_outlined,
                         label: 'Phone',
+                        verified: phoneVerified,
                       ),
                       _PublicVerificationItem(
                         icon: Icons.badge_outlined,
                         label: 'Licence',
+                        verified: isVerified,
                       ),
                     ],
                   ),
@@ -1295,8 +1306,9 @@ class _VerifiedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.success.withOpacity(0.15),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1306,7 +1318,7 @@ class _VerifiedBadge extends StatelessWidget {
           Text(
             'Verified',
             style: TextStyle(
-              color: AppColors.success,
+              color: AppColors.primary,
               fontWeight: FontWeight.w600,
               fontSize: 12,
             ),
@@ -1349,8 +1361,8 @@ class _ProfileImage extends StatelessWidget {
           _FallbackAvatar(initial: fallbackInitial),
         if (isVerified)
           const Positioned(
-            top: -2,
-            right: -2,
+            top: -6,
+            right: -10,
             child: VerifiedProfileBadge(
               size: 26,
               showCutout: true,
@@ -1449,21 +1461,32 @@ class _VehiclePhotoPreview extends StatelessWidget {
 }
 
 class _PublicVerificationItem extends StatelessWidget {
-  const _PublicVerificationItem({required this.icon, required this.label});
+  const _PublicVerificationItem({
+    required this.icon,
+    required this.label,
+    required this.verified,
+  });
 
   final IconData icon;
   final String label;
+  final bool verified;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Column(
         children: [
-          Icon(icon, color: AppColors.primaryBlue),
+          Icon(icon, color: verified ? AppColors.primaryBlue : AppColors.error),
           const SizedBox(height: 5),
           Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-          const Text('Verified',
-              style: TextStyle(fontSize: 12, color: AppColors.success)),
+          Text(
+            verified ? 'Verified' : 'Not verified',
+            style: TextStyle(
+              fontSize: 12,
+              color: verified ? AppColors.success : AppColors.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );

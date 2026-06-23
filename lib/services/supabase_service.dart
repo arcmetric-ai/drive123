@@ -11,7 +11,6 @@ import '../models/instructor_billing.dart';
 import '../models/instructor_document_type.dart';
 import '../models/learner_onboarding_draft.dart';
 import '../models/signup_flow_state.dart';
-import '../services/launch_preferences.dart';
 import '../models/user_model.dart';
 import '../models/instructor_model.dart';
 import '../models/lesson_model.dart';
@@ -133,6 +132,99 @@ class SupabaseService {
         .order('created_at', ascending: false)
         .limit(limit);
     return List<Map<String, dynamic>>.from(rows);
+  }
+
+  static Map<String, dynamic> defaultNotificationPreferences(String profileId) {
+    final now = DateTime.now().toUtc().toIso8601String();
+    return {
+      'profile_id': profileId,
+      'fcm_enabled': true,
+      'email_enabled': true,
+      'lesson_updates_enabled': true,
+      'lesson_reminders_enabled': true,
+      'review_updates_enabled': true,
+      'pass_updates_enabled': true,
+      'support_updates_enabled': true,
+      'marketing_enabled': false,
+      'timezone': 'America/Toronto',
+      'created_at': now,
+      'updated_at': now,
+    };
+  }
+
+  static Future<Map<String, dynamic>> getNotificationPreferences() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated.');
+
+    final existing = await _client
+        .from('notification_preferences')
+        .select('*')
+        .eq('profile_id', userId)
+        .maybeSingle();
+
+    if (existing != null) {
+      final prefs = Map<String, dynamic>.from(existing);
+      return {
+        ...defaultNotificationPreferences(userId),
+        ...prefs,
+        'profile_id': userId,
+      };
+    }
+
+    final defaults = defaultNotificationPreferences(userId);
+    try {
+      final inserted = await _client
+          .from('notification_preferences')
+          .insert(defaults)
+          .select('*')
+          .single();
+      return {
+        ...defaults,
+        ...Map<String, dynamic>.from(inserted),
+      };
+    } catch (_) {
+      return defaults;
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateNotificationPreferences(
+    Map<String, dynamic> updates,
+  ) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated.');
+
+    final payload = <String, dynamic>{
+      ...updates,
+      'profile_id': userId,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    try {
+      final saved = await _client
+          .from('notification_preferences')
+          .upsert(payload, onConflict: 'profile_id')
+          .select('*')
+          .single();
+      return {
+        ...defaultNotificationPreferences(userId),
+        ...Map<String, dynamic>.from(saved),
+      };
+    } catch (error) {
+      if (payload.containsKey('lesson_reminders_enabled')) {
+        final fallback = Map<String, dynamic>.from(payload)
+          ..remove('lesson_reminders_enabled');
+        final saved = await _client
+            .from('notification_preferences')
+            .upsert(fallback, onConflict: 'profile_id')
+            .select('*')
+            .single();
+        return {
+          ...defaultNotificationPreferences(userId),
+          ...Map<String, dynamic>.from(saved),
+        };
+      }
+      rethrow;
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getPendingDocumentRequests(
@@ -645,6 +737,21 @@ class SupabaseService {
     }
   }
 
+  static Future<bool> requiresContactVerification(String userId) async {
+    final user = _client.auth.currentUser;
+    if (user == null || user.id != userId) return false;
+    if ((user.email ?? '').trim().isNotEmpty &&
+        (user.emailConfirmedAt ?? '').trim().isEmpty) {
+      return true;
+    }
+
+    final profile = await getRawProfile(userId);
+    final phone = profile?['phone']?.toString().trim() ?? '';
+    final phoneVerifiedAt =
+        profile?['phone_verified_at']?.toString().trim() ?? '';
+    return phone.isNotEmpty && phoneVerifiedAt.isEmpty;
+  }
+
   static Future<String> resolvePostAuthRoute({
     required String userId,
     dynamic metadataRole,
@@ -715,18 +822,8 @@ class SupabaseService {
         return AppRoutes.identityPendingReview;
       }
 
-      final approvalToken = verificationState?.verificationApprovedAt
-              ?.toUtc()
-              .toIso8601String() ??
-          verificationState?.verificationStatus ??
-          'approved';
-      final shouldShowSuccess =
-          await LaunchPreferences.shouldShowLearnerApprovalSuccess(
-        userId: userId,
-        approvalToken: approvalToken,
-      );
-      if (shouldShowSuccess) {
-        return AppRoutes.learnerApprovalSuccess;
+      if (await requiresContactVerification(userId)) {
+        return AppRoutes.editProfile;
       }
       return AppRoutes.home;
     }
@@ -759,6 +856,9 @@ class SupabaseService {
       }
       if (!(verificationState?.isApproved ?? false)) {
         return AppRoutes.identityPendingReview;
+      }
+      if (await requiresContactVerification(userId)) {
+        return AppRoutes.editProfile;
       }
       return AppRoutes.instructorHome;
     }
@@ -2757,7 +2857,7 @@ class SupabaseService {
         .insert({
           'learner_id': request['learner_id'],
           'instructor_id': request['instructor_id'],
-          'scheduled_at': scheduledAt.toIso8601String(),
+          'scheduled_at': scheduledAt.toUtc().toIso8601String(),
           'duration_hours': _durationHoursToInt(normalizedDuration),
           'focus': request['focus'],
           'status': 'scheduled',
@@ -3623,7 +3723,7 @@ class SupabaseService {
                 externalLearnerId.trim().isNotEmpty)
               'external_learner_id': externalLearnerId,
             'instructor_id': instructorId,
-            'scheduled_at': scheduledDate.toIso8601String(),
+            'scheduled_at': scheduledDate.toUtc().toIso8601String(),
             'start_time': startTime,
             'end_time': endTime,
             'duration_hours': _durationHoursToInt(duration),
@@ -3775,7 +3875,7 @@ class SupabaseService {
     }
   }
 
-  static Future<LessonModel?> updateScheduledLesson({
+  static Future<Map<String, dynamic>?> updateScheduledLesson({
     required String lessonId,
     required DateTime scheduledDate,
     required String startTime,
@@ -3789,7 +3889,7 @@ class SupabaseService {
   }) async {
     try {
       final payload = <String, dynamic>{
-        'scheduled_at': scheduledDate.toIso8601String(),
+        'scheduled_at': scheduledDate.toUtc().toIso8601String(),
         'start_time': startTime,
         'end_time': endTime,
         'duration_hours': _durationHoursToInt(duration),
@@ -3805,19 +3905,37 @@ class SupabaseService {
           ).toIso8601String(),
       };
 
-      final response = await _client
-          .from('lessons')
-          .update(payload)
-          .eq('id', lessonId)
-          .select('*, instructor:instructor_profiles(*, user:profiles(*))')
-          .single();
+      Map<String, dynamic>? response;
+      try {
+        response = await _client
+            .from('lessons')
+            .update(payload)
+            .eq('id', lessonId)
+            .select('*')
+            .maybeSingle();
+      } catch (error) {
+        final message = error.toString().toLowerCase();
+        final canRetryWithoutDuration = message.contains('duration_hours') ||
+            message.contains('integer') ||
+            message.contains('numeric') ||
+            message.contains('check constraint');
+        if (!canRetryWithoutDuration) rethrow;
 
-      final lesson = LessonModel.fromJson(response);
+        final retryPayload = Map<String, dynamic>.from(payload)
+          ..remove('duration_hours');
+        response = await _client
+            .from('lessons')
+            .update(retryPayload)
+            .eq('id', lessonId)
+            .select('*')
+            .maybeSingle();
+      }
+      if (response == null) return null;
       await _queueAppNotification(
         eventKey: 'lesson.rescheduled',
-        entityId: lesson.id,
+        entityId: lessonId,
       );
-      return lesson;
+      return Map<String, dynamic>.from(response);
     } catch (e) {
       print('Error updating scheduled lesson: $e');
       return null;
@@ -4002,11 +4120,10 @@ class SupabaseService {
     return trimmed;
   }
 
-  static int _durationHoursToInt(double value) {
+  static double _durationHoursToInt(double value) {
     if (value.isNaN || value.isInfinite) return 1;
     final normalized = value <= 0 ? 1.0 : value;
-    final ceiled = normalized.ceil();
-    return ceiled < 1 ? 1 : ceiled;
+    return double.parse(normalized.toStringAsFixed(2));
   }
 
   static double _calculateDistance(

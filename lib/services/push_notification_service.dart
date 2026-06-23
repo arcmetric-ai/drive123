@@ -104,7 +104,44 @@ class PushNotificationService {
       },
       onConflict: 'fcm_token',
     );
+    await _ensureDefaultPreferences(userId);
     _lastRegisteredToken = token;
+  }
+
+  static Future<void> _ensureDefaultPreferences(String userId) async {
+    final client = Supabase.instance.client;
+    final existing = await client
+        .from('notification_preferences')
+        .select('profile_id')
+        .eq('profile_id', userId)
+        .maybeSingle();
+    if (existing != null) return;
+
+    final now = DateTime.now().toUtc().toIso8601String();
+    final payload = {
+      'profile_id': userId,
+      'fcm_enabled': true,
+      'email_enabled': true,
+      'lesson_updates_enabled': true,
+      'lesson_reminders_enabled': true,
+      'review_updates_enabled': true,
+      'pass_updates_enabled': true,
+      'support_updates_enabled': true,
+      'marketing_enabled': false,
+      'timezone': 'America/Toronto',
+      'created_at': now,
+      'updated_at': now,
+    };
+
+    try {
+      await client.from('notification_preferences').insert(payload);
+    } catch (_) {
+      final fallback = Map<String, dynamic>.from(payload)
+        ..remove('lesson_reminders_enabled');
+      try {
+        await client.from('notification_preferences').insert(fallback);
+      } catch (_) {}
+    }
   }
 
   static Future<void> _configureForegroundPresentation() async {

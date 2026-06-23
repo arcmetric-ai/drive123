@@ -28,13 +28,13 @@ class LearnerActionTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(24),
         child: Ink(
-          height: 140,
-          padding: const EdgeInsets.all(16),
+          height: 112,
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: isPrimary ? AppColors.primary : AppColors.card,
-            borderRadius: BorderRadius.circular(30),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: isPrimary ? AppColors.primary : AppColors.border,
             ),
@@ -44,8 +44,8 @@ class LearnerActionTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: isPrimary
                       ? Colors.white.withValues(alpha: 0.14)
@@ -54,7 +54,7 @@ class LearnerActionTile extends StatelessWidget {
                 ),
                 child: Icon(
                   icon,
-                  size: 25,
+                  size: 22,
                   color: isPrimary ? Colors.white : tileAccent,
                 ),
               ),
@@ -62,7 +62,7 @@ class LearnerActionTile extends StatelessWidget {
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: FontWeight.w800,
                   height: 1.05,
                   color: isPrimary ? Colors.white : AppColors.foreground,
@@ -74,7 +74,7 @@ class LearnerActionTile extends StatelessWidget {
               Text(
                 subtitle,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
                   height: 1.1,
                   color: isPrimary

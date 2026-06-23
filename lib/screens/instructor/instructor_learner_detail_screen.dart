@@ -107,6 +107,8 @@ class _InstructorLearnerDetailScreenState
 
   void _normalizeLearnerDetail() {
     final profileMap = _mapOrNull(_learner['profile']);
+    final learnerProfileMap = _mapOrNull(_learner['learner_profile']);
+    final learnerProfileNested = _mapOrNull(learnerProfileMap?['profile']);
     if (profileMap != null) {
       if (_profile.isEmpty) {
         _profile = Map<String, dynamic>.from(profileMap);
@@ -115,6 +117,13 @@ class _InstructorLearnerDetailScreenState
           profileMap.map((key, value) => MapEntry(key.toString(), value)),
         );
       }
+    }
+    if (learnerProfileNested != null) {
+      _profile.addAll(
+        learnerProfileNested.map(
+          (key, value) => MapEntry(key.toString(), value),
+        ),
+      );
     }
 
     String? _pickString(List<dynamic> candidates) {
@@ -143,28 +152,55 @@ class _InstructorLearnerDetailScreenState
 
     _learner['email'] ??= _pickString([
       _learner['email'],
+      _learner['requested_email'],
+      _learner['learner_email'],
       profileMap?['email'],
+      learnerProfileMap?['email'],
+      learnerProfileNested?['email'],
       _profile['email'],
     ]);
     _learner['phone'] ??= _pickString([
       _learner['phone'],
+      _learner['requested_phone'],
+      _learner['learner_phone'],
       profileMap?['phone'],
+      learnerProfileMap?['phone'],
+      learnerProfileNested?['phone'],
       _profile['phone'],
     ]);
     _learner['city'] ??= _pickString([
       _learner['city'],
+      _learner['requested_city'],
       profileMap?['city'],
+      learnerProfileMap?['city'],
+      learnerProfileNested?['city'],
       _profile['city'],
     ]);
     _learner['age'] ??= _pickInt([
       _learner['age'],
+      _learner['requested_age'],
       profileMap?['age'],
+      learnerProfileMap?['age'],
+      learnerProfileNested?['age'],
       _profile['age'],
     ]);
     _learner['gender'] ??= _pickString([
       _learner['gender'],
+      _learner['requested_gender'],
       profileMap?['gender'],
+      learnerProfileMap?['gender'],
+      learnerProfileNested?['gender'],
       _profile['gender'],
+    ]);
+    _learner['profile_image_url'] ??= _pickString([
+      _learner['profile_image_url'],
+      _learner['profileImageUrl'],
+      _learner['requested_profile_url'],
+      _learner['requested_avatar_url'],
+      profileMap?['profile_image_url'],
+      learnerProfileMap?['profile_image_url'],
+      learnerProfileNested?['profile_image_url'],
+      _profile['profile_image_url'],
     ]);
 
     final licenceNumber = _pickString([
@@ -172,6 +208,10 @@ class _InstructorLearnerDetailScreenState
       _learner['license_number'],
       profileMap?['licence_number'],
       profileMap?['license_number'],
+      learnerProfileMap?['licence_number'],
+      learnerProfileMap?['license_number'],
+      learnerProfileNested?['licence_number'],
+      learnerProfileNested?['license_number'],
       _profile['licence_number'],
       _profile['license_number'],
     ]);
@@ -184,6 +224,10 @@ class _InstructorLearnerDetailScreenState
       _learner['license_expiry'],
       profileMap?['licence_expiry'],
       profileMap?['license_expiry'],
+      learnerProfileMap?['licence_expiry'],
+      learnerProfileMap?['license_expiry'],
+      learnerProfileNested?['licence_expiry'],
+      learnerProfileNested?['license_expiry'],
       _profile['licence_expiry'],
       _profile['license_expiry'],
     ]);
@@ -202,29 +246,33 @@ class _InstructorLearnerDetailScreenState
       _learner['home_address'] = profileMap['home_address'];
     }
 
-    final availabilityRaw =
-        _learner['weekly_availability'] ?? profileMap?['weekly_availability'];
+    final availabilityRaw = _learner['weekly_availability'] ??
+        learnerProfileMap?['weekly_availability'] ??
+        profileMap?['weekly_availability'];
     if (availabilityRaw != null) {
       _learner['weekly_availability'] = _normalizeWeeklyAvailability(
         availabilityRaw,
       );
     }
 
-    if (_learner['availability_recurring'] == null &&
-        profileMap?['availability_recurring'] != null) {
+    if (_learner['availability_recurring'] == null) {
       _learner['availability_recurring'] =
-          profileMap?['availability_recurring'];
+          learnerProfileMap?['availability_recurring'] ??
+              profileMap?['availability_recurring'];
     }
 
     final accountType = _asNullableString(_learner['account_type']) ??
+        _asNullableString(learnerProfileMap?['account_type']) ??
         _asNullableString(profileMap?['account_type']);
     if (accountType?.toLowerCase() == 'guardian') {
       final wardFirst = _pickString([
         _learner['ward_first_name'],
+        learnerProfileMap?['ward_first_name'],
         profileMap?['ward_first_name'],
       ]);
       final wardLast = _pickString([
         _learner['ward_last_name'],
+        learnerProfileMap?['ward_last_name'],
         profileMap?['ward_last_name'],
       ]);
       final wardName = [wardFirst, wardLast]
@@ -235,12 +283,17 @@ class _InstructorLearnerDetailScreenState
       if (wardName.isNotEmpty) {
         _learner['name'] = wardName;
       }
-      final wardAge = _pickInt([_learner['ward_age'], profileMap?['ward_age']]);
+      final wardAge = _pickInt([
+        _learner['ward_age'],
+        learnerProfileMap?['ward_age'],
+        profileMap?['ward_age'],
+      ]);
       if (wardAge != null) {
         _learner['age'] = wardAge;
       }
       final wardGender = _pickString([
         _learner['ward_gender'],
+        learnerProfileMap?['ward_gender'],
         profileMap?['ward_gender'],
       ]);
       if (wardGender != null) {
@@ -355,6 +408,7 @@ class _InstructorLearnerDetailScreenState
 
   List<String> _preferredLocationSummaries() {
     final source = _learner['preferred_locations'] ??
+        (_learner['learner_profile'] as Map?)?['preferred_locations'] ??
         _profile['preferred_locations'] ??
         _learner['preferredLocations'];
     final results = <String>[];
@@ -393,9 +447,18 @@ class _InstructorLearnerDetailScreenState
       return explicit;
     }
     final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
+    final learnerProfileMap = _mapOrNull(_learner['learner_profile']);
+    final requestedName = _asNullableString(_learner['requested_name']);
+    if (requestedName != null && requestedName.isNotEmpty) {
+      return requestedName;
+    }
     final first = _asNullableString(profileMap?['first_name']) ??
+        _asNullableString(learnerProfileMap?['first_name']) ??
+        _asNullableString(_learner['requested_first_name']) ??
         _asNullableString(_profile['first_name']);
     final last = _asNullableString(profileMap?['last_name']) ??
+        _asNullableString(learnerProfileMap?['last_name']) ??
+        _asNullableString(_learner['requested_last_name']) ??
         _asNullableString(_profile['last_name']);
     final combined = [first, last]
         .whereType<String>()
@@ -414,9 +477,12 @@ class _InstructorLearnerDetailScreenState
 
   String get _phone {
     final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
+    final learnerProfileMap = _mapOrNull(_learner['learner_profile']);
     return _asNullableString(profileMap?['phone']) ??
+        _asNullableString(learnerProfileMap?['phone']) ??
         _asNullableString(_profile['phone']) ??
         _asNullableString(_learner['phone']) ??
+        _asNullableString(_learner['requested_phone']) ??
         '';
   }
 
@@ -492,11 +558,17 @@ class _InstructorLearnerDetailScreenState
     final direct = _asNullableString(_profile['profile_image_url']);
     if (direct != null) return direct;
     final profileMap = _mapOrNull(_learner['profile']);
+    final learnerProfileMap = _mapOrNull(_learner['learner_profile']);
     final nested = _asNullableString(profileMap?['profile_image_url']);
     if (nested != null) return nested;
+    final learnerProfileImage =
+        _asNullableString(learnerProfileMap?['profile_image_url']);
+    if (learnerProfileImage != null) return learnerProfileImage;
     final fallback = _asNullableString(
       _learner['profileImageUrl'] ??
           _learner['profile_image_url'] ??
+          _learner['requested_profile_url'] ??
+          _learner['requested_avatar_url'] ??
           widget.learner?['profile_image_url'],
     );
     return fallback;
@@ -565,8 +637,9 @@ class _InstructorLearnerDetailScreenState
   }
 
   Widget _buildWeeklyAvailability() {
-    final rawAvailability =
-        _learner['weekly_availability'] ?? _profile['weekly_availability'];
+    final rawAvailability = _learner['weekly_availability'] ??
+        (_learner['learner_profile'] as Map?)?['weekly_availability'] ??
+        _profile['weekly_availability'];
     final availability = _normalizeAvailability(rawAvailability);
     if (availability.isEmpty) {
       return const Text('Availability not set.');
@@ -576,6 +649,7 @@ class _InstructorLearnerDetailScreenState
         (a, b) => _daySequence.indexOf(a).compareTo(_daySequence.indexOf(b)),
       );
     final recurring = (_learner['availability_recurring'] ??
+            (_learner['learner_profile'] as Map?)?['availability_recurring'] ??
             _profile['availability_recurring']) ==
         true;
 
@@ -632,11 +706,6 @@ class _InstructorLearnerDetailScreenState
                       ),
                 const SizedBox(height: 16),
                 _buildLearnerSummaryCard(),
-                const SizedBox(height: 12),
-                _buildInfoCard(
-                  title: 'Progress & focus areas',
-                  child: _buildProgressEditor(),
-                ),
                 const SizedBox(height: 12),
                 _buildInfoCard(
                   title: 'Weekly availability',
@@ -809,21 +878,39 @@ class _InstructorLearnerDetailScreenState
 
   Widget _buildLearnerSummaryCard() {
     final profileMap = _mapOrNull(_learner['profile']) ?? _mapOrNull(_profile);
+    final learnerProfileMap = _mapOrNull(_learner['learner_profile']);
     final city = _asNullableString(
-      profileMap?['city'] ?? _learner['city'] ?? _profile['city'],
+      profileMap?['city'] ??
+          learnerProfileMap?['city'] ??
+          _learner['city'] ??
+          _learner['requested_city'] ??
+          _profile['city'],
     );
     final age = _asNullableInt(
-      profileMap?['age'] ?? _learner['age'] ?? _profile['age'],
+      profileMap?['age'] ??
+          learnerProfileMap?['age'] ??
+          _learner['age'] ??
+          _learner['requested_age'] ??
+          _profile['age'],
     );
     final gender = _asNullableString(
-      profileMap?['gender'] ?? _learner['gender'] ?? _profile['gender'],
+      profileMap?['gender'] ??
+          learnerProfileMap?['gender'] ??
+          _learner['gender'] ??
+          _learner['requested_gender'] ??
+          _profile['gender'],
     );
     final classesTaken = _asNullableInt(
-      _learner['classes_taken_sofar'] ?? _learner['classes_taken'],
+      _learner['classes_taken_sofar'] ??
+          learnerProfileMap?['classes_taken_sofar'] ??
+          _learner['classes_taken'],
     );
-    final lastClassDate = _asNullableDate(_learner['last_class_date']);
+    final lastClassDate = _asNullableDate(
+      _learner['last_class_date'] ?? learnerProfileMap?['last_class_date'],
+    );
     final targetTestDate = _asNullableDate(
       _learner['target_test_date'] ??
+          learnerProfileMap?['target_test_date'] ??
           _learner['g1_test_date'] ??
           _learner['test_date'],
     );
@@ -1169,9 +1256,9 @@ class _VerifiedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.ocean.withOpacity(0.15),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.35)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1181,7 +1268,7 @@ class _VerifiedBadge extends StatelessWidget {
           Text(
             'Verified',
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.primary,
               fontWeight: FontWeight.w600,
               fontSize: 12,
             ),

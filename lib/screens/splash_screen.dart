@@ -11,7 +11,6 @@ import '../constants/app_spacing.dart';
 import '../services/launch_preferences.dart';
 import '../services/supabase_service.dart';
 import '../widgets/app_loading_indicator.dart';
-import '../widgets/brand_badge.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -22,8 +21,8 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  static const _postAnimationHold = Duration(milliseconds: 1800);
-  static const _navigationFallbackDelay = Duration(seconds: 4);
+  static const _postAnimationHold = Duration(milliseconds: 3300);
+  static const _navigationFallbackDelay = Duration(seconds: 6);
   static const _preferenceTimeout = Duration(seconds: 2);
   static const _routeResolutionTimeout = Duration(seconds: 10);
 
@@ -150,7 +149,13 @@ class _SplashScreenState extends State<SplashScreen>
                         scale: _scale,
                         child: ScaleTransition(
                           scale: _logoBounce,
-                          child: const BrandBadge(size: 280, contentScale: 1),
+                          child: Image.asset(
+                            'assets/images/splash-logo-animation.gif',
+                            width: 280,
+                            height: 280,
+                            fit: BoxFit.contain,
+                            gaplessPlayback: true,
+                          ),
                         ),
                       ),
                     ),

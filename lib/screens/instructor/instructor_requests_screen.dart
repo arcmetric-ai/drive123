@@ -295,14 +295,18 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     }
   }
 
-  Future<void> _markLearnerGraduated(Map<String, dynamic> learner) async {
+  Future<bool> _markLearnerGraduated(
+    Map<String, dynamic> learner, {
+    BuildContext? dialogContext,
+  }) async {
     final instructorId = SupabaseService.currentUser?.id;
     final learnerId = _learnerId(learner);
-    if (instructorId == null || learnerId == null) return;
+    if (instructorId == null || learnerId == null) return false;
 
     final name = _learnerName(learner);
+    final origin = dialogContext ?? context;
     final confirmed = await showDialog<bool>(
-          context: context,
+          context: origin,
           builder: (context) => AlertDialog(
             title: const Text('Mark as graduated?'),
             content: Text(
@@ -321,7 +325,7 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
           ),
         ) ??
         false;
-    if (!confirmed || !mounted) return;
+    if (!confirmed || !mounted) return false;
 
     try {
       await SupabaseService.markLearnerGraduated(
@@ -330,18 +334,20 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
         isExternalLearner: _isExternalLearner(learner),
       );
       await _load();
-      if (!mounted) return;
+      if (!mounted) return true;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$name moved to graduated learners.')),
       );
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to graduate $name: $error'),
           backgroundColor: AppColors.error,
         ),
       );
+      return false;
     }
   }
 
@@ -785,6 +791,8 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
         'onViewProfile': () => _openLearnerProfile(learner),
         'onRemoveLearner': (BuildContext origin) =>
             _removeLearner(learner, dialogContext: origin),
+        'onMarkGraduated': (BuildContext origin) =>
+            _markLearnerGraduated(learner, dialogContext: origin),
       },
     );
   }
@@ -804,7 +812,9 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     GoRouter.of(context).push(
       AppRoutes.instructorLearnerDetail,
       extra: {
+        ...learner,
         'profile_id': learnerId,
+        'id': learnerId,
         'name': _learnerName(learner),
         if (learner['status'] != null) 'status': learner['status'],
       },
@@ -1216,24 +1226,9 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
       if (age != null) '$age yrs',
       if (gender != null) _capitalize(gender),
     ].join(' • ');
-    final progress = _progressValue(learner);
-    final progressSummary = _progressSummary(learner);
     final nextLesson = _nextLessonLabel(learner);
     final isExternal = _isExternalLearner(learner);
     final isGraduated = _isGraduatedLearner(learner);
-    final transmission = _stringValue(learner['transmission_preference']) ??
-        _stringValue(
-            (learner['learner_profile'] as Map?)?['transmission_preference']) ??
-        _stringValue((learner['learner'] as Map?)?['transmission_preference']);
-    final progressLabel = isExternal
-        ? transmission == null
-            ? 'Not set'
-            : _capitalize(transmission)
-        : progress != null
-            ? '${(progress * 100).round()}%'
-            : 'Tracking soon';
-    final lessonsLabel =
-        isExternal ? 'Offline learner' : progressSummary ?? 'No stats yet';
     final nextLessonLabel =
         nextLesson != null ? 'Next: $nextLesson' : 'Next: TBD';
     final learnerId = _learnerId(learner);
@@ -1311,14 +1306,6 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                           ],
                         ],
                       ),
-                      if (focusLabel != null) ...[
-                        const SizedBox(height: 4),
-                        _FocusBadge(
-                          label: focusLabel,
-                          backgroundColor: colors.pillBackground,
-                          foregroundColor: colors.accent,
-                        ),
-                      ],
                       if (demographics.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -1334,71 +1321,41 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                     ],
                   ),
                 ),
-                IconButton(
-                  onPressed:
-                      isRemoving ? null : () => _openLearnerOverview(learner),
-                  icon: isRemoving
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(colors.accent),
-                          ),
-                        )
-                      : const Icon(Icons.chevron_right),
-                  color: colors.accent,
-                ),
+                const SizedBox(width: 10),
+                if (isRemoving)
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(colors.accent),
+                    ),
+                  )
+                else if (focusLabel != null)
+                  _FocusBadge(
+                    label: focusLabel,
+                    backgroundColor: colors.pillBackground,
+                    foregroundColor: colors.accent,
+                  ),
               ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                Icon(Icons.trending_up, size: 18, color: colors.accent),
-                const SizedBox(width: 8),
-                const Text(
-                  'Progress',
-                  style: TextStyle(
-                    color: Colors.black54,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  progressLabel,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: colors.accent,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: progress ?? 0,
-                minHeight: 5,
-                backgroundColor: colors.surfaceStrong,
-                valueColor: AlwaysStoppedAnimation(colors.accent),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
                 Expanded(
                   child: _InlineInfo(
-                    icon: Icons.menu_book_outlined,
-                    value: lessonsLabel,
+                    icon: Icons.calendar_today_outlined,
+                    value: nextLessonLabel,
                     color: colors.accent,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _InlineInfo(
-                    icon: Icons.calendar_today_outlined,
-                    value: nextLessonLabel,
+                    icon: isExternal
+                        ? Icons.person_off_outlined
+                        : Icons.verified_user_outlined,
+                    value: isExternal ? 'Offline learner' : 'App learner',
                     color: colors.accent,
                   ),
                 ),
@@ -1463,56 +1420,27 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                 ),
               ],
             ),
-            if (isExternal || !isGraduated) ...[
+            if (isExternal) ...[
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  if (isExternal)
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: isRemoving
-                            ? null
-                            : () => _showEditExternalLearnerSheet(learner),
-                        icon: const Icon(Icons.event_available_outlined),
-                        label: const Text('Edit availability'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: colors.accent,
-                          side: BorderSide(color: colors.border),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (isExternal && !isGraduated) const SizedBox(width: 12),
-                  if (!isGraduated)
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: isRemoving
-                            ? null
-                            : () => _markLearnerGraduated(learner),
-                        icon: const Icon(Icons.school_outlined),
-                        label: const Text('Graduated'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF0B7A3B),
-                          side: const BorderSide(color: Color(0xFFB7E4C7)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+              OutlinedButton.icon(
+                onPressed: isRemoving
+                    ? null
+                    : () => _showEditExternalLearnerSheet(learner),
+                icon: const Icon(Icons.event_available_outlined),
+                label: const Text('Edit availability'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: colors.accent,
+                  side: BorderSide(color: colors.border),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  minimumSize: const Size.fromHeight(44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ],

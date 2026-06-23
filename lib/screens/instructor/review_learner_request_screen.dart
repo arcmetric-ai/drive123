@@ -110,16 +110,22 @@ class _ReviewLearnerRequestScreenState
   }
 
   void _openProfile() {
-    final learner = _request ?? {};
-    final learnerId = learner['learner_id'] as String? ??
-        (learner['learner'] as Map?)?['id'] as String?;
+    final request = _request ?? {};
+    final nestedLearner = request['learner'] is Map
+        ? Map<String, dynamic>.from(request['learner'] as Map)
+        : <String, dynamic>{};
+    final learnerId =
+        request['learner_id'] as String? ?? nestedLearner['id'] as String?;
     if (learnerId == null) return;
     GoRouter.of(context).push(
       AppRoutes.instructorLearnerDetail,
       extra: {
+        ...nestedLearner,
+        ...request,
         'profile_id': learnerId,
-        'name': _displayName(learner),
-        'status': (learner['status'] as String?) ?? 'pending',
+        'id': learnerId,
+        'name': _displayName(request),
+        'status': (request['status'] as String?) ?? 'pending',
       },
     );
   }
@@ -594,9 +600,18 @@ class _ReviewLearnerRequestScreenState
                                     backgroundColor: AppColors.success,
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
-                                        vertical: 14),
+                                      vertical: 18,
+                                    ),
+                                    minimumSize: const Size.fromHeight(58),
+                                    textStyle: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
-                                  icon: const Icon(Icons.check_circle_outline),
+                                  icon: const Icon(
+                                    Icons.check_circle_outline,
+                                    size: 24,
+                                  ),
                                   label: _updating &&
                                           _pendingDecision == 'accepted'
                                       ? const SizedBox(
@@ -625,12 +640,21 @@ class _ReviewLearnerRequestScreenState
                                     foregroundColor: AppColors.error,
                                     side: const BorderSide(
                                       color: AppColors.error,
-                                      width: 1.2,
+                                      width: 2,
                                     ),
                                     padding: const EdgeInsets.symmetric(
-                                        vertical: 14),
+                                      vertical: 18,
+                                    ),
+                                    minimumSize: const Size.fromHeight(58),
+                                    textStyle: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
-                                  icon: const Icon(Icons.cancel_outlined),
+                                  icon: const Icon(
+                                    Icons.cancel_outlined,
+                                    size: 24,
+                                  ),
                                   label: _updating &&
                                           _pendingDecision == 'declined'
                                       ? const SizedBox(

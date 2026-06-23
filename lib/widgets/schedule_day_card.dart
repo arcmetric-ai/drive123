@@ -36,11 +36,11 @@ class ScheduleDayCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadii.lg),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        width: isSelected ? 112 : 96,
-        height: 152,
+        width: isSelected ? 86 : 78,
+        height: 108,
         padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.md,
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.sm,
         ),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.primary : AppColors.card,
@@ -64,16 +64,16 @@ class ScheduleDayCard extends StatelessWidget {
                     color: muted,
                   ),
                 ),
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   dayLabel,
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 24,
                     fontWeight: FontWeight.w800,
                     color: foreground,
                   ),
                 ),
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   weekdayLabel.toUpperCase(),
                   style: TextStyle(

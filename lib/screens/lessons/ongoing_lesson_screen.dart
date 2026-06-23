@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
+import '../../constants/app_radii.dart';
+import '../../constants/app_spacing.dart';
 import '../../models/lesson_model.dart';
 
 class OngoingLessonScreen extends StatefulWidget {
@@ -23,256 +25,314 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
 
   LessonModel get lesson => widget.lesson;
 
-  Future<void> _handleComplete() async {
-    if (widget.onMarkCompleted == null || _isCompleting) {
+  Future<void> _handlePrimaryAction() async {
+    if (widget.onMarkCompleted == null) {
       Navigator.pop(context, null);
       return;
     }
+    if (_isCompleting) return;
 
     setState(() => _isCompleting = true);
-
     LessonModel? updated;
     try {
       updated = await widget.onMarkCompleted!();
     } finally {
-      if (mounted) {
-        setState(() => _isCompleting = false);
-      }
+      if (mounted) setState(() => _isCompleting = false);
     }
 
     if (!mounted) return;
-
     if (updated == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-              'Something went wrong. Please try marking the lesson again.'),
+          content: Text('Unable to mark the lesson complete. Try again.'),
           backgroundColor: AppColors.error,
         ),
       );
       return;
     }
-
     Navigator.pop(context, updated);
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateFormatter = DateFormat('EEEE, MMMM d, y');
-    final timeFormatter = DateFormat.jm();
-    String startTimeDisplay;
-    try {
-      startTimeDisplay =
-          timeFormatter.format(DateFormat('HH:mm').parse(lesson.startTime));
-    } catch (_) {
-      startTimeDisplay = lesson.startTime;
-    }
+    final dateLabel =
+        DateFormat('EEEE, MMMM d, y').format(lesson.scheduledDate.toLocal());
+    final timeLabel =
+        '${_formatClockLabel(lesson.startTime)} - ${_formatClockLabel(lesson.endTime)}';
+    final durationMinutes = (lesson.duration * 60).round();
+    final focusLabel = _focusLabel();
+    final notes = lesson.notes?.trim();
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(
-          widget.onMarkCompleted == null ? 'Lesson Details' : 'Ongoing Lesson',
-        ),
-        backgroundColor: Colors.transparent,
+        title: const Text('Lesson Details'),
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.foreground,
         elevation: 0,
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildInstructorHeader(),
-              const SizedBox(height: 24),
-              _buildInfoTile(
-                icon: Icons.calendar_today,
-                title: 'Today’s Session',
-                value: dateFormatter.format(lesson.scheduledDate),
-              ),
-              const SizedBox(height: 12),
-              _buildInfoTile(
-                icon: Icons.schedule,
-                title: 'Time Window',
-                value:
-                    '${lesson.startTime} - ${lesson.endTime} (${lesson.duration} hrs)',
-              ),
-              const SizedBox(height: 12),
-              _buildInfoTile(
-                icon: Icons.access_time_filled,
-                title: 'Started At',
-                value: startTimeDisplay,
-              ),
-              if (lesson.location != null) ...[
-                const SizedBox(height: 12),
-                _buildInfoTile(
-                  icon: Icons.location_on,
-                  title: 'Meeting Point',
-                  value: lesson.location!,
-                ),
-              ],
-              if (lesson.notes != null && lesson.notes!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _buildInfoTile(
-                  icon: Icons.sticky_note_2_outlined,
-                  title: 'Session Notes',
-                  value: lesson.notes!,
-                ),
-              ],
-              const SizedBox(height: 24),
-              Card(
-                elevation: 0,
-                color: AppColors.ocean.withOpacity(0.08),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.info_outline,
-                        color: AppColors.ocean,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Focus on your driving – we’re keeping track of this session in the background.',
-                          style: TextStyle(
-                            color: AppColors.ocean.withOpacity(0.9),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
                 children: [
-                  ElevatedButton(
-                    onPressed: _isCompleting ? null : _handleComplete,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.ocean,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isCompleting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            widget.onMarkCompleted == null
-                                ? 'Close'
-                                : 'Mark Lesson Complete',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                  _buildHeader(),
+                  const SizedBox(height: 22),
+                  _InfoTile(
+                    icon: Icons.calendar_month_rounded,
+                    label: 'Date',
+                    value: dateLabel,
                   ),
                   const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: _isCompleting
-                        ? null
-                        : () => Navigator.pop(context, null),
-                    child: const Text('Close'),
+                  _InfoTile(
+                    icon: Icons.schedule_rounded,
+                    label: 'Time',
+                    value: '$timeLabel ($durationMinutes mins)',
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoTile(
+                    icon: Icons.track_changes_rounded,
+                    label: 'Training focus',
+                    value: focusLabel,
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoTile(
+                    icon: Icons.location_on_rounded,
+                    label: 'Pickup location',
+                    value: lesson.location ?? 'Location to be confirmed',
+                  ),
+                  if (notes != null && notes.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _InfoTile(
+                      icon: Icons.sticky_note_2_rounded,
+                      label: 'Instructor notes',
+                      value: notes,
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(AppRadii.md),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: AppColors.primary,
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Your instructor manages lesson changes. Contact them directly if the lesson is within 72 hours.',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w600,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInstructorHeader() {
-    final instructor = lesson.instructor.user;
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 28,
-          backgroundColor: AppColors.ocean.withOpacity(0.15),
-          child: Text(
-            '${instructor.firstName[0]}${instructor.lastName[0]}',
-            style: const TextStyle(
-              color: AppColors.ocean,
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
             ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${instructor.firstName} ${instructor.lastName}',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Session cost \$${lesson.cost.toStringAsFixed(0)}',
-              style: TextStyle(
-                color: Colors.grey[600],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 18),
+              child: SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isCompleting ? null : _handlePrimaryAction,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.primaryForeground,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadii.md),
+                    ),
+                  ),
+                  child: _isCompleting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          widget.onMarkCompleted == null
+                              ? 'Close'
+                              : 'Mark Lesson Complete',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
               ),
             ),
           ],
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildInfoTile({
-    required IconData icon,
-    required String title,
-    required String value,
-  }) {
+  Widget _buildHeader() {
+    final instructor = lesson.instructor.user;
+    final name = '${instructor.firstName} ${instructor.lastName}'.trim();
+    final image = instructor.profileImageUrl?.trim();
+    final hasImage = image != null && image.isNotEmpty;
+    final initials = _initials(
+      instructor.firstName,
+      instructor.lastName,
+      instructor.email,
+    );
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
+        gradient: AppColors.primaryGradient,
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            color: AppColors.ocean,
+          CircleAvatar(
+            radius: 34,
+            backgroundColor: Colors.white.withValues(alpha: 0.18),
+            backgroundImage: hasImage ? NetworkImage(image) : null,
+            child: hasImage
+                ? null
+                : Text(
+                    initials,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
+                  name.isEmpty ? instructor.email : name,
                   style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ocean,
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
+                Text(
+                  lesson.isInProgress ? 'In progress' : 'Scheduled lesson',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _focusLabel() {
+    final focus = lesson.focus?.trim();
+    if (focus == null || focus.isEmpty) return 'Training session';
+    final normalized = focus.toLowerCase();
+    if (normalized.contains('g2')) return 'G2 preparation';
+    if (normalized == 'g' || normalized.contains('g prep')) {
+      return 'G preparation';
+    }
+    if (normalized.contains('refresh') || normalized == 'pr') {
+      return 'Practice refresher';
+    }
+    return focus;
+  }
+
+  String _formatClockLabel(String raw) {
+    final formats = <DateFormat>[
+      DateFormat('h:mm a'),
+      DateFormat('hh:mm a'),
+      DateFormat('H:mm'),
+      DateFormat('HH:mm'),
+      DateFormat('HH:mm:ss'),
+    ];
+    for (final format in formats) {
+      try {
+        return DateFormat('h:mm a').format(format.parse(raw.trim()));
+      } catch (_) {}
+    }
+    return raw.trim();
+  }
+
+  String _initials(String first, String last, String email) {
+    if (first.isNotEmpty && last.isNotEmpty) {
+      return '${first[0]}${last[0]}'.toUpperCase();
+    }
+    if (first.isNotEmpty) return first[0].toUpperCase();
+    if (email.isNotEmpty) return email[0].toUpperCase();
+    return 'DT';
+  }
+}
+
+class _InfoTile extends StatelessWidget {
+  const _InfoTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.grey50,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.primary, size: 24),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
                 Text(
                   value,
                   style: const TextStyle(
-                    fontSize: 15,
-                    color: Colors.black87,
+                    color: AppColors.foreground,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
                   ),
                 ),
               ],

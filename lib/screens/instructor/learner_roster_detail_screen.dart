@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../constants/app_colors.dart';
+import '../../models/learner_progress.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/glass_panel.dart';
 
@@ -12,6 +13,7 @@ class InstructorLearnerRosterPreviewScreen extends StatefulWidget {
     this.availabilityLines,
     this.onViewProfile,
     this.onRemoveLearner,
+    this.onMarkGraduated,
   });
 
   final Map<String, dynamic>? learner;
@@ -19,6 +21,7 @@ class InstructorLearnerRosterPreviewScreen extends StatefulWidget {
   final List<String>? availabilityLines;
   final VoidCallback? onViewProfile;
   final Future<bool> Function(BuildContext context)? onRemoveLearner;
+  final Future<bool> Function(BuildContext context)? onMarkGraduated;
 
   @override
   State<InstructorLearnerRosterPreviewScreen> createState() =>
@@ -58,6 +61,10 @@ class _InstructorLearnerRosterPreviewScreenState
   String? _phone;
   bool _loadingPhone = false;
   bool _removing = false;
+  bool _graduating = false;
+  bool _loadingProgress = false;
+  List<LearnerProgressSkill> _progressSkills = defaultLearnerProgressSkills();
+  String? _progressSavingSkillId;
 
   @override
   void initState() {
@@ -67,6 +74,7 @@ class _InstructorLearnerRosterPreviewScreenState
       _learner['phone'] ??= summaryPhone.trim();
     }
     _resolvePhone();
+    _loadProgress();
   }
 
   Future<void> _resolvePhone() async {
@@ -116,6 +124,50 @@ class _InstructorLearnerRosterPreviewScreenState
     return null;
   }
 
+  bool _isExternalLearner() {
+    final value = _learner['is_external_learner'] ?? _learner['is_offline'];
+    if (value == true) return true;
+    return _learner['external_learner_id'] != null;
+  }
+
+  bool _isGraduated() {
+    final profile = _learner['learner'] as Map?;
+    final candidates = [
+      _learner['status'],
+      _learner['learning_status'],
+      _learner['learner_status'],
+      _learner['progress_status'],
+      profile?['status'],
+    ];
+    for (final candidate in candidates) {
+      final value = _stringValue(candidate)?.toLowerCase();
+      if (value == null) continue;
+      if (value.contains('graduated') ||
+          value.contains('completed') ||
+          value.contains('passed')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _loadProgress() async {
+    final learnerId = _learnerId();
+    if (learnerId == null || _isExternalLearner()) return;
+    setState(() => _loadingProgress = true);
+    try {
+      final rows = await SupabaseService.getLearnerSkillProgress(learnerId);
+      if (!mounted) return;
+      setState(() {
+        _progressSkills = learnerProgressSkillsFromRows(rows);
+        _loadingProgress = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingProgress = false);
+    }
+  }
+
   String _name() {
     return (_summary['name'] as String?)?.trim().isNotEmpty == true
         ? (_summary['name'] as String)
@@ -141,7 +193,8 @@ class _InstructorLearnerRosterPreviewScreenState
     return _stringValue(avatar);
   }
 
-  Map<String, List<String>> _buildAvailabilityMap(Map<String, dynamic> learner) {
+  Map<String, List<String>> _buildAvailabilityMap(
+      Map<String, dynamic> learner) {
     final availability =
         learner['weekly_availability'] as Map<String, List<dynamic>>?;
     if (availability == null || availability.isEmpty) {
@@ -213,11 +266,75 @@ class _InstructorLearnerRosterPreviewScreenState
     setState(() => _removing = false);
   }
 
+  Future<void> _handleGraduated() async {
+    final callback = widget.onMarkGraduated;
+    if (callback == null || _graduating) return;
+    setState(() => _graduating = true);
+    final graduated = await callback(context);
+    if (!mounted) return;
+    setState(() => _graduating = false);
+    if (graduated) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _updateSkillProgress(
+    LearnerProgressSkill skill,
+    LearnerSkillStatus status,
+  ) async {
+    final learnerId = _learnerId();
+    if (learnerId == null || _progressSavingSkillId != null) return;
+
+    final previousSkills = List<LearnerProgressSkill>.from(_progressSkills);
+    final now = DateTime.now().toUtc();
+    setState(() {
+      _progressSavingSkillId = skill.id;
+      _progressSkills = _progressSkills.map((item) {
+        if (item.id != skill.id) return item;
+        return item.copyWith(
+          status: status,
+          completedAt: status.isTestReady ? now : null,
+          updatedAt: now,
+        );
+      }).toList();
+    });
+
+    try {
+      await SupabaseService.upsertLearnerSkillProgress(
+        userId: learnerId,
+        skillId: skill.id,
+        status: status.storageValue,
+        updatedByRole: 'instructor',
+      );
+      if (!mounted) return;
+      setState(() => _progressSavingSkillId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${skill.name} set to ${status.label}.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _progressSkills = previousSkills;
+        _progressSavingSkillId = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to update progress: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final demographics = _buildDemographics();
     final availabilityMap = _buildAvailabilityMap(_learner).entries.toList()
       ..sort((a, b) => _dayIndex(a.key).compareTo(_dayIndex(b.key)));
+    final isGraduated = _isGraduated();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Learner Details'),
@@ -357,14 +474,51 @@ class _InstructorLearnerRosterPreviewScreenState
                           ],
                         ),
                       ),
+                      const SizedBox(height: 20),
+                      _buildProgressPanel(),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
                 children: [
-                  Expanded(
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: widget.onMarkGraduated == null ||
+                              _graduating ||
+                              isGraduated
+                          ? null
+                          : _handleGraduated,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF0B7A3B),
+                        side: const BorderSide(
+                          color: Color(0xFFB7E4C7),
+                          width: 1.2,
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      icon: _graduating
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.school_outlined),
+                      label: Text(
+                        isGraduated
+                            ? 'Graduated'
+                            : _graduating
+                                ? 'Graduating...'
+                                : 'Mark Graduated',
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: (MediaQuery.of(context).size.width - 52) / 2,
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.primaryBlue,
@@ -378,8 +532,8 @@ class _InstructorLearnerRosterPreviewScreenState
                       label: const Text('View Profile'),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
+                  SizedBox(
+                    width: (MediaQuery.of(context).size.width - 52) / 2,
                     child: OutlinedButton.icon(
                       onPressed: widget.onRemoveLearner == null || _removing
                           ? null
@@ -413,6 +567,85 @@ class _InstructorLearnerRosterPreviewScreenState
     );
   }
 
+  Widget _buildProgressPanel() {
+    if (_isExternalLearner()) {
+      return GlassPanel(
+        borderRadius: BorderRadius.circular(28),
+        opacity: 0.12,
+        padding: const EdgeInsets.all(20),
+        child: const Text(
+          'Progress tracking is available for app learners.',
+          style: TextStyle(color: Colors.black54),
+        ),
+      );
+    }
+
+    final readyCount =
+        _progressSkills.where((skill) => skill.status.isTestReady).length;
+    final progress = _progressSkills.isEmpty
+        ? 0.0
+        : _progressSkills.fold<double>(
+              0,
+              (sum, skill) => sum + skill.status.score,
+            ) /
+            _progressSkills.length;
+
+    return GlassPanel(
+      borderRadius: BorderRadius.circular(28),
+      opacity: 0.12,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Progress & focus areas',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primaryBlue,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_loadingProgress)
+            const Center(child: CircularProgressIndicator())
+          else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: LinearProgressIndicator(
+                    value: progress.clamp(0, 1),
+                    minHeight: 8,
+                    backgroundColor: AppColors.grey200,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      AppColors.primaryBlue,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '$readyCount/${_progressSkills.length} ready',
+                  style: const TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final skill in _progressSkills) ...[
+              _ProgressSkillEditorTile(
+                skill: skill,
+                isSaving: _progressSavingSkillId == skill.id,
+                onChanged: (status) => _updateSkillProgress(skill, status),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
   String? _buildDemographics() {
     final age = _age();
     final gender = _gender();
@@ -422,6 +655,103 @@ class _InstructorLearnerRosterPreviewScreenState
     if (age != null) return '$age yrs';
     if (gender != null) return _capitalize(gender);
     return null;
+  }
+}
+
+class _ProgressSkillEditorTile extends StatelessWidget {
+  const _ProgressSkillEditorTile({
+    required this.skill,
+    required this.isSaving,
+    required this.onChanged,
+  });
+
+  final LearnerProgressSkill skill;
+  final bool isSaving;
+  final ValueChanged<LearnerSkillStatus> onChanged;
+
+  Color get _statusColor {
+    switch (skill.status) {
+      case LearnerSkillStatus.notStarted:
+        return Colors.grey;
+      case LearnerSkillStatus.practicing:
+        return AppColors.info;
+      case LearnerSkillStatus.confident:
+        return AppColors.warning;
+      case LearnerSkillStatus.testReady:
+        return AppColors.success;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.grey200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(skill.icon, color: _statusColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      skill.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      skill.description,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSaving)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<LearnerSkillStatus>(
+            initialValue: skill.status,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+            ),
+            items: LearnerSkillStatus.values
+                .map(
+                  (status) => DropdownMenuItem(
+                    value: status,
+                    child: Text(status.label),
+                  ),
+                )
+                .toList(),
+            onChanged: isSaving
+                ? null
+                : (status) {
+                    if (status != null && status != skill.status) {
+                      onChanged(status);
+                    }
+                  },
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -469,8 +799,8 @@ class _AvailabilityPill extends StatelessWidget {
             children: slots
                 .map(
                   (slot) => Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(999),

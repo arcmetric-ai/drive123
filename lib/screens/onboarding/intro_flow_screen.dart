@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
@@ -17,22 +16,25 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
   final PageController _pageController = PageController();
   final List<_IntroPageData> _pages = const [
     _IntroPageData(
-      title: 'Schedule lessons with certified instructors',
+      title: 'Your availability. Instructor books. You drive.',
       subtitle:
-          'Stay on track by booking verified instructors and managing lessons from one place.',
-      imageAsset: 'assets/images/schedule.svg',
+          'Share when you are available, then receive confirmed lesson details from verified instructors.',
+      imageAsset: 'assets/images/onboarding_availability.jpg',
+      imageAspectRatio: 0.68,
     ),
     _IntroPageData(
-      title: 'Discover lessons',
+      title: 'Book driving lessons that fit your schedule',
       subtitle:
-          'Browse lesson types, compare instructors, and book what best fits your goals.',
-      imageAsset: 'assets/images/l2.svg',
+          'Choose your preferences, get schedule updates, and stay ready with reminders.',
+      imageAsset: 'assets/images/onboarding_schedule.jpg',
+      imageAspectRatio: 0.68,
     ),
     _IntroPageData(
-      title: 'Welcome to Drive Tutor',
+      title: 'Track skills. Build confidence.',
       subtitle:
-          'Get started and follow an end-to-end journey that builds confidence behind the wheel.',
-      imageAsset: 'assets/images/cart.svg',
+          'See what is ready, what needs work, and stay test-ready with every lesson.',
+      imageAsset: 'assets/images/onboarding_progress.jpg',
+      imageAspectRatio: 0.68,
     ),
   ];
 
@@ -78,7 +80,7 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
       decoration: BoxDecoration(
         color: isActive
             ? AppColors.ocean
-            : AppColors.ocean.withOpacity(isActive ? 1 : 0.15),
+            : AppColors.ocean.withValues(alpha: isActive ? 1 : 0.15),
         borderRadius: BorderRadius.circular(16),
       ),
     );
@@ -107,6 +109,7 @@ class _IntroFlowScreenState extends State<IntroFlowScreen> {
                       title: page.title,
                       subtitle: page.subtitle,
                       imageAsset: page.imageAsset,
+                      imageAspectRatio: page.imageAspectRatio,
                       isActive: index == _currentPage,
                     );
                   },
@@ -152,68 +155,44 @@ class _IntroSlide extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.imageAsset,
+    required this.imageAspectRatio,
     required this.isActive,
   });
 
   final String title;
   final String subtitle;
-  final String imageAsset;
+  final String? imageAsset;
+  final double imageAspectRatio;
   final bool isActive;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final screenWidth = MediaQuery.of(context).size.width;
-    final double artSize = (screenWidth * 0.9).clamp(340.0, 520.0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title.toUpperCase(),
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          subtitle,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.7),
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: 32),
-        Expanded(
-          child: Center(
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOut,
-              opacity: isActive ? 1 : 0.35,
-              child: AnimatedScale(
-                duration: const Duration(milliseconds: 450),
-                curve: Curves.easeOutBack,
-                scale: isActive ? 1 : 0.85,
-                child: SizedBox(
-                  height: artSize,
-                  width: artSize,
-                  child: ClipOval(
-                    child: Container(
-                      color: AppColors.dreamy.withOpacity(0.08),
-                      padding: const EdgeInsets.all(12),
-                      child: SvgPicture.asset(
-                        imageAsset,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
+    return Semantics(
+      label: '$title. $subtitle',
+      image: true,
+      child: Center(
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+          opacity: isActive ? 1 : 0.35,
+          child: AnimatedScale(
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeOutBack,
+            scale: isActive ? 1 : 0.9,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: AspectRatio(
+                aspectRatio: imageAspectRatio,
+                child: Image.asset(
+                  imageAsset!,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
                 ),
               ),
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -254,7 +233,7 @@ class _NavCircleButton extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 12,
                   offset: const Offset(0, 6),
                 ),
@@ -276,10 +255,12 @@ class _IntroPageData {
   const _IntroPageData({
     required this.title,
     required this.subtitle,
-    required this.imageAsset,
+    this.imageAsset,
+    this.imageAspectRatio = 9 / 16,
   });
 
   final String title;
   final String subtitle;
-  final String imageAsset;
+  final String? imageAsset;
+  final double imageAspectRatio;
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
+import '../../constants/app_radii.dart';
 import '../../services/app_notifier.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/learner_color_utils.dart';
@@ -17,7 +18,7 @@ class InstructorAvailabilityScreen extends StatefulWidget {
 
 class _InstructorAvailabilityScreenState
     extends State<InstructorAvailabilityScreen> {
-  static const List<int> _slotHours = [
+  static const List<int> _standardSlotHours = [
     7,
     8,
     9,
@@ -32,6 +33,13 @@ class _InstructorAvailabilityScreenState
     18,
     19,
     20,
+  ];
+  static const List<int> _afterHoursSlotHours = [
+    5,
+    6,
+    21,
+    22,
+    23,
   ];
   static const Color _scheduledBaseColor = AppColors.primaryBlue;
   static const Color _draftBaseColor = AppColors.golden;
@@ -50,6 +58,7 @@ class _InstructorAvailabilityScreenState
   bool _loading = true;
   bool _sending = false;
   bool _error = false;
+  bool _showAfterHours = false;
   int _weekOffset = 0;
   DateTime _weekStart = _startOfWeek(DateTime.now());
 
@@ -186,7 +195,11 @@ class _InstructorAvailabilityScreenState
   DateTime get _weekEnd => _weekStart.add(const Duration(days: 6));
 
   List<DateTime> _generateSlotsForDay(DateTime day) {
-    return _slotHours
+    final hours = [
+      if (_showAfterHours) ..._afterHoursSlotHours,
+      ..._standardSlotHours,
+    ]..sort();
+    return hours
         .map((hour) => DateTime(day.year, day.month, day.day, hour))
         .toList();
   }
@@ -207,14 +220,70 @@ class _InstructorAvailabilityScreenState
     return const _SlotSnapshot.empty();
   }
 
+  List<_ScheduledSlot> _slotsForHour(DateTime hourStart) {
+    final hourEnd = hourStart.add(const Duration(hours: 1));
+    return [
+      ..._committedSlots,
+      ..._draftSlots,
+    ].where((slot) => slot.overlaps(hourStart, hourEnd)).toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+  }
+
+  List<DateTime> _quarterStarts(DateTime hourStart) {
+    return List.generate(
+      4,
+      (index) => hourStart.add(Duration(minutes: index * 15)),
+    );
+  }
+
+  bool _hasSlotOverlap(
+    DateTime start,
+    int durationMinutes, {
+    _ScheduledSlot? excluding,
+  }) {
+    final end = start.add(Duration(minutes: durationMinutes));
+    for (final slot in [..._committedSlots, ..._draftSlots]) {
+      if (identical(slot, excluding)) continue;
+      if (slot.overlaps(start, end)) return true;
+    }
+    return false;
+  }
+
+  bool _hasOpenQuarter(DateTime hourStart) {
+    return _quarterStarts(hourStart).any(
+      (start) => !_hasSlotOverlap(start, 15),
+    );
+  }
+
   Future<void> _handleSlotTap(DateTime slotStart) async {
-    final snapshot = _resolveSlot(slotStart);
-    if (snapshot.state == _SlotState.committed) {
-      await _showCommittedSlotDetails(snapshot.slot!);
+    final hourSlots = _slotsForHour(slotStart);
+    _ScheduledSlot? draftAtHourStart;
+    _ScheduledSlot? firstCommitted;
+    for (final slot in hourSlots) {
+      if (slot.isDraft && slot.start.isAtSameMomentAs(slotStart)) {
+        draftAtHourStart = slot;
+      }
+      if (!slot.isDraft && firstCommitted == null) {
+        firstCommitted = slot;
+      }
+    }
+    if (hourSlots.isNotEmpty && !_hasOpenQuarter(slotStart)) {
+      if (firstCommitted != null) {
+        await _showCommittedSlotDetails(firstCommitted);
+        return;
+      }
+    }
+
+    if (hourSlots.length == 1 &&
+        !hourSlots.first.isDraft &&
+        hourSlots.first.start.isAtSameMomentAs(slotStart) &&
+        hourSlots.first.durationMinutes >= 60) {
+      await _showCommittedSlotDetails(hourSlots.first);
       return;
     }
 
-    final availableLearners = _availableLearnersForSlot(slotStart);
+    final availableLearners = _learnerOptions.values.toList()
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
     if (availableLearners.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -224,7 +293,7 @@ class _InstructorAvailabilityScreenState
       return;
     }
 
-    final existing = snapshot.slot;
+    final existing = draftAtHourStart;
     final result = await showModalBottomSheet<_SlotDraftResult>(
       context: context,
       isScrollControlled: true,
@@ -234,6 +303,12 @@ class _InstructorAvailabilityScreenState
           slotStart: slotStart,
           learnerOptions: availableLearners,
           existing: existing,
+          existingHourSlots: hourSlots,
+          onExistingSlotTap: (slot) {
+            if (!slot.isDraft) {
+              _editCommittedLesson(slot);
+            }
+          },
         );
       },
     );
@@ -243,12 +318,14 @@ class _InstructorAvailabilityScreenState
     }
 
     setState(() {
-      _draftSlots.removeWhere((slot) => slot.start.isAtSameMomentAs(slotStart));
+      final resultStart = result.start ?? slotStart;
+      _draftSlots
+          .removeWhere((slot) => slot.start.isAtSameMomentAs(resultStart));
       if (!result.remove && result.learnerId != null) {
         final learner = _learnerOptions[result.learnerId]!;
         _draftSlots.add(
           _ScheduledSlot(
-            start: slotStart,
+            start: resultStart,
             durationMinutes: result.durationMinutes ?? 60,
             learnerId: learner.id,
             learnerName: learner.displayName,
@@ -269,8 +346,7 @@ class _InstructorAvailabilityScreenState
         return _CommittedSlotSheet(
           slot: slot,
           onCancel: () => _cancelLesson(slot),
-          onReplace: () => _replaceCommittedLesson(slot),
-          onMove: () => _moveCommittedLesson(slot),
+          onEdit: () => _editCommittedLesson(slot),
         );
       },
     );
@@ -498,34 +574,166 @@ class _InstructorAvailabilityScreenState
     }
   }
 
+  Future<void> _editCommittedLesson(_ScheduledSlot slot) async {
+    final lessonId = slot.lessonId;
+    if (lessonId == null) return;
+
+    final hourStart = DateTime(
+      slot.start.year,
+      slot.start.month,
+      slot.start.day,
+      slot.start.hour,
+    );
+    final hourSlots = _slotsForHour(hourStart);
+    var editableSlot = slot;
+    for (final candidate in hourSlots) {
+      if (slot.lessonId != null && candidate.lessonId == slot.lessonId) {
+        editableSlot = candidate;
+        break;
+      }
+      if (candidate.start.isAtSameMomentAs(slot.start) &&
+          candidate.learnerId == slot.learnerId) {
+        editableSlot = candidate;
+        break;
+      }
+    }
+
+    final availableLearners = _learnerOptions.values.toList()
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+    final hasCurrentLearner = availableLearners.any(
+      (learner) => learner.id == editableSlot.learnerId,
+    );
+    if (!hasCurrentLearner) {
+      availableLearners.insert(
+        0,
+        _LearnerOption(
+          id: editableSlot.learnerId,
+          displayName: editableSlot.learnerName,
+          colors: editableSlot.learnerColors,
+          weeklyAvailability: const {},
+          recurring: true,
+          preferredLocations: const [],
+          isExternalLearner: editableSlot.isExternalLearner,
+        ),
+      );
+    }
+
+    final result = await showModalBottomSheet<_SlotDraftResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        return _SlotEditorSheet(
+          slotStart: hourStart,
+          learnerOptions: availableLearners,
+          existing: editableSlot,
+          existingHourSlots: hourSlots,
+          onExistingSlotTap: (slot) {
+            if (!slot.isDraft) {
+              _editCommittedLesson(slot);
+            }
+          },
+          title: 'Edit lesson with ${editableSlot.learnerName}',
+          saveLabel: 'Save changes',
+        );
+      },
+    );
+    if (!mounted || result == null) return;
+
+    if (result.remove) {
+      await _cancelLesson(editableSlot);
+      return;
+    }
+
+    _LearnerOption? selectedLearner;
+    if (result.learnerId != null) {
+      for (final learner in availableLearners) {
+        if (learner.id == result.learnerId) {
+          selectedLearner = learner;
+          break;
+        }
+      }
+    }
+    if (selectedLearner == null) return;
+
+    final start = result.start ?? editableSlot.start;
+    final durationMinutes =
+        result.durationMinutes ?? editableSlot.durationMinutes;
+    final end = start.add(Duration(minutes: durationMinutes));
+    final durationHours = durationMinutes / 60.0;
+    final focus = _resolveFocusForLearner(selectedLearner.id);
+    final pickup = _resolvePickupForLearner(selectedLearner.id);
+    final cost = _deriveRate(_instructorProfile, focus) * durationHours;
+    final notes = result.notes?.trim();
+
+    setState(() => _loading = true);
+    try {
+      final updated = await SupabaseService.updateScheduledLesson(
+        lessonId: lessonId,
+        scheduledDate: start,
+        startTime: DateFormat('HH:mm').format(start),
+        endTime: DateFormat('HH:mm').format(end),
+        duration: durationHours,
+        cost: cost,
+        notes: notes != null && notes.isNotEmpty ? notes : null,
+        location: pickup,
+        focus: focus,
+        lessonDate: DateTime(start.year, start.month, start.day),
+      );
+      if (updated == null) {
+        throw Exception('Lesson could not be updated.');
+      }
+      await _loadWeekSchedule();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Lesson with ${selectedLearner.displayName} updated.',
+          ),
+        ),
+      );
+      AppNotifier.instance.notifyLessonsChanged();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to update lesson: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   List<_LearnerOption> _availableLearnersForSlot(DateTime slotStart) {
     final dayKey = DateFormat('EEEE').format(slotStart).toLowerCase();
     return _learnerOptions.values
         .where((option) => option.isAvailableForSlot(dayKey, slotStart, 15))
         .where(
-          (option) =>
-              !_learnerHasSlot(option.id, slotStart, includeDrafts: true),
+          (option) => !_learnerHasOverlap(option.id, slotStart, 15,
+              includeDrafts: true),
         )
         .toList()
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
   }
 
-  bool _learnerHasSlot(
+  bool _learnerHasOverlap(
     String learnerId,
-    DateTime slotStart, {
+    DateTime slotStart,
+    int durationMinutes, {
     bool includeDrafts = false,
   }) {
+    final slotEnd = slotStart.add(Duration(minutes: durationMinutes));
     for (final slot in _committedSlots) {
       if (slot.learnerId == learnerId &&
-          slot.start.isAtSameMomentAs(slotStart) &&
+          slot.overlaps(slotStart, slotEnd) &&
           !slot.isDraft) {
         return true;
       }
     }
     if (includeDrafts) {
       for (final slot in _draftSlots) {
-        if (slot.learnerId == learnerId &&
-            slot.start.isAtSameMomentAs(slotStart)) {
+        if (slot.learnerId == learnerId && slot.overlaps(slotStart, slotEnd)) {
           return true;
         }
       }
@@ -542,7 +750,9 @@ class _InstructorAvailabilityScreenState
       if (learner == null) continue;
       for (final candidate in _generateSlotsForDay(day)) {
         if (candidate.isAtSameMomentAs(slot.start)) continue;
-        if (_resolveSlot(candidate).state != _SlotState.empty) continue;
+        if (_hasSlotOverlap(candidate, slot.durationMinutes, excluding: slot)) {
+          continue;
+        }
         if (!learner.isAvailableForSlot(
           dayKey,
           candidate,
@@ -667,7 +877,20 @@ class _InstructorAvailabilityScreenState
                   children: [
                     _buildWeekSelector(),
                     const SizedBox(height: 8),
-                    _buildLegend(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildLegend(),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: _buildAfterHoursToggle(),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Expanded(
                       child: ListView.builder(
@@ -758,7 +981,7 @@ class _InstructorAvailabilityScreenState
   }
 
   Widget _buildLegend() {
-    Widget legendItem(Color color, String label) {
+    Widget legendItem(Color color, String label, {Color? borderColor}) {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -768,6 +991,8 @@ class _InstructorAvailabilityScreenState
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(4),
+              border:
+                  borderColor != null ? Border.all(color: borderColor) : null,
             ),
           ),
           const SizedBox(width: 6),
@@ -776,14 +1001,49 @@ class _InstructorAvailabilityScreenState
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      children: [
+        legendItem(_scheduledBaseColor.withOpacity(0.28), 'Scheduled'),
+        legendItem(_draftBaseColor.withOpacity(0.35), 'Draft'),
+        legendItem(
+          Colors.white,
+          'Available',
+          borderColor: _availableBaseColor,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAfterHoursToggle() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
+      decoration: BoxDecoration(
+        color: AppColors.grey50,
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        border: Border.all(color: AppColors.border),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          legendItem(_scheduledBaseColor.withOpacity(0.28), 'Scheduled'),
-          legendItem(_draftBaseColor.withOpacity(0.35), 'Draft'),
-          legendItem(_availableBaseColor.withOpacity(0.2), 'Available'),
+          const Text(
+            'After hours',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: AppColors.foreground,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Transform.scale(
+            scale: 0.72,
+            child: Switch.adaptive(
+              value: _showAfterHours,
+              activeColor: AppColors.primaryBlue,
+              onChanged: (value) => setState(() => _showAfterHours = value),
+            ),
+          ),
         ],
       ),
     );
@@ -813,7 +1073,11 @@ class _InstructorAvailabilityScreenState
   }
 
   Widget _buildSlotChip(DateTime day, DateTime slotStart) {
-    final snapshot = _resolveSlot(slotStart);
+    final hourSlots = _slotsForHour(slotStart);
+    final hasSlots = hourSlots.isNotEmpty;
+    final hasDraft = hourSlots.any((slot) => slot.isDraft);
+    final isFullyOccupied = !_hasOpenQuarter(slotStart);
+    final primarySlot = hasSlots ? hourSlots.first : null;
     final label = DateFormat('h:mm a').format(slotStart);
     Color background;
     Color borderColor;
@@ -823,47 +1087,27 @@ class _InstructorAvailabilityScreenState
     String? badgeLabel;
     String? subtitle;
 
-    switch (snapshot.state) {
-      case _SlotState.draft:
-        final colors = snapshot.slot!.learnerColors;
-        background = Color.alphaBlend(
-          _draftBaseColor.withOpacity(0.10),
-          colors.surface,
-        );
-        borderColor = Color.alphaBlend(
-          _draftBaseColor.withOpacity(0.22),
-          colors.border,
-        );
-        titleColor = colors.accentText;
-        subtitleColor = colors.accent;
-        badgeColor = _draftBaseColor;
-        badgeLabel = 'Draft';
-        subtitle =
-            '${snapshot.slot!.learnerName} \u2022 ${snapshot.slot!.durationMinutes}m';
-        break;
-      case _SlotState.committed:
-        final colors = snapshot.slot!.learnerColors;
-        background = Color.alphaBlend(
-          _scheduledBaseColor.withOpacity(0.08),
-          colors.surfaceStrong,
-        );
-        borderColor = Color.alphaBlend(
-          _scheduledBaseColor.withOpacity(0.18),
-          colors.border,
-        );
-        titleColor = colors.accentText;
-        subtitleColor = colors.accent;
-        badgeColor = _scheduledBaseColor;
-        badgeLabel = 'Booked';
-        subtitle =
-            '${snapshot.slot!.learnerName} \u2022 ${snapshot.slot!.durationMinutes}m';
-        break;
-      case _SlotState.empty:
-        background = _availableBaseColor.withOpacity(0.16);
-        borderColor = _availableBaseColor.withOpacity(0.5);
-        titleColor = Colors.black87;
-        subtitleColor = Colors.grey[600]!;
-        break;
+    if (hasSlots) {
+      final colors = primarySlot!.learnerColors;
+      background = Colors.white;
+      borderColor = isFullyOccupied
+          ? Color.alphaBlend(
+              _scheduledBaseColor.withOpacity(0.20),
+              colors.border,
+            )
+          : _availableBaseColor;
+      titleColor = colors.accentText;
+      subtitleColor = colors.accent;
+      badgeColor = hasDraft ? _draftBaseColor : _scheduledBaseColor;
+      badgeLabel = hasDraft ? 'Draft' : 'Booked';
+      subtitle = hourSlots.length == 1
+          ? '${primarySlot.learnerName} • ${primarySlot.durationMinutes}m'
+          : '${hourSlots.length} bookings • ${_openMinutesForHour(slotStart)}m open';
+    } else {
+      background = Colors.white;
+      borderColor = _availableBaseColor;
+      titleColor = Colors.black87;
+      subtitleColor = Colors.grey[600]!;
     }
 
     return GestureDetector(
@@ -874,18 +1118,20 @@ class _InstructorAvailabilityScreenState
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: borderColor),
+          border: Border.all(color: borderColor, width: hasSlots ? 1.5 : 2),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildHourSegmentBar(slotStart, hourSlots),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: Text(
                     label,
                     style: TextStyle(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: titleColor,
                     ),
                   ),
@@ -904,7 +1150,7 @@ class _InstructorAvailabilityScreenState
                       badgeLabel,
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                         color: badgeColor,
                       ),
                     ),
@@ -915,12 +1161,12 @@ class _InstructorAvailabilityScreenState
               const SizedBox(height: 4),
               Text(
                 subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
                   color: subtitleColor,
-                  fontWeight: snapshot.state == _SlotState.empty
-                      ? FontWeight.w500
-                      : FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ] else ...[
@@ -934,6 +1180,69 @@ class _InstructorAvailabilityScreenState
         ),
       ),
     );
+  }
+
+  int _openMinutesForHour(DateTime hourStart) {
+    return _quarterStarts(hourStart)
+            .where((start) => !_hasSlotOverlap(start, 15))
+            .length *
+        15;
+  }
+
+  Widget _buildHourSegmentBar(DateTime hourStart, List<_ScheduledSlot> slots) {
+    final quarterStarts = _quarterStarts(hourStart);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        height: 8,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: _availableBaseColor.withOpacity(0.45)),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          children: [
+            for (var index = 0; index < quarterStarts.length; index++)
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _segmentColorForQuarter(quarterStarts[index], slots),
+                    border: index == 0
+                        ? null
+                        : Border(
+                            left: BorderSide(
+                              color: Colors.black,
+                              width: 1.2,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _segmentColorForQuarter(
+    DateTime quarterStart,
+    List<_ScheduledSlot> slots,
+  ) {
+    final quarterEnd = quarterStart.add(const Duration(minutes: 15));
+    _ScheduledSlot? slot;
+    for (final entry in slots) {
+      if (entry.overlaps(quarterStart, quarterEnd)) {
+        slot = entry;
+        break;
+      }
+    }
+    if (slot == null) return Colors.white;
+    return slot.isDraft
+        ? Color.alphaBlend(
+            _draftBaseColor.withOpacity(0.28),
+            slot.learnerColors.accent,
+          )
+        : slot.learnerColors.accent;
   }
 
   static String? _availabilityWindowForTime(DateTime slotStart) {
@@ -1203,6 +1512,12 @@ class _ScheduledSlot {
   final bool isExternalLearner;
   final String? notes;
 
+  DateTime get end => start.add(Duration(minutes: durationMinutes));
+
+  bool overlaps(DateTime rangeStart, DateTime rangeEnd) {
+    return start.isBefore(rangeEnd) && end.isAfter(rangeStart);
+  }
+
   _ScheduledSlot copyWith({
     DateTime? start,
     int? durationMinutes,
@@ -1241,9 +1556,20 @@ class _ScheduledSlot {
 
     final startTime = row['start_time']?.toString();
     final start = _combineDateAndTime(scheduledAt, startTime) ?? scheduledAt;
-
-    final durationHours = (row['duration_hours'] as num?)?.toDouble() ?? 1.0;
-    final durationMinutes = (durationHours * 60).round();
+    final endTime = row['end_time']?.toString();
+    final parsedEnd = _combineDateAndTime(scheduledAt, endTime);
+    var durationMinutes = 60;
+    if (parsedEnd != null && parsedEnd.isAfter(start)) {
+      durationMinutes = parsedEnd.difference(start).inMinutes;
+    } else if (row['duration_minutes'] is num) {
+      durationMinutes = (row['duration_minutes'] as num).round();
+    } else {
+      final durationHours = (row['duration_hours'] as num?)?.toDouble() ?? 1.0;
+      durationMinutes = (durationHours * 60).round();
+    }
+    if (durationMinutes <= 0) {
+      durationMinutes = 60;
+    }
     final learner = row['learner'] as Map<String, dynamic>? ?? const {};
     final first = (learner['first_name'] as String?)?.trim() ?? '';
     final last = (learner['last_name'] as String?)?.trim() ?? '';
@@ -1305,6 +1631,8 @@ class _SlotEditorSheet extends StatefulWidget {
     this.title,
     this.saveLabel = 'Save',
     this.existing,
+    this.existingHourSlots = const [],
+    this.onExistingSlotTap,
   });
 
   final DateTime slotStart;
@@ -1312,25 +1640,69 @@ class _SlotEditorSheet extends StatefulWidget {
   final String? title;
   final String saveLabel;
   final _ScheduledSlot? existing;
+  final List<_ScheduledSlot> existingHourSlots;
+  final ValueChanged<_ScheduledSlot>? onExistingSlotTap;
 
   @override
   State<_SlotEditorSheet> createState() => _SlotEditorSheetState();
 }
 
 class _SlotEditorSheetState extends State<_SlotEditorSheet> {
+  late DateTime _selectedStart;
   late String? _selectedLearnerId;
   late int _selectedDuration;
   late TextEditingController _notesController;
   late TextEditingController _learnerSearchController;
   String _learnerSearchQuery = '';
 
+  List<DateTime> get _quarterStarts {
+    return List.generate(
+      4,
+      (index) => widget.slotStart.add(Duration(minutes: index * 15)),
+    );
+  }
+
+  bool _isExistingSlot(_ScheduledSlot slot) {
+    final existing = widget.existing;
+    if (existing == null) return false;
+    if (identical(slot, existing)) return true;
+    if (existing.lessonId != null && slot.lessonId == existing.lessonId) {
+      return true;
+    }
+    return slot.start.isAtSameMomentAs(existing.start) &&
+        slot.learnerId == existing.learnerId &&
+        slot.durationMinutes == existing.durationMinutes;
+  }
+
+  bool _hasExistingOverlap(DateTime start, int durationMinutes) {
+    final end = start.add(Duration(minutes: durationMinutes));
+    for (final slot in widget.existingHourSlots) {
+      if (_isExistingSlot(slot)) continue;
+      if (slot.overlaps(start, end)) return true;
+    }
+    return false;
+  }
+
+  List<DateTime> get _availableStartsForDuration {
+    final hourEnd = widget.slotStart.add(const Duration(hours: 1));
+    return _quarterStarts.where((start) {
+      final end = start.add(Duration(minutes: _selectedDuration));
+      if (end.isAfter(hourEnd)) return false;
+      if (_hasExistingOverlap(start, _selectedDuration)) return false;
+      final dayKey = DateFormat('EEEE').format(start).toLowerCase();
+      return widget.learnerOptions.any(
+        (option) => option.isAvailableForSlot(dayKey, start, _selectedDuration),
+      );
+    }).toList();
+  }
+
   List<_LearnerOption> get _availableLearnersForDuration {
-    final dayKey = DateFormat('EEEE').format(widget.slotStart).toLowerCase();
+    final dayKey = DateFormat('EEEE').format(_selectedStart).toLowerCase();
     return widget.learnerOptions
         .where(
           (option) => option.isAvailableForSlot(
             dayKey,
-            widget.slotStart,
+            _selectedStart,
             _selectedDuration,
           ),
         )
@@ -1361,6 +1733,25 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
   void initState() {
     super.initState();
     _selectedDuration = widget.existing?.durationMinutes ?? 60;
+    _selectedStart = widget.existing?.start ?? widget.slotStart;
+    if (widget.existing == null) {
+      for (final duration in const [60, 45, 30, 15]) {
+        _selectedDuration = duration;
+        final starts = _availableStartsForDuration;
+        if (starts.isNotEmpty) {
+          _selectedStart = starts.first;
+          break;
+        }
+      }
+    }
+    final startsForInitialDuration = _availableStartsForDuration;
+    if (!startsForInitialDuration.any(
+      (start) => start.isAtSameMomentAs(_selectedStart),
+    )) {
+      _selectedStart = startsForInitialDuration.isNotEmpty
+          ? startsForInitialDuration.first
+          : widget.slotStart;
+    }
     final availableForInitialDuration = _availableLearnersForDuration;
     _selectedLearnerId = widget.existing?.learnerId;
     if (_selectedLearnerId == null ||
@@ -1387,6 +1778,10 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final availableLearners = _filteredLearners;
+    final hasAvailableStart = _availableStartsForDuration.any(
+      (start) => start.isAtSameMomentAs(_selectedStart),
+    );
+    final maxSheetHeight = MediaQuery.of(context).size.height * 0.9;
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom +
@@ -1396,187 +1791,348 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
         right: 16,
         top: 20,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.title ??
-                'Schedule ${DateFormat('EEE, MMM d \u00B7 h:mm a').format(widget.slotStart)}',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _learnerSearchController,
-            onChanged: (value) {
-              setState(() => _learnerSearchQuery = value);
-            },
-            decoration: const InputDecoration(
-              hintText: 'Search learners',
-              prefixIcon: Icon(Icons.search_rounded),
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            decoration: const InputDecoration(
-              labelText: 'Learner',
-              border: OutlineInputBorder(),
-            ),
-            value: _selectedLearnerId,
-            items: availableLearners
-                .map(
-                  (option) => DropdownMenuItem<String>(
-                    value: option.id,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircleAvatar(
-                          radius: 14,
-                          backgroundImage: option.avatarUrl != null &&
-                                  option.avatarUrl!.trim().isNotEmpty
-                              ? NetworkImage(option.avatarUrl!)
-                              : null,
-                          backgroundColor: option.colors.surfaceStrong,
-                          child: option.avatarUrl == null ||
-                                  option.avatarUrl!.trim().isEmpty
-                              ? Text(
-                                  option.displayName.isNotEmpty
-                                      ? option.displayName[0].toUpperCase()
-                                      : '?',
-                                  style: TextStyle(
-                                    color: option.colors.accentText,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
-                                  ),
-                                )
-                              : null,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxSheetHeight),
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.title ??
+                    'Schedule ${DateFormat('EEE, MMM d \u00B7 h:mm a').format(widget.slotStart)}',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 16),
+              if (widget.existingHourSlots.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'This hour',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.foreground,
                         ),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Text(
-                            option.displayName,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (option.isExternalLearner) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF7CC),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: const Text(
-                              'Offline',
-                              style: TextStyle(
-                                color: Color(0xFF8A6500),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                      ),
+                      const SizedBox(height: 8),
+                      for (final slot in widget.existingHourSlots)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: widget.onExistingSlotTap == null
+                                  ? null
+                                  : () {
+                                      Navigator.of(context).pop();
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                        widget.onExistingSlotTap?.call(slot);
+                                      });
+                                    },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 6,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: slot.isDraft
+                                            ? Color.alphaBlend(
+                                                _InstructorAvailabilityScreenState
+                                                    ._draftBaseColor
+                                                    .withOpacity(0.22),
+                                                slot.learnerColors
+                                                    .surfaceStrong,
+                                              )
+                                            : slot.learnerColors.surfaceStrong,
+                                        borderRadius:
+                                            BorderRadius.circular(999),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '${DateFormat('h:mm a').format(slot.start)} • ${slot.learnerName} • ${slot.durationMinutes}m',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: slot.learnerColors.accentText,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      slot.isDraft ? 'Draft' : 'Booked',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        color: slot.isDraft
+                                            ? _InstructorAvailabilityScreenState
+                                                ._draftBaseColor
+                                            : _InstructorAvailabilityScreenState
+                                                ._scheduledBaseColor,
+                                      ),
+                                    ),
+                                    if (widget.onExistingSlotTap != null) ...[
+                                      const SizedBox(width: 6),
+                                      const Icon(
+                                        Icons.edit_rounded,
+                                        size: 15,
+                                        color: AppColors.mutedForeground,
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ],
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                )
-                .toList(),
-            onChanged: (value) => setState(() => _selectedLearnerId = value),
-            hint: const Text('Select learner'),
-          ),
-          if (availableLearners.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'No learners are available for the selected duration at this time.',
-                style: TextStyle(color: Colors.black54, fontSize: 12),
-              ),
-            ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<int>(
-            decoration: const InputDecoration(
-              labelText: 'Duration',
-              border: OutlineInputBorder(),
-            ),
-            value: _selectedDuration,
-            items: _InstructorAvailabilityScreenState._durationOptions
-                .map(
-                  (value) => DropdownMenuItem<int>(
-                    value: value,
-                    child: Text('$value minutes'),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedDuration = value ?? 60;
-                final availableForDuration = _availableLearnersForDuration;
-                if (!availableForDuration.any(
-                  (option) => option.id == _selectedLearnerId,
-                )) {
-                  _selectedLearnerId = availableForDuration.isNotEmpty
-                      ? availableForDuration.first.id
-                      : null;
-                }
-              });
-            },
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _notesController,
-            minLines: 2,
-            maxLines: 4,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-            decoration: const InputDecoration(
-              labelText: 'Notes',
-              hintText: 'Add lesson notes (optional)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              if (widget.existing != null)
-                TextButton.icon(
-                  onPressed: () {
-                    Navigator.of(
-                      context,
-                    ).pop(const _SlotDraftResult(remove: true));
-                  },
-                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Remove'),
                 ),
-              const Spacer(),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _learnerSearchController,
+                onChanged: (value) {
+                  setState(() => _learnerSearchQuery = value);
+                },
+                decoration: const InputDecoration(
+                  hintText: 'Search learners',
+                  prefixIcon: Icon(Icons.search_rounded),
+                  border: OutlineInputBorder(),
+                ),
               ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _selectedLearnerId == null
-                    ? null
-                    : () {
-                        final notes = _notesController.text.trim();
-                        Navigator.of(context).pop(
-                          _SlotDraftResult(
-                            learnerId: _selectedLearnerId,
-                            durationMinutes: _selectedDuration,
-                            notes: notes.isEmpty ? null : notes,
-                          ),
-                        );
+              const SizedBox(height: 12),
+              DropdownButtonFormField<DateTime>(
+                decoration: const InputDecoration(
+                  labelText: 'Start time',
+                  border: OutlineInputBorder(),
+                ),
+                value: _availableStartsForDuration.any(
+                  (start) => start.isAtSameMomentAs(_selectedStart),
+                )
+                    ? _selectedStart
+                    : null,
+                items: _availableStartsForDuration
+                    .map(
+                      (value) => DropdownMenuItem<DateTime>(
+                        value: value,
+                        child: Text(DateFormat('h:mm a').format(value)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _selectedStart = value;
+                    final availableForDuration = _availableLearnersForDuration;
+                    if (!availableForDuration.any(
+                      (option) => option.id == _selectedLearnerId,
+                    )) {
+                      _selectedLearnerId = availableForDuration.isNotEmpty
+                          ? availableForDuration.first.id
+                          : null;
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Learner',
+                  border: OutlineInputBorder(),
+                ),
+                value: _selectedLearnerId,
+                items: availableLearners
+                    .map(
+                      (option) => DropdownMenuItem<String>(
+                        value: option.id,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              radius: 14,
+                              backgroundImage: option.avatarUrl != null &&
+                                      option.avatarUrl!.trim().isNotEmpty
+                                  ? NetworkImage(option.avatarUrl!)
+                                  : null,
+                              backgroundColor: option.colors.surfaceStrong,
+                              child: option.avatarUrl == null ||
+                                      option.avatarUrl!.trim().isEmpty
+                                  ? Text(
+                                      option.displayName.isNotEmpty
+                                          ? option.displayName[0].toUpperCase()
+                                          : '?',
+                                      style: TextStyle(
+                                        color: option.colors.accentText,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                option.displayName,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (option.isExternalLearner) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF7CC),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: const Text(
+                                  'Offline',
+                                  style: TextStyle(
+                                    color: Color(0xFF8A6500),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) =>
+                    setState(() => _selectedLearnerId = value),
+                hint: const Text('Select learner'),
+              ),
+              if (availableLearners.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'No learners are available for the selected duration at this time.',
+                    style: TextStyle(color: Colors.black54, fontSize: 12),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                decoration: const InputDecoration(
+                  labelText: 'Duration',
+                  border: OutlineInputBorder(),
+                ),
+                value: _selectedDuration,
+                items: _InstructorAvailabilityScreenState._durationOptions
+                    .map(
+                      (value) => DropdownMenuItem<int>(
+                        value: value,
+                        child: Text('$value minutes'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedDuration = value ?? 60;
+                    final startsForDuration = _availableStartsForDuration;
+                    if (!startsForDuration.any(
+                      (start) => start.isAtSameMomentAs(_selectedStart),
+                    )) {
+                      _selectedStart = startsForDuration.isNotEmpty
+                          ? startsForDuration.first
+                          : widget.slotStart;
+                    }
+                    final availableForDuration = _availableLearnersForDuration;
+                    if (!availableForDuration.any(
+                      (option) => option.id == _selectedLearnerId,
+                    )) {
+                      _selectedLearnerId = availableForDuration.isNotEmpty
+                          ? availableForDuration.first.id
+                          : null;
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _notesController,
+                minLines: 3,
+                maxLines: 5,
+                textInputAction: TextInputAction.done,
+                scrollPadding: const EdgeInsets.only(bottom: 180),
+                onSubmitted: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
+                decoration: const InputDecoration(
+                  labelText: 'Notes',
+                  hintText: 'Add lesson notes (optional)',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  if (widget.existing != null)
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.of(
+                          context,
+                        ).pop(const _SlotDraftResult(remove: true));
                       },
-                child: Text(widget.saveLabel),
+                      style: TextButton.styleFrom(
+                          foregroundColor: AppColors.error),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Remove'),
+                    ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _selectedLearnerId == null || !hasAvailableStart
+                        ? null
+                        : () {
+                            final notes = _notesController.text.trim();
+                            Navigator.of(context).pop(
+                              _SlotDraftResult(
+                                start: _selectedStart,
+                                learnerId: _selectedLearnerId,
+                                durationMinutes: _selectedDuration,
+                                notes: notes,
+                              ),
+                            );
+                          },
+                    child: Text(widget.saveLabel),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
             ],
           ),
-          const SizedBox(height: 12),
-        ],
+        ),
       ),
     );
   }
@@ -1584,12 +2140,14 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
 
 class _SlotDraftResult {
   const _SlotDraftResult({
+    this.start,
     this.learnerId,
     this.durationMinutes,
     this.remove = false,
     this.notes,
   });
 
+  final DateTime? start;
   final String? learnerId;
   final int? durationMinutes;
   final bool remove;
@@ -1600,14 +2158,12 @@ class _CommittedSlotSheet extends StatelessWidget {
   const _CommittedSlotSheet({
     required this.slot,
     required this.onCancel,
-    required this.onReplace,
-    required this.onMove,
+    required this.onEdit,
   });
 
   final _ScheduledSlot slot;
   final VoidCallback onCancel;
-  final VoidCallback onReplace;
-  final VoidCallback onMove;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -1654,27 +2210,25 @@ class _CommittedSlotSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                onEdit();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: const Icon(Icons.edit_calendar_rounded),
+              label: const Text('Edit lesson'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
             children: [
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  onMove();
-                },
-                icon: const Icon(Icons.swap_horiz_rounded),
-                label: const Text('Move'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  onReplace();
-                },
-                icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text('Replace'),
-              ),
               TextButton.icon(
                 onPressed: () {
                   Navigator.of(context).pop();
@@ -1682,8 +2236,9 @@ class _CommittedSlotSheet extends StatelessWidget {
                 },
                 style: TextButton.styleFrom(foregroundColor: AppColors.error),
                 icon: const Icon(Icons.cancel_outlined),
-                label: const Text('Cancel'),
+                label: const Text('Cancel lesson'),
               ),
+              const Spacer(),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Close'),

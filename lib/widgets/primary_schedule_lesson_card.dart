@@ -36,10 +36,10 @@ class PrimaryScheduleLessonCard extends StatelessWidget {
     final hasAvatar = avatarUrl != null && avatarUrl!.trim().isNotEmpty;
 
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.border),
         boxShadow: AppShadows.subtle,
       ),
@@ -113,24 +113,24 @@ class PrimaryScheduleLessonCard extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: 14),
           _LessonDetailRow(
             icon: Icons.schedule_outlined,
-            label: 'TIME SLOT',
+            label: 'Time',
             value: timeLabel,
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: 12),
           _LessonDetailRow(
             icon: Icons.location_on_outlined,
-            label: 'PICKUP LOCATION',
+            label: 'Pickup',
             value: locationLabel,
           ),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
                 child: SizedBox(
-                  height: 72,
+                  height: 54,
                   child: OutlinedButton(
                     onPressed: onPrimaryPressed,
                     style: OutlinedButton.styleFrom(
@@ -140,10 +140,10 @@ class PrimaryScheduleLessonCard extends StatelessWidget {
                         width: 2,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
                       ),
                       textStyle: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.8,
                       ),
@@ -154,19 +154,19 @@ class PrimaryScheduleLessonCard extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.md),
               SizedBox(
-                width: 96,
-                height: 72,
+                width: 62,
+                height: 54,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: AppColors.secondary,
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(22),
                     border: Border.all(color: AppColors.border),
                   ),
                   child: IconButton(
                     onPressed: onCallPressed,
                     icon: Icon(
                       Icons.call_rounded,
-                      size: 30,
+                      size: 24,
                       color: onCallPressed == null
                           ? AppColors.grey400
                           : AppColors.foreground,
@@ -199,8 +199,8 @@ class _LessonDetailRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 38,
-          height: 38,
+          width: 34,
+          height: 34,
           decoration: BoxDecoration(
             color: AppColors.primary.withValues(alpha: 0.08),
             shape: BoxShape.circle,
@@ -213,11 +213,11 @@ class _LessonDetailRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                label,
+                label.toUpperCase(),
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 2,
+                  letterSpacing: 1.4,
                   color: AppColors.mutedForeground,
                 ),
               ),
@@ -225,7 +225,7 @@ class _LessonDetailRow extends StatelessWidget {
               Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: AppColors.foreground,
                   height: 1.3,

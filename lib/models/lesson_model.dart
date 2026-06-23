@@ -158,7 +158,8 @@ class LessonModel {
 
   static double _normalizeDuration(double value) {
     if (value.isNaN || value.isInfinite) return 1.0;
-    return value < 1 ? 1.0 : value;
+    if (value <= 0) return 1.0;
+    return double.parse(value.toStringAsFixed(2));
   }
 
   static LessonStatus parseStatus(String? raw) {

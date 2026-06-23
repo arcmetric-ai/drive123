@@ -8,7 +8,6 @@ import '../models/lesson_model.dart';
 import '../models/signup_flow_state.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/home/instructor_home_screen.dart';
-import '../screens/learner/learner_approval_success_screen.dart';
 import '../screens/instructor/find_instructor_screen.dart';
 import '../screens/instructor/instructor_availability_screen.dart';
 import '../screens/instructor/instructor_lesson_detail_screen.dart';
@@ -52,6 +51,7 @@ import '../screens/onboarding/sign_up_verify_screen.dart';
 import '../screens/onboarding/verification_screen.dart';
 import '../screens/profile/help_support_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
+import '../screens/profile/notification_preferences_screen.dart';
 import '../models/location_preference.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/progress/progress_tracker_screen.dart';
@@ -86,7 +86,6 @@ class AppRoutes {
       '/learner-weekly-availability';
   static const String learnerReferralProfilePhoto =
       '/learner-referral-profile-photo';
-  static const String learnerApprovalSuccess = '/learner-approval-success';
   static const String instructorInvite = '/invite/instructor/:code';
   static const String instructorQuestionnaire = '/instructor-questionnaire';
   static const String instructorCredentialsPortal =
@@ -113,6 +112,7 @@ class AppRoutes {
   static const String completedLessonDetail = '/completed-lesson-detail';
   static const String progressTracker = '/progress-tracker';
   static const String profile = '/profile';
+  static const String notificationPreferences = '/notification-preferences';
   static const String helpSupport = '/help-support';
   static const String locationSetup = '/location-setup';
 
@@ -137,6 +137,7 @@ class AppRoutes {
         completedLessonDetail,
         progressTracker,
         profile,
+        notificationPreferences,
         editProfile,
         editLearnerAvailability,
         helpSupport,
@@ -452,16 +453,6 @@ class AppRoutes {
         },
       ),
       GoRoute(
-        path: learnerApprovalSuccess,
-        builder: (context, state) {
-          final extra = state.extra;
-          final approvalToken = extra is String
-              ? extra
-              : (extra is Map ? extra['approvalToken'] as String? : null);
-          return LearnerApprovalSuccessScreen(approvalToken: approvalToken);
-        },
-      ),
-      GoRoute(
         path: instructorInvite,
         builder: (context, state) {
           final code = state.pathParameters['code'] ?? '';
@@ -550,12 +541,15 @@ class AppRoutes {
           final onViewProfile = extra['onViewProfile'] as VoidCallback?;
           final onRemoveLearner =
               extra['onRemoveLearner'] as Future<bool> Function(BuildContext)?;
+          final onMarkGraduated =
+              extra['onMarkGraduated'] as Future<bool> Function(BuildContext)?;
           return InstructorLearnerRosterPreviewScreen(
             learner: learner,
             availabilityLines: availabilityLines,
             summary: summary,
             onViewProfile: onViewProfile,
             onRemoveLearner: onRemoveLearner,
+            onMarkGraduated: onMarkGraduated,
           );
         },
       ),
@@ -617,6 +611,10 @@ class AppRoutes {
       GoRoute(
         path: profile,
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: notificationPreferences,
+        builder: (context, state) => const NotificationPreferencesScreen(),
       ),
       GoRoute(
         path: editProfile,

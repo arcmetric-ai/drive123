@@ -36,7 +36,7 @@ class AccountEntryScreen extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               AppOutlineButton(
-                label: 'I Have an Account',
+                label: 'I have an Account',
                 onPressed: () => context.go(AppRoutes.auth),
               ),
             ],
