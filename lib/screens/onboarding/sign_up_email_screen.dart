@@ -32,6 +32,20 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
   bool _isLoading = false;
   bool _acceptedPolicies = false;
 
+  bool get _isGuardian => widget.learnerAccountType == 'guardian';
+
+  String get _consentTitle {
+    if (_isGuardian) {
+      return 'I am the parent or legal guardian and agree to manage this account for the learner.';
+    }
+    return 'I am 18 or older and agree to Drive Tutor account and verification terms.';
+  }
+
+  String get _consentBody {
+    final roleLabel = _isGuardian ? 'guardian-managed learner' : widget.role;
+    return 'By continuing, I accept the required Drive Tutor policies for this $roleLabel account, including terms, privacy, data consent, safety, community guidelines, and identity/licence verification consent.';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -169,19 +183,29 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
                                 ),
                         contentPadding: EdgeInsets.zero,
                         controlAffinity: ListTileControlAffinity.leading,
-                        title: const Text(
-                          'I agree to Drive Tutor policies and consent to account, verification, safety, and booking data processing.',
-                          style: TextStyle(
+                        title: Text(
+                          _consentTitle,
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             height: 1.35,
                             color: AppColors.foreground,
                           ),
                         ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            _consentBody,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              height: 1.35,
+                              color: AppColors.mutedForeground,
+                            ),
+                          ),
+                        ),
                       ),
                       Wrap(
                         spacing: 8,
-                        runSpacing: 0,
                         children: [
                           TextButton(
                             onPressed: () =>
@@ -199,6 +223,21 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
                           TextButton(
                             onPressed: () => _openPolicy('safety-policy'),
                             child: const Text('Safety'),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                _openPolicy('community-guidelines'),
+                            child: const Text('Community'),
+                          ),
+                          TextButton(
+                            onPressed: () => _openPolicy(
+                              _isGuardian
+                                  ? 'guardian-consent'
+                                  : 'identity-verification-consent',
+                            ),
+                            child: Text(_isGuardian
+                                ? 'Guardian Consent'
+                                : 'Verification Consent'),
                           ),
                         ],
                       ),

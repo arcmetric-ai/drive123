@@ -101,7 +101,7 @@ class IdentityCaptureScene extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        'Tap the shutter to open your device camera.',
+                        'Tap the shutter to open in-app camera capture.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white70,

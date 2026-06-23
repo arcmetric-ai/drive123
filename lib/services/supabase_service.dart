@@ -67,7 +67,7 @@ class SupabaseService {
   static const String _baseAppUrl = 'https://www.drivetutor.ca';
   static const String _authRedirectUrl = '$_baseAppUrl/auth-redirect';
   static const String _signUpRedirectUrl = _authRedirectUrl;
-  static const String agreementVersion = '2026-06-22';
+  static const String agreementVersion = '2026-06-24';
   static const String onboardingStageRoleSelected = 'role_selected';
   static const String onboardingStageVerificationPending =
       'verification_pending';
@@ -175,8 +175,9 @@ class SupabaseService {
     } catch (error) {
       if (!_isMissingLearnerAccountColumnsError(error)) rethrow;
       await _client.from('learner_profiles').upsert(
-          _withoutLearnerAccountColumns(data),
-          onConflict: 'profile_id');
+            _withoutLearnerAccountColumns(data),
+            onConflict: 'profile_id',
+          );
     }
   }
 
@@ -554,19 +555,21 @@ class SupabaseService {
     final now = DateTime.now().toUtc().toIso8601String();
     final inserts = keys
         .where((key) => !existingKeys.contains(key))
-        .map((key) => {
-              'profile_id': userId,
-              'agreement_key': key,
-              'agreement_version': agreementVersion,
-              'accepted_at': now,
-              'policy_url': '$_baseAppUrl/$key',
-              'source': source,
-              'role': role,
-              'metadata': {
-                'platform': 'mobile_app',
-                'learner_account_type': learnerAccountType,
-              },
-            })
+        .map(
+          (key) => {
+            'profile_id': userId,
+            'agreement_key': key,
+            'agreement_version': agreementVersion,
+            'accepted_at': now,
+            'policy_url': '$_baseAppUrl/$key',
+            'source': source,
+            'role': role,
+            'metadata': {
+              'platform': 'mobile_app',
+              'learner_account_type': learnerAccountType,
+            },
+          },
+        )
         .toList();
     if (inserts.isNotEmpty) {
       await _client.from('user_agreements').insert(inserts);
@@ -831,29 +834,6 @@ class SupabaseService {
     await _client.from('profiles').update(updates).eq('id', userId);
   }
 
-  static Future<void> approveIdentityVerificationForTesting({
-    required String userId,
-    required String role,
-  }) async {
-    final timestamp = DateTime.now().toUtc().toIso8601String();
-    await _client.from('profiles').update({
-      'role': role,
-      'verification_status': 'approved',
-      'verification_submitted_at': timestamp,
-      'verification_review_started_at': timestamp,
-      'verification_approved_at': timestamp,
-      'identity_license_path': 'testing://license-skip',
-      'identity_selfie_path': 'testing://selfie-skip',
-      'guardian_identity_license_path': 'testing://guardian-license-skip',
-      'guardian_identity_selfie_path': 'testing://guardian-selfie-skip',
-      'guardian_consent_submitted_at': timestamp,
-      'is_verified': role == 'learner',
-      'onboarding_stage': role == 'learner'
-          ? onboardingStageQuestionnaireComplete
-          : onboardingStageVerificationPending,
-    }).eq('id', userId);
-  }
-
   static Future<void> uploadInstructorCredentialDocument({
     required String userId,
     required InstructorDocumentType documentType,
@@ -884,25 +864,28 @@ class SupabaseService {
         );
 
     try {
-      await _client.rpc('register_verification_document_version', params: {
-        'p_document_type': documentType.storageKey,
-        'p_storage_bucket': _instructorCredentialsBucket,
-        'p_storage_path': storagePath,
-        'p_original_file_name': upload.originalName,
-        'p_mime_type': upload.mimeType,
-        'p_size_bytes': upload.bytes.length,
-        'p_sha256_hex': upload.sha256Hex,
-        'p_expires_at': expiresAt == null
-            ? null
-            : DateTime.utc(
-                expiresAt.year,
-                expiresAt.month,
-                expiresAt.day,
-                23,
-                59,
-                59,
-              ).toIso8601String(),
-      });
+      await _client.rpc(
+        'register_verification_document_version',
+        params: {
+          'p_document_type': documentType.storageKey,
+          'p_storage_bucket': _instructorCredentialsBucket,
+          'p_storage_path': storagePath,
+          'p_original_file_name': upload.originalName,
+          'p_mime_type': upload.mimeType,
+          'p_size_bytes': upload.bytes.length,
+          'p_sha256_hex': upload.sha256Hex,
+          'p_expires_at': expiresAt == null
+              ? null
+              : DateTime.utc(
+                  expiresAt.year,
+                  expiresAt.month,
+                  expiresAt.day,
+                  23,
+                  59,
+                  59,
+                ).toIso8601String(),
+        },
+      );
     } catch (_) {
       // Registration is authoritative. The immutable storage object is left
       // intact for an administrator to reconcile instead of deleting evidence.
@@ -972,16 +955,19 @@ class SupabaseService {
           ),
         );
 
-    await _client.rpc('register_verification_document_version', params: {
-      'p_document_type': documentType,
-      'p_storage_bucket': _identityVerificationBucket,
-      'p_storage_path': storagePath,
-      'p_original_file_name': upload.originalName,
-      'p_mime_type': upload.mimeType,
-      'p_size_bytes': upload.bytes.length,
-      'p_sha256_hex': upload.sha256Hex,
-      'p_expires_at': null,
-    });
+    await _client.rpc(
+      'register_verification_document_version',
+      params: {
+        'p_document_type': documentType,
+        'p_storage_bucket': _identityVerificationBucket,
+        'p_storage_path': storagePath,
+        'p_original_file_name': upload.originalName,
+        'p_mime_type': upload.mimeType,
+        'p_size_bytes': upload.bytes.length,
+        'p_sha256_hex': upload.sha256Hex,
+        'p_expires_at': null,
+      },
+    );
 
     return storagePath;
   }
@@ -1132,21 +1118,27 @@ class SupabaseService {
     } else if (_startsWith(bytes, const [0xFF, 0xD8, 0xFF])) {
       mimeType = 'image/jpeg';
       extension = 'jpg';
-    } else if (_startsWith(
-      bytes,
-      const [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
-    )) {
+    } else if (_startsWith(bytes, const [
+      0x89,
+      0x50,
+      0x4E,
+      0x47,
+      0x0D,
+      0x0A,
+      0x1A,
+      0x0A,
+    ])) {
       mimeType = 'image/png';
       extension = 'png';
     } else {
       throw const FormatException(
-          'Only valid PDF, JPG, and PNG files are accepted.');
+        'Only valid PDF, JPG, and PNG files are accepted.',
+      );
     }
 
-    final originalName = path_util.basename(file.path).replaceAll(
-          RegExp(r'[^A-Za-z0-9._-]'),
-          '_',
-        );
+    final originalName = path_util
+        .basename(file.path)
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     return _ValidatedUpload(
       bytes: bytes,
       mimeType: mimeType,
@@ -1601,12 +1593,14 @@ class SupabaseService {
     if (licenceNumber != null && licenceNumber.isNotEmpty) {
       if (!OntarioLicence.isValid(licenceNumber)) {
         throw Exception(
-            'Enter an Ontario licence number as A1234 12345 12345.');
+          'Enter an Ontario licence number as A1234 12345 12345.',
+        );
       }
       final available = await isLicenceNumberAvailable(licenceNumber);
       if (!available) {
         throw Exception(
-            'That licence number is already attached to an account.');
+          'That licence number is already attached to an account.',
+        );
       }
       profileUpdates['licence_number'] = OntarioLicence.format(licenceNumber);
     }
@@ -2791,7 +2785,7 @@ class SupabaseService {
       'accepted',
       'active',
       'in_progress',
-      'graduated',
+      'graduated'
     ]).order('created_at', ascending: false);
 
     final rawEntries = List<Map<String, dynamic>>.from(results);
@@ -2922,8 +2916,9 @@ class SupabaseService {
       'guardian_or_contact_name': _nullIfBlank(guardianOrContactName),
       'pickup_address': _nullIfBlank(pickupAddress),
       'notes': _nullIfBlank(notes),
-      'weekly_availability':
-          _normalizeWeeklyAvailabilityPayload(weeklyAvailability),
+      'weekly_availability': _normalizeWeeklyAvailabilityPayload(
+        weeklyAvailability,
+      ),
       'learning_focus': _nullIfBlank(learningFocus),
       'transmission_preference': _nullIfBlank(transmissionPreference),
     };
@@ -2956,8 +2951,9 @@ class SupabaseService {
           'guardian_or_contact_name': _nullIfBlank(guardianOrContactName),
           'pickup_address': _nullIfBlank(pickupAddress),
           'notes': _nullIfBlank(notes),
-          'weekly_availability':
-              _normalizeWeeklyAvailabilityPayload(weeklyAvailability),
+          'weekly_availability': _normalizeWeeklyAvailabilityPayload(
+            weeklyAvailability,
+          ),
           'learning_focus': _nullIfBlank(learningFocus),
           'transmission_preference': _nullIfBlank(transmissionPreference),
           'updated_at': DateTime.now().toIso8601String(),
@@ -3015,7 +3011,8 @@ class SupabaseService {
     final row = await _client
         .from('learner_requests')
         .select(
-            'id, instructor_id, focus, status, instructor:profiles!learner_requests_instructor_id_fkey(first_name, last_name)')
+          'id, instructor_id, focus, status, instructor:profiles!learner_requests_instructor_id_fkey(first_name, last_name)',
+        )
         .eq('learner_id', userId)
         .eq('status', 'graduated')
         .order('updated_at', ascending: false)
@@ -3056,10 +3053,7 @@ class SupabaseService {
     } catch (_) {
       await _client
           .from('external_learners')
-          .update({
-            'is_active': false,
-            'updated_at': timestamp,
-          })
+          .update({'is_active': false, 'updated_at': timestamp})
           .eq('id', externalLearnerId)
           .eq('instructor_id', instructorId);
     }

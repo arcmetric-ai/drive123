@@ -50,10 +50,16 @@ class LearnerNotification {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.initialFocus, this.initialLocation});
+  const HomeScreen({
+    super.key,
+    this.initialFocus,
+    this.initialLocation,
+    this.initialTab = 0,
+  });
 
   final String? initialFocus;
   final String? initialLocation;
+  final int initialTab;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -108,6 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialTab.clamp(0, 4);
     _selectedFocus = widget.initialFocus;
     _selectedLocation = widget.initialLocation;
     _loadStoredLocationPreference();
@@ -190,7 +197,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_isLearner) {
       return;
     }
-    GoRouter.of(context).push(AppRoutes.learningFocus, extra: 'learner');
+    GoRouter.of(context).push(
+      AppRoutes.learningFocus,
+      extra: const {
+        'role': 'learner',
+        'returnToFind': true,
+      },
+    );
   }
 
   void _openTab(int index) {

@@ -1,12 +1,13 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/guided_capture_frame.dart';
 import '../../widgets/identity_capture_scene.dart';
+import '../../widgets/in_app_camera_capture_screen.dart';
 
 class GuardianSelfieCaptureScreen extends StatefulWidget {
   const GuardianSelfieCaptureScreen({
@@ -31,7 +32,6 @@ class GuardianSelfieCaptureScreen extends StatefulWidget {
 
 class _GuardianSelfieCaptureScreenState
     extends State<GuardianSelfieCaptureScreen> {
-  final _imagePicker = ImagePicker();
   String? _imagePath;
   bool _isSubmitting = false;
 
@@ -41,51 +41,24 @@ class _GuardianSelfieCaptureScreenState
     _imagePath = widget.guardianSelfieImagePath;
   }
 
-  Future<XFile?> _pickGuardianSelfie(ImageSource source) {
-    return _imagePicker.pickImage(
-      source: source,
-      imageQuality: 85,
-      preferredCameraDevice:
-          source == ImageSource.camera ? CameraDevice.front : CameraDevice.rear,
-    );
-  }
-
   Future<void> _captureGuardianSelfie() async {
     if (_isSubmitting) return;
 
-    XFile? picked;
-    try {
-      picked = await _pickGuardianSelfie(ImageSource.camera);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Camera is unavailable here. Opening photo library instead.',
-          ),
-          backgroundColor: AppColors.foreground,
+    final imagePath = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const InAppCameraCaptureScreen(
+          title: 'Capture guardian selfie',
+          shape: CaptureFrameShape.oval,
+          lensDirection: CameraLensDirection.front,
         ),
-      );
-      try {
-        picked = await _pickGuardianSelfie(ImageSource.gallery);
-      } catch (galleryError) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unable to select guardian selfie: $galleryError'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        return;
-      }
-    }
+      ),
+    );
 
-    final pickedFile = picked;
     final user = SupabaseService.currentUser;
-    if (pickedFile == null || user == null || !mounted) return;
+    if (imagePath == null || user == null || !mounted) return;
 
     setState(() {
-      _imagePath = pickedFile.path;
+      _imagePath = imagePath;
       _isSubmitting = true;
     });
 
@@ -96,7 +69,7 @@ class _GuardianSelfieCaptureScreenState
         licenseImagePath: widget.licenseImagePath,
         selfieImagePath: widget.selfieImagePath,
         guardianLicenseImagePath: widget.guardianLicenseImagePath,
-        guardianSelfieImagePath: pickedFile.path,
+        guardianSelfieImagePath: imagePath,
       );
       if (!mounted) return;
       context.go(

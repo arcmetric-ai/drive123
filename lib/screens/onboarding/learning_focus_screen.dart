@@ -8,9 +8,14 @@ import '../../widgets/selection_option_card.dart';
 import '../../services/supabase_service.dart';
 
 class LearningFocusScreen extends StatefulWidget {
-  const LearningFocusScreen({super.key, required this.role});
+  const LearningFocusScreen({
+    super.key,
+    required this.role,
+    this.returnToFind = false,
+  });
 
   final String role;
+  final bool returnToFind;
 
   @override
   State<LearningFocusScreen> createState() => _LearningFocusScreenState();
@@ -97,6 +102,16 @@ class _LearningFocusScreenState extends State<LearningFocusScreen> {
         learningFocus: _selectedFocus,
       );
       if (!mounted) return;
+      if (widget.returnToFind) {
+        context.go(
+          AppRoutes.home,
+          extra: {
+            'focus': _selectedFocus,
+            'tab': 1,
+          },
+        );
+        return;
+      }
       context.go(AppRoutes.identityVerificationIntro, extra: widget.role);
     } catch (error) {
       if (!mounted) return;

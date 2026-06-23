@@ -23,11 +23,26 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       Uri.parse('https://www.drivetutor.ca/instructor/apply');
 
   String? _selectedRole;
+  bool _acceptedLearnerPolicies = false;
   bool _isSaving = false;
+
+  Future<void> _openPolicy(String path) async {
+    final uri = Uri.parse('https://www.drivetutor.ca/$path');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   Future<void> _handleConfirmSelection() async {
     final role = _selectedRole;
     if (role == null || _isSaving) return;
+    if (role == 'learner' && !_acceptedLearnerPolicies) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Review and accept the required policies to continue.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
 
@@ -118,7 +133,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         'assets/images/role_learner.svg',
                       ),
                       isSelected: _selectedRole == 'learner',
-                      onTap: () => setState(() => _selectedRole = 'learner'),
+                      onTap: () => setState(() {
+                        _selectedRole = 'learner';
+                      }),
                       isEnabled: !_isSaving,
                     ),
                     const SizedBox(height: 18),
@@ -134,6 +151,67 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       onTap: () => setState(() => _selectedRole = 'instructor'),
                       isEnabled: !_isSaving,
                     ),
+                    if (_selectedRole == 'learner') ...[
+                      const SizedBox(height: 18),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F9FF),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CheckboxListTile(
+                              value: _acceptedLearnerPolicies,
+                              onChanged: _isSaving
+                                  ? null
+                                  : (value) => setState(
+                                        () => _acceptedLearnerPolicies =
+                                            value ?? false,
+                                      ),
+                              contentPadding: EdgeInsets.zero,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              title: const Text(
+                                'I agree to Drive Tutor learner account, safety, privacy, data consent, and identity/licence verification policies.',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.35,
+                                  color: AppColors.foreground,
+                                ),
+                              ),
+                            ),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                TextButton(
+                                  onPressed: () =>
+                                      _openPolicy('terms-and-conditions'),
+                                  child: const Text('Terms'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      _openPolicy('privacy-policy'),
+                                  child: const Text('Privacy'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      _openPolicy('data-consent-policy'),
+                                  child: const Text('Data Consent'),
+                                ),
+                                TextButton(
+                                  onPressed: () => _openPolicy(
+                                      'identity-verification-consent'),
+                                  child: const Text('Verification'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: AppSpacing.xxl),
                     AppPrimaryButton(
                       label: 'Confirm Selection',

@@ -189,14 +189,6 @@ class _FindInstructorScreenState extends State<FindInstructorScreen> {
                                     : 'manual';
                           }),
                         ),
-                        const SizedBox(width: 12),
-                        DiscoveryFilterChip(
-                          label: 'MORE FILTERS',
-                          selected: _selectedAreaFilter != null ||
-                              _selectedCityFilter != null ||
-                              _selectedCarType != 'all',
-                          onTap: _showFilterBottomSheet,
-                        ),
                       ],
                     ),
                   ),

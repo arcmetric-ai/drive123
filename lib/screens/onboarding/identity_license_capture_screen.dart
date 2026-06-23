@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 
-import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../widgets/guided_capture_frame.dart';
 import '../../widgets/identity_capture_scene.dart';
+import '../../widgets/in_app_camera_capture_screen.dart';
 
 class IdentityLicenseCaptureScreen extends StatefulWidget {
   const IdentityLicenseCaptureScreen({
@@ -24,8 +23,6 @@ class IdentityLicenseCaptureScreen extends StatefulWidget {
 
 class _IdentityLicenseCaptureScreenState
     extends State<IdentityLicenseCaptureScreen> {
-  static const _testingBypassEnabled = true;
-  final _imagePicker = ImagePicker();
   String? _imagePath;
 
   @override
@@ -34,57 +31,26 @@ class _IdentityLicenseCaptureScreenState
     _imagePath = widget.licenseImagePath;
   }
 
-  Future<void> _pickLicense(ImageSource source) async {
-    final picked = await _imagePicker.pickImage(
-      source: source,
-      imageQuality: 85,
-    );
-    if (picked == null || !mounted) return;
-
-    setState(() => _imagePath = picked.path);
-    context.go(
-      AppRoutes.identitySelfieCapture,
-      extra: {
-        'role': widget.role,
-        'licenseImagePath': picked.path,
-      },
-    );
-  }
-
   Future<void> _captureLicense() async {
-    try {
-      await _pickLicense(ImageSource.camera);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Camera is unavailable here. Opening photo library instead.',
-          ),
-          backgroundColor: AppColors.foreground,
+    final title = widget.role == 'instructor'
+        ? 'Capture your Ontario G licence'
+        : 'Capture your Ontario G1, G2, or G licence';
+    final imagePath = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => InAppCameraCaptureScreen(
+          title: title,
+          shape: CaptureFrameShape.rectangle,
         ),
-      );
+      ),
+    );
+    if (imagePath == null || !mounted) return;
 
-      try {
-        await _pickLicense(ImageSource.gallery);
-      } catch (galleryError) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unable to select ID image: $galleryError'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  void _skipForTesting() {
+    setState(() => _imagePath = imagePath);
     context.go(
       AppRoutes.identitySelfieCapture,
       extra: {
         'role': widget.role,
-        'licenseImagePath': _imagePath,
+        'licenseImagePath': imagePath,
       },
     );
   }
@@ -102,8 +68,6 @@ class _IdentityLicenseCaptureScreenState
       onClose: () => context.pop(),
       onAction: _captureLicense,
       onCapture: _captureLicense,
-      secondaryActionLabel: _testingBypassEnabled ? 'Skip for testing' : null,
-      onSecondaryAction: _testingBypassEnabled ? _skipForTesting : null,
     );
   }
 }

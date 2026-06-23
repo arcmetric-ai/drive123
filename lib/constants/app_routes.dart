@@ -478,8 +478,15 @@ class AppRoutes {
       GoRoute(
         path: learningFocus,
         builder: (context, state) {
-          final role = state.extra as String? ?? 'learner';
-          return LearningFocusScreen(role: role);
+          final extra = state.extra;
+          final role = extra is String
+              ? extra
+              : (extra is Map ? extra['role'] as String? : null);
+          final returnToFind = extra is Map && extra['returnToFind'] == true;
+          return LearningFocusScreen(
+            role: role ?? 'learner',
+            returnToFind: returnToFind,
+          );
         },
       ),
       GoRoute(
@@ -488,11 +495,20 @@ class AppRoutes {
           final extras = state.extra;
           String? focus;
           String? location;
+          int tab = 0;
           if (extras is Map) {
             focus = extras['focus'] as String?;
             location = extras['location'] as String?;
+            final tabValue = extras['tab'];
+            if (tabValue is int) {
+              tab = tabValue;
+            }
           }
-          return HomeScreen(initialFocus: focus, initialLocation: location);
+          return HomeScreen(
+            initialFocus: focus,
+            initialLocation: location,
+            initialTab: tab,
+          );
         },
       ),
       GoRoute(

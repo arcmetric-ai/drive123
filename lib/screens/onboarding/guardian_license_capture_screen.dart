@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 
-import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../widgets/guided_capture_frame.dart';
 import '../../widgets/identity_capture_scene.dart';
+import '../../widgets/in_app_camera_capture_screen.dart';
 
 class GuardianLicenseCaptureScreen extends StatefulWidget {
   const GuardianLicenseCaptureScreen({
@@ -28,7 +27,6 @@ class GuardianLicenseCaptureScreen extends StatefulWidget {
 
 class _GuardianLicenseCaptureScreenState
     extends State<GuardianLicenseCaptureScreen> {
-  final _imagePicker = ImagePicker();
   String? _imagePath;
 
   @override
@@ -37,51 +35,27 @@ class _GuardianLicenseCaptureScreenState
     _imagePath = widget.guardianLicenseImagePath;
   }
 
-  Future<void> _pickGuardianId(ImageSource source) async {
-    final picked = await _imagePicker.pickImage(
-      source: source,
-      imageQuality: 85,
+  Future<void> _captureGuardianId() async {
+    final imagePath = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const InAppCameraCaptureScreen(
+          title: 'Capture guardian government ID',
+          shape: CaptureFrameShape.rectangle,
+        ),
+      ),
     );
-    if (picked == null || !mounted) return;
+    if (imagePath == null || !mounted) return;
 
-    setState(() => _imagePath = picked.path);
+    setState(() => _imagePath = imagePath);
     context.go(
       AppRoutes.guardianSelfieCapture,
       extra: {
         'role': widget.role,
         'licenseImagePath': widget.licenseImagePath,
         'selfieImagePath': widget.selfieImagePath,
-        'guardianLicenseImagePath': picked.path,
+        'guardianLicenseImagePath': imagePath,
       },
     );
-  }
-
-  Future<void> _captureGuardianId() async {
-    try {
-      await _pickGuardianId(ImageSource.camera);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Camera is unavailable here. Opening photo library instead.',
-          ),
-          backgroundColor: AppColors.foreground,
-        ),
-      );
-
-      try {
-        await _pickGuardianId(ImageSource.gallery);
-      } catch (galleryError) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unable to select guardian ID image: $galleryError'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
   }
 
   @override
