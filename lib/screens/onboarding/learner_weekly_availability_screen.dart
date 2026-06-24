@@ -158,7 +158,7 @@ class _LearnerWeeklyAvailabilityScreenState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Unable to save availability: $error'),
+          content: Text(_availabilitySaveMessage(error)),
           backgroundColor: AppColors.error,
         ),
       );
@@ -167,6 +167,22 @@ class _LearnerWeeklyAvailabilityScreenState
         setState(() => _isSaving = false);
       }
     }
+  }
+
+  String _availabilitySaveMessage(Object error) {
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('phonenumberinuseexception') ||
+        raw.contains('phone number is already attached') ||
+        raw.contains('profiles_phone_key')) {
+      return 'That phone number is already attached to an account. Go back and use a different phone number, or sign in to the existing account.';
+    }
+    if (raw.contains('learners aged 16-17')) {
+      return 'Learners aged 16-17 require a guardian account.';
+    }
+    if (raw.contains('licence number is already attached')) {
+      return 'That licence number is already attached to an account.';
+    }
+    return 'Unable to save availability. Please try again.';
   }
 
   String _encodeSlot(TimeOfDay start, TimeOfDay end) {

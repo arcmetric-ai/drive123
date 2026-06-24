@@ -41,6 +41,50 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
 
   bool get _isSignUpFlow => widget.flow == 'signup';
 
+  String _failureTitle() {
+    return _isSignUpFlow
+        ? 'Unable to create account'
+        : 'Unable to reset password';
+  }
+
+  String _friendlyFailureMessage(Object error) {
+    final raw = error.toString();
+    final lower = raw.toLowerCase();
+
+    if (lower.contains('permission denied for schema private')) {
+      return _isSignUpFlow
+          ? 'Account setup is temporarily blocked by a server permission update. Please try again shortly.'
+          : 'Password reset is temporarily unavailable. Please try again shortly.';
+    }
+
+    if (lower.contains('duplicate key value') ||
+        lower.contains('already exists') ||
+        lower.contains('23505')) {
+      return _isSignUpFlow
+          ? 'This account setup was already started. Please try again, or sign in if your password was already created.'
+          : 'This password reset was already completed. Please sign in with your new password.';
+    }
+
+    if (lower.contains('signup flow not found') ||
+        lower.contains('flow state') ||
+        lower.contains('expired')) {
+      return 'This sign-up link has expired. Please start sign-up again.';
+    }
+
+    if (lower.contains('email is not confirmed')) {
+      return 'Confirm your email before creating your password.';
+    }
+
+    if (lower.contains('password must be at least') ||
+        lower.contains('use at least')) {
+      return 'Use a password with at least 8 characters.';
+    }
+
+    return _isSignUpFlow
+        ? 'We could not finish creating your account. Please try again.'
+        : 'We could not reset your password. Please try again.';
+  }
+
   @override
   void dispose() {
     _passwordController.dispose();
@@ -100,7 +144,9 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
             backgroundColor: AppColors.success,
           ),
         );
-        if (flowState.role == 'learner') {
+        final usesLearnerQuestionnaire =
+            flowState.role == 'learner' || flowState.role == 'guardian';
+        if (usesLearnerQuestionnaire) {
           context.go(
             AppRoutes.learnerQuestionnaire,
             extra: LearnerOnboardingDraft(
@@ -126,10 +172,11 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
         context.go(AppRoutes.auth);
       }
     } catch (e) {
+      debugPrint('Password setup failed: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Unable to reset password: $e'),
+          content: Text('${_failureTitle()}: ${_friendlyFailureMessage(e)}'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -143,84 +190,95 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 12),
-                Text(
-                  _isSignUpFlow ? 'Create Password' : 'New Password',
-                  style: const TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w800,
-                    height: 1.08,
-                    letterSpacing: -0.7,
-                    color: AppColors.foreground,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 52,
+                ),
+                child: IntrinsicHeight(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 12),
+                        Text(
+                          _isSignUpFlow ? 'Create Password' : 'New Password',
+                          style: const TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w800,
+                            height: 1.08,
+                            letterSpacing: -0.7,
+                            color: AppColors.foreground,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        Text(
+                          _isSignUpFlow
+                              ? 'Set a secure password for your new account.'
+                              : 'Create a strong password to protect your account.',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                            height: 1.45,
+                            color: AppColors.mutedForeground,
+                          ),
+                        ),
+                        const SizedBox(height: 56),
+                        RoundedInputField(
+                          controller: _passwordController,
+                          hintText: 'Create Password',
+                          obscureText: true,
+                          textInputAction: TextInputAction.next,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Enter a password';
+                            }
+                            if (value.length < 8) {
+                              return 'Use at least 8 characters';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _passwordController,
+                          builder: (context, value, _) {
+                            return PasswordStrengthMeter(password: value.text);
+                          },
+                        ),
+                        const SizedBox(height: 32),
+                        RoundedInputField(
+                          controller: _confirmPasswordController,
+                          hintText: 'Confirm Password',
+                          obscureText: true,
+                          textInputAction: TextInputAction.done,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Confirm your password';
+                            }
+                            if (value != _passwordController.text) {
+                              return 'Passwords do not match';
+                            }
+                            return null;
+                          },
+                        ),
+                        const Spacer(),
+                        AppPrimaryButton(
+                          label: _isSignUpFlow ? 'Continue' : 'Reset Password',
+                          isLoading: _isLoading,
+                          onPressed: _isLoading ? null : _handleSubmitPassword,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: AppSpacing.md),
-                Text(
-                  _isSignUpFlow
-                      ? 'Set a secure password for your new account.'
-                      : 'Create a strong password to protect your account.',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                    height: 1.45,
-                    color: AppColors.mutedForeground,
-                  ),
-                ),
-                const SizedBox(height: 56),
-                RoundedInputField(
-                  controller: _passwordController,
-                  hintText: 'Create Password',
-                  obscureText: true,
-                  textInputAction: TextInputAction.next,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Enter a password';
-                    }
-                    if (value.length < 8) {
-                      return 'Use at least 8 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: AppSpacing.md),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: _passwordController,
-                  builder: (context, value, _) {
-                    return PasswordStrengthMeter(password: value.text);
-                  },
-                ),
-                const SizedBox(height: 32),
-                RoundedInputField(
-                  controller: _confirmPasswordController,
-                  hintText: 'Confirm Password',
-                  obscureText: true,
-                  textInputAction: TextInputAction.done,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Confirm your password';
-                    }
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                const Spacer(),
-                AppPrimaryButton(
-                  label: _isSignUpFlow ? 'Continue' : 'Reset Password',
-                  isLoading: _isLoading,
-                  onPressed: _isLoading ? null : _handleSubmitPassword,
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

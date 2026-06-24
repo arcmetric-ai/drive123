@@ -41,8 +41,10 @@ class _IdentitySelfieCaptureScreenState
 
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => const InAppCameraCaptureScreen(
-          title: 'Capture your selfie',
+        builder: (_) => InAppCameraCaptureScreen(
+          title: widget.role == 'guardian'
+              ? 'Capture learner selfie'
+              : 'Capture your selfie',
           shape: CaptureFrameShape.oval,
           lensDirection: CameraLensDirection.front,
         ),
@@ -61,6 +63,18 @@ class _IdentitySelfieCaptureScreenState
         const SnackBar(
           content: Text('Unable to submit verification. Please try again.'),
         ),
+      );
+      return;
+    }
+
+    if (widget.role == 'guardian') {
+      context.go(
+        AppRoutes.guardianLicenseCapture,
+        extra: {
+          'role': widget.role,
+          'licenseImagePath': licenseImagePath,
+          'selfieImagePath': imagePath,
+        },
       );
       return;
     }
@@ -96,7 +110,9 @@ class _IdentitySelfieCaptureScreenState
   Widget build(BuildContext context) {
     return IdentityCaptureScene(
       stepLabel: 'Step 3 of 4',
-      title: 'Position your face within the oval',
+      title: widget.role == 'guardian'
+          ? 'Position the learner within the oval'
+          : 'Position your face within the oval',
       imagePath: _imagePath,
       shape: CaptureFrameShape.oval,
       onClose: () => context.pop(),

@@ -19,8 +19,12 @@ class IdentityVerificationIntroScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isInstructor = role == 'instructor';
-    final licenceLabel =
-        isInstructor ? 'Ontario G licence' : 'Ontario G1, G2, or G licence';
+    final isGuardian = role == 'guardian';
+    final licenceLabel = isInstructor
+        ? 'Ontario G licence'
+        : isGuardian
+            ? 'learner\'s Ontario G1, G2, or G licence and guardian government ID'
+            : 'Ontario G1, G2, or G licence';
     final cardLabel =
         isInstructor ? 'ONTARIO G LICENCE' : 'ONTARIO G1 / G2 / G LICENCE';
 
@@ -59,7 +63,9 @@ class IdentityVerificationIntroScreen extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'To keep our community safe, we need to verify the account holder\'s $licenceLabel before lessons can be requested.',
+                isGuardian
+                    ? 'To keep our community safe, we collect the learner\'s Ontario G1, G2, or G licence and selfie first. Then we verify the guardian with government ID and a guardian selfie before lessons can be requested.'
+                    : 'To keep our community safe, we need to verify the account holder\'s $licenceLabel before lessons can be requested.',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w500,
@@ -116,7 +122,9 @@ class IdentityVerificationIntroScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: AppSpacing.lg),
                                 Text(
-                                  cardLabel,
+                                  isGuardian
+                                      ? 'LEARNER G1 / G2 / G LICENCE'
+                                      : cardLabel,
                                   style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w800,

@@ -92,7 +92,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
     if (widget.role == 'instructor') {
       context.go(AppRoutes.instructorQuestionnaire, extra: widget.role);
-    } else if (widget.role == 'learner') {
+    } else if (widget.role == 'learner' || widget.role == 'guardian') {
       context.go(AppRoutes.learnerQuestionnaire, extra: widget.role);
     } else {
       context.go(AppRoutes.roleSelection);

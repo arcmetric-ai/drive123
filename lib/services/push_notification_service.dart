@@ -240,9 +240,12 @@ class PushNotificationService {
         context.go(AppRoutes.instructorBilling);
         break;
       case 'instructor_credentials':
+      case 'instructor_credentials_request':
         context.go(AppRoutes.instructorCredentialsPortal);
         break;
       case 'verification_status':
+      case 'verification_document_request':
+      case 'identity_pending_review':
         context.go(AppRoutes.identityPendingReview);
         break;
       case 'my_lessons':

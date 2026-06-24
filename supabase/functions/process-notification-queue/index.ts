@@ -24,7 +24,9 @@ Deno.serve(async (request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { error: reminderError } = await admin.rpc('queue_due_lesson_reminders');
+  const { data: queuedReminders, error: reminderError } = await admin.rpc(
+    'queue_due_lesson_reminders',
+  );
   if (reminderError != null) {
     return response({ error: reminderError.message }, 500);
   }
@@ -60,6 +62,7 @@ Deno.serve(async (request) => {
   );
 
   return response({
+    queuedReminders: queuedReminders ?? 0,
     processed: results.filter((result) => result.status === 'fulfilled').length,
     failed: results.filter((result) => result.status === 'rejected').length,
   });

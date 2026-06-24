@@ -29,6 +29,13 @@ class AccountAlreadyExistsException implements Exception {
   String toString() => 'An account already exists for $email.';
 }
 
+class PhoneNumberInUseException implements Exception {
+  const PhoneNumberInUseException();
+
+  @override
+  String toString() => 'That phone number is already attached to an account.';
+}
+
 class _ValidatedUpload {
   const _ValidatedUpload({
     required this.bytes,
@@ -60,7 +67,11 @@ class SupabaseService {
 
   static final SupabaseClient _client = Supabase.instance.client;
   static const int learnerSkillCatalogSize = 8;
-  static const Set<String> _supportedRoles = {'learner', 'instructor'};
+  static const Set<String> _supportedRoles = {
+    'learner',
+    'guardian',
+    'instructor',
+  };
   static const String _identityVerificationBucket = 'identity-verification';
   static const String _instructorCredentialsBucket = 'instructor-credentials';
   static const String _baseAppUrl = 'https://www.drivetutor.ca';
@@ -232,11 +243,27 @@ class SupabaseService {
   ) async {
     final rows = await _client
         .from('verification_document_requests')
-        .select('id, review_type, document_type, admin_message, created_at')
+        .select(
+          'id, review_type, document_type, admin_message, status, created_at, completed_at',
+        )
         .eq('profile_id', profileId)
         .eq('status', 'requested')
         .order('created_at', ascending: false);
-    return List<Map<String, dynamic>>.from(rows);
+    final requests = List<Map<String, dynamic>>.from(rows).where((request) {
+      final status = request['status']?.toString().trim().toLowerCase();
+      final completedAt = request['completed_at']?.toString().trim();
+      return status == 'requested' &&
+          (completedAt == null || completedAt.isEmpty);
+    }).toList();
+
+    final verificationState = await getIdentityVerificationState(profileId);
+    if (verificationState?.isApproved == true) {
+      return requests
+          .where((request) => request['review_type'] != 'identity_verification')
+          .toList();
+    }
+
+    return requests;
   }
 
   static bool _isMissingLearnerAccountColumnsError(Object error) {
@@ -544,7 +571,7 @@ class SupabaseService {
           UserAttributes(
             data: {
               'role': normalizedRole,
-              if (normalizedRole == 'learner')
+              if (normalizedRole != 'instructor')
                 'learnerAccountType': _normalizeLearnerAccountType(
                   learnerAccountType,
                 ),
@@ -664,7 +691,11 @@ class SupabaseService {
         )
         .toList();
     if (inserts.isNotEmpty) {
-      await _client.from('user_agreements').insert(inserts);
+      await _client.from('user_agreements').upsert(
+            inserts,
+            onConflict: 'profile_id,agreement_key,agreement_version',
+            ignoreDuplicates: true,
+          );
     }
   }
 
@@ -675,6 +706,55 @@ class SupabaseService {
       params: {'p_licence_number': OntarioLicence.format(licenceNumber)},
     );
     return available == true;
+  }
+
+  static Future<bool> isPhoneNumberAvailableForUser(
+    String? phone, {
+    String? userId,
+  }) async {
+    final normalizedPhone = OntarioPhoneNumber.toE164(phone);
+    if (normalizedPhone == null || normalizedPhone.isEmpty) return false;
+
+    final matchingProfileIds = <String>{};
+
+    Future<void> collectMatches(String column) async {
+      try {
+        final rows = await _client
+            .from('profiles')
+            .select('id')
+            .eq(column, normalizedPhone);
+        for (final row in List<Map<String, dynamic>>.from(rows)) {
+          final id = row['id']?.toString();
+          if (id != null && id.isNotEmpty) {
+            matchingProfileIds.add(id);
+          }
+        }
+      } on PostgrestException catch (error) {
+        final missingColumn = error.code == '42703' || error.code == 'PGRST204';
+        if (column == 'Phone' && missingColumn) return;
+        rethrow;
+      }
+    }
+
+    await collectMatches('phone');
+    await collectMatches('Phone');
+
+    if (matchingProfileIds.isEmpty) return true;
+    if (userId == null) return false;
+    return matchingProfileIds.every((id) => id == userId);
+  }
+
+  static Future<void> ensurePhoneNumberAvailableForUser(
+    String? phone, {
+    required String userId,
+  }) async {
+    final available = await isPhoneNumberAvailableForUser(
+      phone,
+      userId: userId,
+    );
+    if (!available) {
+      throw const PhoneNumberInUseException();
+    }
   }
 
   static Future<void> ensureCurrentProfile() async {
@@ -766,7 +846,8 @@ class SupabaseService {
       return AppRoutes.roleSelection;
     }
 
-    if (role == 'learner') {
+    final isLearnerLikeRole = role == 'learner' || role == 'guardian';
+    if (isLearnerLikeRole) {
       final identityStatus =
           verificationState?.verificationStatus?.trim().toLowerCase();
       var questionnaireComplete = verificationState?.onboardingStage ==
@@ -788,7 +869,7 @@ class SupabaseService {
         final accountType = _normalizeLearnerAccountType(
           learnerDetail?['account_type'],
         );
-        if (accountType == 'guardian') {
+        if (role == 'guardian' || accountType == 'guardian') {
           return '${AppRoutes.learnerQuestionnaire}?accountType=guardian';
         }
         return AppRoutes.learnerQuestionnaire;
@@ -811,20 +892,33 @@ class SupabaseService {
         return AppRoutes.learningFocus;
       }
 
+      if (verificationState?.isApproved ?? false) {
+        return AppRoutes.home;
+      }
+
+      final pendingDocumentRequests = await getPendingDocumentRequests(userId);
+      final hasPendingIdentityDocumentRequest = pendingDocumentRequests.any(
+        (request) => request['review_type'] == 'identity_verification',
+      );
+      if (hasPendingIdentityDocumentRequest) {
+        return AppRoutes.identityPendingReview;
+      }
+
       if (verificationState?.hasRequiredIdentityDocuments != true ||
           identityStatus == 'rejected') {
-        return AppRoutes.identityVerificationIntro;
+        return role == 'guardian'
+            ? '${AppRoutes.identityVerificationIntro}?role=guardian'
+            : AppRoutes.identityVerificationIntro;
       }
-      if (identityStatus == 'pending') {
+      if (identityStatus == 'pending' ||
+          identityStatus == 'under_review' ||
+          identityStatus == 'resubmitted') {
         return AppRoutes.identityPendingReview;
       }
       if (!(verificationState?.isApproved ?? false)) {
         return AppRoutes.identityPendingReview;
       }
 
-      if (await requiresContactVerification(userId)) {
-        return AppRoutes.editProfile;
-      }
       return AppRoutes.home;
     }
 
@@ -849,6 +943,26 @@ class SupabaseService {
               ?.trim()
               .toLowerCase();
       if (credentialsStatus == 'pending') {
+        return AppRoutes.identityPendingReview;
+      }
+      final pendingDocumentRequests = await getPendingDocumentRequests(userId);
+      final hasPendingCredentialDocumentRequest = pendingDocumentRequests.any(
+        (request) => request['review_type'] == 'instructor_credentials',
+      );
+      if (hasPendingCredentialDocumentRequest) {
+        return AppRoutes.instructorCredentialsPortal;
+      }
+      if ((verificationState?.isApproved ?? false) &&
+          credentialsStatus == 'approved') {
+        if (await requiresContactVerification(userId)) {
+          return AppRoutes.editProfile;
+        }
+        return AppRoutes.instructorHome;
+      }
+      final hasPendingIdentityDocumentRequest = pendingDocumentRequests.any(
+        (request) => request['review_type'] == 'identity_verification',
+      );
+      if (hasPendingIdentityDocumentRequest) {
         return AppRoutes.identityPendingReview;
       }
       if (credentialsStatus != 'approved') {
@@ -914,7 +1028,7 @@ class SupabaseService {
       'identity_license_path': licensePath,
       'identity_selfie_path': selfiePath,
       'is_verified': false,
-      'onboarding_stage': role == 'learner'
+      'onboarding_stage': (role == 'learner' || role == 'guardian')
           ? onboardingStageQuestionnaireComplete
           : onboardingStageVerificationPending,
     };
@@ -929,6 +1043,63 @@ class SupabaseService {
         learnerAccountType: 'guardian',
         source: 'mobile_app_guardian_verification',
       );
+    }
+
+    await _client.from('profiles').update(updates).eq('id', userId);
+  }
+
+  static Future<void> submitRequestedVerificationDocument({
+    required String userId,
+    required String role,
+    required String documentType,
+    required String imagePath,
+  }) async {
+    final submittedAt = DateTime.now().toUtc().toIso8601String();
+    final normalizedType = documentType.trim();
+    final updates = <String, dynamic>{
+      'verification_status': 'pending',
+      'verification_submitted_at': submittedAt,
+      'verification_review_started_at': null,
+      'verification_approved_at': null,
+      'is_verified': false,
+    };
+
+    switch (normalizedType) {
+      case 'identity_license':
+        updates['identity_license_path'] =
+            await _uploadImmutableIdentityDocument(
+          userId: userId,
+          file: File(imagePath),
+          documentType: 'identity_license',
+        );
+        break;
+      case 'identity_selfie':
+        updates['identity_selfie_path'] = await _uploadMutableIdentityMedia(
+          userId: userId,
+          file: File(imagePath),
+          mediaKey: 'selfie',
+        );
+        break;
+      case 'guardian_identity_license':
+        updates['guardian_identity_license_path'] =
+            await _uploadImmutableIdentityDocument(
+          userId: userId,
+          file: File(imagePath),
+          documentType: 'guardian_identity_license',
+        );
+        updates['guardian_consent_submitted_at'] = submittedAt;
+        break;
+      case 'guardian_identity_selfie':
+        updates['guardian_identity_selfie_path'] =
+            await _uploadMutableIdentityMedia(
+          userId: userId,
+          file: File(imagePath),
+          mediaKey: 'guardian-selfie',
+        );
+        updates['guardian_consent_submitted_at'] = submittedAt;
+        break;
+      default:
+        throw Exception('Unsupported document request.');
     }
 
     await _client.from('profiles').update(updates).eq('id', userId);
@@ -1687,6 +1858,7 @@ class SupabaseService {
     }
     final phone = OntarioPhoneNumber.toE164(draft.phone);
     if (phone != null && phone.isNotEmpty) {
+      await ensurePhoneNumberAvailableForUser(phone, userId: userId);
       profileUpdates['phone'] = phone;
     }
     final licenceNumber = draft.g1LicenceNumber?.trim().toUpperCase();

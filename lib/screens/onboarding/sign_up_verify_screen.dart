@@ -117,7 +117,11 @@ class _SignUpVerifyScreenState extends State<SignUpVerifyScreen> {
 
     context.go(
       AppRoutes.signUpEmail,
-      extra: {'email': widget.flowState.email},
+      extra: {
+        'email': widget.flowState.email,
+        'role': widget.flowState.role,
+        'learnerAccountType': widget.flowState.learnerAccountType,
+      },
     );
   }
 

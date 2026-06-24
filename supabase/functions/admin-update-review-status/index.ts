@@ -269,9 +269,10 @@ serve(async (request) => {
 
       const role = String(profile.role ?? '').trim().toLowerCase();
       const isLearner = role === 'learner';
-      let isGuardianReview = false;
+      const isGuardian = role === 'guardian';
+      let isGuardianReview = isGuardian;
 
-      if (isLearner) {
+      if (isLearner || isGuardian) {
         const { data: learnerProfile, error: learnerProfileError } = await admin
           .from('learner_profiles')
           .select('account_type, ward_first_name, ward_last_name')
@@ -283,10 +284,12 @@ serve(async (request) => {
         }
 
         isGuardianReview =
+          isGuardianReview ||
           String(learnerProfile?.account_type ?? '').trim().toLowerCase() ===
             'guardian';
       }
 
+      const isLearnerLikeReview = isLearner || isGuardianReview;
 
       if (status === 'approved' && requireDocumentScan) {
         await assertCurrentDocumentsScanned(
@@ -308,14 +311,14 @@ serve(async (request) => {
           profile.verification_review_started_at ?? nowIso,
         verification_review_notes:
           reviewNotes.length === 0 ? null : reviewNotes,
-        is_verified: status === 'approved' && isLearner,
+        is_verified: status === 'approved' && isLearnerLikeReview,
       };
 
       if (status === 'approved') {
         update.verification_approved_at = nowIso;
         update.verification_rejected_at = null;
         update.verification_rejection_reason = null;
-        if (isLearner) {
+        if (isLearnerLikeReview) {
           update.onboarding_stage = 'questionnaire_complete';
         }
       } else {

@@ -36,12 +36,15 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
 
   String get _consentTitle {
     if (_isGuardian) {
-      return 'I am the parent or legal guardian and agree to manage this account for the learner.';
+      return 'I confirm I am the parent or legal guardian creating this account for a 16 or 17-year-old learner.';
     }
     return 'I am 18 or older and agree to Drive Tutor account and verification terms.';
   }
 
   String get _consentBody {
+    if (_isGuardian) {
+      return 'I will manage consent, verification, notifications, and lesson requests for this ward. This account is not for an adult learner or another purpose.';
+    }
     final roleLabel = _isGuardian ? 'guardian-managed learner' : widget.role;
     return 'By continuing, I accept the required Drive Tutor policies for this $roleLabel account, including terms, privacy, data consent, safety, community guidelines, and identity/licence verification consent.';
   }

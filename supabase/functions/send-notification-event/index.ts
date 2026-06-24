@@ -279,9 +279,27 @@ async function sendFcm(token: string, event: JsonRow) {
 
   const data = await response.json() as JsonRow;
   if (!response.ok) {
-    throw new Error(data.error?.message ?? 'FCM send failed.');
+    const error = data.error ?? {};
+    const details = Array.isArray(error.details) ? error.details : [];
+    const errorCode = details
+      .map((detail: JsonRow) => detail?.errorCode)
+      .find((code: unknown) => typeof code === 'string');
+    const status = typeof error.status === 'string' ? error.status : '';
+    const message = typeof error.message === 'string' ? error.message : 'FCM send failed.';
+    const enriched = [message, status, errorCode].filter(Boolean).join(' | ');
+    throw new Error(enriched);
   }
   return String(data.name ?? '');
+}
+
+function isInvalidFcmTokenError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return (
+    message.includes('Requested entity was not found') ||
+    message.includes('UNREGISTERED') ||
+    message.includes('INVALID_ARGUMENT') ||
+    message.includes('registration token is not a valid FCM registration token')
+  );
 }
 
 async function sendEmail(email: string, event: JsonRow) {
@@ -397,7 +415,7 @@ Deno.serve(async (request) => {
           updated_at: new Date().toISOString(),
         })
         .eq('id', event.id);
-      return;
+      return jsonResponse({ success: true, status: 'cancelled', reason: 'preferences' });
     }
 
     const channels = Array.isArray(event.channels) ? event.channels : ['fcm'];
@@ -427,6 +445,16 @@ Deno.serve(async (request) => {
           });
           results.push({ channel: 'fcm', status: 'sent' });
         } catch (error) {
+          if (isInvalidFcmTokenError(error)) {
+            await admin
+              .from('device_tokens')
+              .update({
+                is_active: false,
+                revoked_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('fcm_token', row.fcm_token);
+          }
           await admin.from('notification_deliveries').insert({
             event_id: event.id,
             profile_id: event.recipient_profile_id,

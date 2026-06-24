@@ -6,6 +6,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../constants/ontario_locations.dart';
 import '../../models/learner_onboarding_draft.dart';
+import '../../services/supabase_service.dart';
 import '../../utils/ontario_phone_number.dart';
 import '../../widgets/app_circle_icon_button.dart';
 import '../../widgets/app_primary_button.dart';
@@ -42,6 +43,7 @@ class _LearnerQuestionnaireScreenState
   DateTime? _lastClassDate;
   String? _selectedCity;
   String? _selectedGender;
+  bool _isCheckingPhone = false;
   bool get _isGuardianAccount =>
       widget.initialDraft.learnerAccountType == 'guardian';
 
@@ -234,12 +236,40 @@ class _LearnerQuestionnaireScreenState
       return;
     }
 
+    final phone = OntarioPhoneNumber.toE164(_phoneController.text);
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) {
+      _showError('Please sign in again to continue.');
+      return;
+    }
+
+    setState(() => _isCheckingPhone = true);
+    try {
+      await SupabaseService.ensurePhoneNumberAvailableForUser(
+        phone,
+        userId: userId,
+      );
+    } on PhoneNumberInUseException {
+      _showError(
+        'That phone number is already attached to an account. Use a different phone number or sign in to the existing account.',
+      );
+      return;
+    } catch (_) {
+      _showError('Unable to verify this phone number. Please try again.');
+      return;
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingPhone = false);
+      }
+    }
+    if (!mounted) return;
+
     final draft = widget.initialDraft.copyWith(
       role: widget.initialDraft.role,
       learnerAccountType: widget.initialDraft.learnerAccountType,
       firstName: _firstNameController.text.trim(),
       lastName: _lastNameController.text.trim(),
-      phone: OntarioPhoneNumber.toE164(_phoneController.text),
+      phone: phone,
       wardFirstName:
           _isGuardianAccount ? _wardFirstNameController.text.trim() : null,
       wardLastName:
@@ -409,7 +439,7 @@ class _LearnerQuestionnaireScreenState
                       const SizedBox(height: 18),
                       Text(
                         _isGuardianAccount
-                            ? 'Guardian and learner details'
+                            ? 'Guardian account setup'
                             : 'Tell us about you',
                         style: const TextStyle(
                           fontSize: 24,
@@ -420,7 +450,7 @@ class _LearnerQuestionnaireScreenState
                       const SizedBox(height: 6),
                       Text(
                         _isGuardianAccount
-                            ? "We'll use your guardian account for notifications and your ward's details for lessons."
+                            ? "Start with the guardian's contact details, then add the learner's licence, lesson history, pickup spots, and availability."
                             : 'We need a few learner details before we set your pickup and weekly schedule.',
                         style: const TextStyle(
                           fontSize: 15,
@@ -434,16 +464,22 @@ class _LearnerQuestionnaireScreenState
                             ? 'Guardian information'
                             : 'Personal information',
                         subtitle: _isGuardianAccount
-                            ? 'This account belongs to the guardian responsible for the learner.'
+                            ? "Enter the parent or legal guardian's details here. This person receives account updates and manages the learner."
                             : 'These details are required before you can continue.',
                         children: [
                           TextFormField(
                             controller: _firstNameController,
                             textCapitalization: TextCapitalization.words,
-                            decoration: _fieldDecoration(label: 'First name'),
+                            decoration: _fieldDecoration(
+                              label: _isGuardianAccount
+                                  ? 'Guardian first name'
+                                  : 'First name',
+                            ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Enter your first name';
+                                return _isGuardianAccount
+                                    ? "Enter the guardian's first name"
+                                    : 'Enter your first name';
                               }
                               return null;
                             },
@@ -452,10 +488,16 @@ class _LearnerQuestionnaireScreenState
                           TextFormField(
                             controller: _lastNameController,
                             textCapitalization: TextCapitalization.words,
-                            decoration: _fieldDecoration(label: 'Last name'),
+                            decoration: _fieldDecoration(
+                              label: _isGuardianAccount
+                                  ? 'Guardian last name'
+                                  : 'Last name',
+                            ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Enter your last name';
+                                return _isGuardianAccount
+                                    ? "Enter the guardian's last name"
+                                    : 'Enter your last name';
                               }
                               return null;
                             },
@@ -469,7 +511,9 @@ class _LearnerQuestionnaireScreenState
                               LengthLimitingTextInputFormatter(10),
                             ],
                             decoration: _fieldDecoration(
-                              label: 'Phone number',
+                              label: _isGuardianAccount
+                                  ? 'Guardian phone number'
+                                  : 'Phone number',
                               prefixText: '+1 ',
                             ),
                             validator: _validatePhone,
@@ -479,15 +523,15 @@ class _LearnerQuestionnaireScreenState
                       const SizedBox(height: 20),
                       if (_isGuardianAccount) ...[
                         _sectionCard(
-                          title: 'Ward information',
+                          title: 'Learner information',
                           subtitle:
-                              'Instructors will see that this is a guardian-managed learner request.',
+                              'These fields are for the learner, not the guardian. Instructors will see this learner information.',
                           children: [
                             TextFormField(
                               controller: _wardFirstNameController,
                               textCapitalization: TextCapitalization.words,
                               decoration: _fieldDecoration(
-                                label: 'Ward first name',
+                                label: 'Learner first name',
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
@@ -501,7 +545,7 @@ class _LearnerQuestionnaireScreenState
                               controller: _wardLastNameController,
                               textCapitalization: TextCapitalization.words,
                               decoration: _fieldDecoration(
-                                label: 'Ward last name',
+                                label: 'Learner last name',
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
@@ -515,9 +559,11 @@ class _LearnerQuestionnaireScreenState
                         const SizedBox(height: 20),
                       ],
                       _sectionCard(
-                        title: 'G1/G2/G Licence',
+                        title: _isGuardianAccount
+                            ? 'Learner G1/G2/G licence'
+                            : 'G1/G2/G Licence',
                         subtitle: _isGuardianAccount
-                            ? "Enter the ward learner's licence details."
+                            ? "Enter the learner's Ontario G1, G2, or G licence. The guardian government ID is uploaded later for verification."
                             : 'Enter the learner licence details you will use for lessons.',
                         children: [
                           TextFormField(
@@ -525,13 +571,13 @@ class _LearnerQuestionnaireScreenState
                             textCapitalization: TextCapitalization.characters,
                             decoration: _fieldDecoration(
                               label: _isGuardianAccount
-                                  ? 'Ward G1/G2/G licence number'
+                                  ? 'Learner G1/G2/G licence number'
                                   : 'G1/G2/G licence number',
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
                                 return _isGuardianAccount
-                                    ? "Enter the ward learner's licence number"
+                                    ? "Enter the learner's licence number"
                                     : 'Enter your G1 licence number';
                               }
                               return null;
@@ -543,7 +589,7 @@ class _LearnerQuestionnaireScreenState
                             readOnly: true,
                             decoration: _fieldDecoration(
                               label: _isGuardianAccount
-                                  ? 'Ward G1/G2/G expiry date'
+                                  ? 'Learner G1/G2/G expiry date'
                                   : 'G1/G2/G expiry date',
                               suffixIcon: IconButton(
                                 onPressed: () => _pickDate(
@@ -563,10 +609,10 @@ class _LearnerQuestionnaireScreenState
                       const SizedBox(height: 20),
                       _sectionCard(
                         title: _isGuardianAccount
-                            ? 'Ward learner details'
+                            ? 'Learner lesson details'
                             : 'Basic details',
                         subtitle: _isGuardianAccount
-                            ? 'This helps match your ward with the right instructors and lesson options.'
+                            ? "Use the learner's city, age, and gender. These are not guardian details."
                             : 'This helps match you with the right instructors and lesson options.',
                         children: [
                           DropdownButtonFormField<String>(
@@ -583,7 +629,9 @@ class _LearnerQuestionnaireScreenState
                             onChanged: (value) =>
                                 setState(() => _selectedCity = value),
                             validator: (value) => value == null || value.isEmpty
-                                ? 'Select your city'
+                                ? _isGuardianAccount
+                                    ? "Select the learner's city"
+                                    : 'Select your city'
                                 : null,
                           ),
                           const SizedBox(height: 16),
@@ -591,12 +639,12 @@ class _LearnerQuestionnaireScreenState
                             controller: _ageController,
                             keyboardType: TextInputType.number,
                             decoration: _fieldDecoration(
-                              label: _isGuardianAccount ? 'Ward age' : 'Age',
+                              label: _isGuardianAccount ? 'Learner age' : 'Age',
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
                                 return _isGuardianAccount
-                                    ? "Enter the ward learner's age"
+                                    ? "Enter the learner's age"
                                     : 'Enter your age';
                               }
                               if (int.tryParse(value.trim()) == null) {
@@ -608,7 +656,11 @@ class _LearnerQuestionnaireScreenState
                           const SizedBox(height: 16),
                           DropdownButtonFormField<String>(
                             initialValue: _selectedGender,
-                            decoration: _fieldDecoration(label: 'Gender'),
+                            decoration: _fieldDecoration(
+                              label: _isGuardianAccount
+                                  ? 'Learner gender'
+                                  : 'Gender',
+                            ),
                             items: const [
                               DropdownMenuItem(
                                 value: 'Male',
@@ -630,7 +682,9 @@ class _LearnerQuestionnaireScreenState
                             onChanged: (value) =>
                                 setState(() => _selectedGender = value),
                             validator: (value) => value == null || value.isEmpty
-                                ? 'Select your gender'
+                                ? _isGuardianAccount
+                                    ? "Select the learner's gender"
+                                    : 'Select your gender'
                                 : null,
                           ),
                         ],
@@ -638,16 +692,19 @@ class _LearnerQuestionnaireScreenState
                       const SizedBox(height: 20),
                       _sectionCard(
                         title: _isGuardianAccount
-                            ? "Ward's lesson history"
+                            ? 'Learner lesson history'
                             : 'Lesson history',
-                        subtitle:
-                            'Keep this accurate so the app can reflect your current progress.',
+                        subtitle: _isGuardianAccount
+                            ? 'Tell us how many lessons the learner has already completed so instructors can start at the right level.'
+                            : 'Keep this accurate so the app can reflect your current progress.',
                         children: [
                           TextFormField(
                             controller: _classesTakenController,
                             keyboardType: TextInputType.number,
                             decoration: _fieldDecoration(
-                              label: 'Lessons completed so far',
+                              label: _isGuardianAccount
+                                  ? 'Learner lessons completed so far'
+                                  : 'Lessons completed so far',
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -655,7 +712,9 @@ class _LearnerQuestionnaireScreenState
                             controller: _lastClassController,
                             readOnly: true,
                             decoration: _fieldDecoration(
-                              label: 'Last class date',
+                              label: _isGuardianAccount
+                                  ? "Learner's last class date"
+                                  : 'Last class date',
                               suffixIcon: IconButton(
                                 onPressed: () => _pickDate(
                                   controller: _lastClassController,
@@ -680,7 +739,8 @@ class _LearnerQuestionnaireScreenState
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: AppPrimaryButton(
                   label: 'Continue',
-                  onPressed: _handleContinue,
+                  onPressed: _isCheckingPhone ? null : _handleContinue,
+                  isLoading: _isCheckingPhone,
                   height: 56,
                 ),
               ),

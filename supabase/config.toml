@@ -27,3 +27,6 @@ verify_jwt = false
 
 [functions.send-notification-event]
 verify_jwt = true
+
+[functions.process-notification-queue]
+verify_jwt = false

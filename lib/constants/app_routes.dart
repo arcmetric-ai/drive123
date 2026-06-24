@@ -49,6 +49,7 @@ import '../screens/onboarding/role_selection_screen.dart';
 import '../screens/onboarding/sign_up_email_screen.dart';
 import '../screens/onboarding/sign_up_verify_screen.dart';
 import '../screens/onboarding/verification_screen.dart';
+import '../screens/onboarding/verification_document_resubmission_screen.dart';
 import '../screens/profile/help_support_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
 import '../screens/profile/notification_preferences_screen.dart';
@@ -80,6 +81,8 @@ class AppRoutes {
   static const String guardianLicenseCapture = '/guardian-license-capture';
   static const String guardianSelfieCapture = '/guardian-selfie-capture';
   static const String identityPendingReview = '/identity-pending-review';
+  static const String verificationDocumentResubmission =
+      '/verification-document-resubmission';
   static const String learnerQuestionnaire = '/learner-questionnaire';
   static const String learnerPickupAddress = '/learner-pickup-address';
   static const String learnerWeeklyAvailability =
@@ -141,6 +144,9 @@ class AppRoutes {
         editProfile,
         editLearnerAvailability,
         helpSupport,
+        identityPendingReview,
+        verificationDocumentResubmission,
+        instructorCredentialsPortal,
       };
       if (protectedPaths.contains(state.uri.path) &&
           Supabase.instance.client.auth.currentSession == null) {
@@ -263,7 +269,10 @@ class AppRoutes {
           final role = extra is String
               ? extra
               : (extra is Map ? (extra['role'] as String?) : null);
-          return IdentityVerificationIntroScreen(role: role ?? 'learner');
+          final queryRole = state.uri.queryParameters['role'];
+          return IdentityVerificationIntroScreen(
+            role: role ?? queryRole ?? 'learner',
+          );
         },
       ),
       GoRoute(
@@ -327,6 +336,19 @@ class AppRoutes {
             role: role,
             licenseImagePath: extra['licenseImagePath'] as String?,
             selfieImagePath: extra['selfieImagePath'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: verificationDocumentResubmission,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? const {};
+          return VerificationDocumentResubmissionScreen(
+            role: (extra['role'] as String?) ?? 'learner',
+            documentType:
+                (extra['documentType'] as String?) ?? 'identity_license',
+            requestId: extra['requestId'] as String?,
+            adminMessage: extra['adminMessage'] as String?,
           );
         },
       ),

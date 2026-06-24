@@ -26,6 +26,30 @@ class IdentityPendingReviewScreen extends StatelessWidget {
   final String? licenseImagePath;
   final String? selfieImagePath;
 
+  Future<_PendingReviewData> _loadReviewData() async {
+    final state = await SupabaseService.getCurrentIdentityVerificationState();
+    final userId = SupabaseService.currentUser?.id;
+    final requests = userId == null
+        ? <Map<String, dynamic>>[]
+        : await SupabaseService.getPendingDocumentRequests(userId);
+    return _PendingReviewData(state: state, requests: requests);
+  }
+
+  Future<void> _redirectAfterApproval(BuildContext context) async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) {
+      if (context.mounted) context.go(AppRoutes.auth);
+      return;
+    }
+
+    final route = await SupabaseService.resolvePostAuthRoute(
+      userId: userId,
+      metadataRole: role,
+    );
+    if (!context.mounted) return;
+    context.go(route);
+  }
+
   Future<void> _handleReturnToSignIn(BuildContext context) async {
     try {
       await SupabaseService.signOut();
@@ -55,18 +79,234 @@ class IdentityPendingReviewScreen extends StatelessWidget {
     return 'there';
   }
 
+  String _requestTitle(String? documentType) {
+    switch (documentType) {
+      case 'identity_license':
+        return 'Ontario G1, G2, or G licence';
+      case 'identity_selfie':
+        return 'Selfie photo';
+      case 'guardian_identity_license':
+        return 'Guardian government ID';
+      case 'guardian_identity_selfie':
+        return 'Guardian selfie photo';
+      default:
+        return 'Requested document';
+    }
+  }
+
+  IconData _requestIcon(String? documentType) {
+    return documentType?.contains('selfie') == true
+        ? Icons.face_retouching_natural_rounded
+        : Icons.badge_outlined;
+  }
+
+  Widget _buildRequestedDocumentsCard({
+    required BuildContext context,
+    required List<Map<String, dynamic>> requests,
+    required String effectiveRole,
+  }) {
+    if (requests.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.subtle,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.assignment_late_rounded,
+                color: AppColors.primary,
+                size: 24,
+              ),
+              SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Requested documents',
+                  style: TextStyle(
+                    color: AppColors.foreground,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          const Text(
+            'Upload the item requested by the review team. We will restart review after it is submitted.',
+            style: TextStyle(
+              color: AppColors.mutedForeground,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          ...requests.map((request) {
+            final documentType = request['document_type'] as String?;
+            final adminMessage = (request['admin_message'] as String?)?.trim();
+            return Container(
+              margin: const EdgeInsets.only(bottom: AppSpacing.md),
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(AppRadii.md),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _requestIcon(documentType),
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _requestTitle(documentType),
+                          style: const TextStyle(
+                            color: AppColors.foreground,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (adminMessage != null &&
+                            adminMessage.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            adminMessage,
+                            style: const TextStyle(
+                              color: AppColors.mutedForeground,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: AppSpacing.sm),
+                        FilledButton.icon(
+                          onPressed: () => context.go(
+                            AppRoutes.verificationDocumentResubmission,
+                            extra: {
+                              'role': effectiveRole,
+                              'documentType':
+                                  documentType ?? 'identity_license',
+                              'requestId': request['id'] as String?,
+                              'adminMessage': adminMessage,
+                            },
+                          ),
+                          icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                          label: const Text('Upload'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCredentialRequestCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.subtle,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Credential document requested',
+            style: TextStyle(
+              color: AppColors.foreground,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          const Text(
+            'Open the credentials portal to upload the instructor document requested by admin.',
+            style: TextStyle(
+              color: AppColors.mutedForeground,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          FilledButton.icon(
+            onPressed: () => context.go(AppRoutes.instructorCredentialsPortal),
+            icon: const Icon(Icons.upload_file_rounded, size: 18),
+            label: const Text('Open credentials portal'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: FutureBuilder<IdentityVerificationState?>(
-        future: SupabaseService.getCurrentIdentityVerificationState(),
+      body: FutureBuilder<_PendingReviewData>(
+        future: _loadReviewData(),
         builder: (context, snapshot) {
-          final state = snapshot.data;
+          final data = snapshot.data;
+          final state = data?.state;
+          final requests = data?.requests ?? const <Map<String, dynamic>>[];
           final displayName = state != null ? _displayName(state) : 'there';
           final createdAt = state?.createdAt ?? DateTime.now();
           final submittedAt = state?.verificationSubmittedAt ?? DateTime.now();
           final effectiveRole = state?.role ?? role;
+          final identityRequests = requests
+              .where(
+                (request) => request['review_type'] == 'identity_verification',
+              )
+              .toList();
+          final credentialRequests = requests
+              .where(
+                (request) => request['review_type'] == 'instructor_credentials',
+              )
+              .toList();
+          if (state?.isApproved == true &&
+              identityRequests.isEmpty &&
+              credentialRequests.isEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _redirectAfterApproval(context);
+            });
+            return const SafeArea(
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final hasAction = identityRequests.isNotEmpty ||
+              (effectiveRole == 'instructor' && credentialRequests.isNotEmpty);
 
           return SafeArea(
             child: LayoutBuilder(
@@ -84,7 +324,9 @@ class IdentityPendingReviewScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Hang tight,\n$displayName',
+                                hasAction
+                                    ? 'Action needed,\n$displayName'
+                                    : 'Hang tight,\n$displayName',
                                 style: const TextStyle(
                                   fontSize: 34,
                                   fontWeight: FontWeight.w800,
@@ -95,9 +337,11 @@ class IdentityPendingReviewScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: AppSpacing.md),
                               Text(
-                                effectiveRole == 'instructor'
-                                    ? "We're reviewing your documents so we can activate your account and continue instructor onboarding."
-                                    : "We're reviewing your documents to get you on the road safely.",
+                                hasAction
+                                    ? 'Admin requested one more item before your review can continue.'
+                                    : effectiveRole == 'instructor'
+                                        ? "We're reviewing your documents so we can activate your account and continue instructor onboarding."
+                                        : "We're reviewing your documents to get you on the road safely.",
                                 style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w500,
@@ -105,7 +349,19 @@ class IdentityPendingReviewScreen extends StatelessWidget {
                                   color: AppColors.mutedForeground,
                                 ),
                               ),
-                              const SizedBox(height: 56),
+                              const SizedBox(height: 36),
+                              _buildRequestedDocumentsCard(
+                                context: context,
+                                requests: identityRequests,
+                                effectiveRole: effectiveRole,
+                              ),
+                              if (identityRequests.isNotEmpty)
+                                const SizedBox(height: AppSpacing.xl),
+                              if (effectiveRole == 'instructor' &&
+                                  credentialRequests.isNotEmpty) ...[
+                                _buildCredentialRequestCard(context),
+                                const SizedBox(height: AppSpacing.xl),
+                              ],
                               VerificationTimeline(
                                 items: [
                                   VerificationTimelineItemData(
@@ -120,9 +376,13 @@ class IdentityPendingReviewScreen extends StatelessWidget {
                                     state:
                                         VerificationTimelineStepState.complete,
                                   ),
-                                  const VerificationTimelineItemData(
-                                    title: 'Admin Review',
-                                    subtitle: 'Estimated wait: 2-4 hours',
+                                  VerificationTimelineItemData(
+                                    title: hasAction
+                                        ? 'Waiting for Upload'
+                                        : 'Admin Review',
+                                    subtitle: hasAction
+                                        ? 'Upload the requested item above'
+                                        : 'Estimated wait: 2-4 hours',
                                     state:
                                         VerificationTimelineStepState.current,
                                     emphasisColor: AppColors.primary,
@@ -147,10 +407,10 @@ class IdentityPendingReviewScreen extends StatelessWidget {
                                       BorderRadius.circular(AppRadii.lg),
                                   boxShadow: AppShadows.subtle,
                                 ),
-                                child: const Row(
+                                child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Padding(
+                                    const Padding(
                                       padding: EdgeInsets.only(top: 4),
                                       child: Icon(
                                         Icons.notifications_active_rounded,
@@ -158,11 +418,13 @@ class IdentityPendingReviewScreen extends StatelessWidget {
                                         size: 26,
                                       ),
                                     ),
-                                    SizedBox(width: AppSpacing.lg),
+                                    const SizedBox(width: AppSpacing.lg),
                                     Expanded(
                                       child: Text(
-                                        "We'll send you a push notification as soon as your account is active.",
-                                        style: TextStyle(
+                                        hasAction
+                                            ? 'After you upload, we will notify you when review is complete.'
+                                            : "We'll send you a push notification as soon as your account is active.",
+                                        style: const TextStyle(
                                           fontSize: 17,
                                           fontWeight: FontWeight.w500,
                                           height: 1.45,
@@ -194,4 +456,14 @@ class IdentityPendingReviewScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PendingReviewData {
+  const _PendingReviewData({
+    required this.state,
+    required this.requests,
+  });
+
+  final IdentityVerificationState? state;
+  final List<Map<String, dynamic>> requests;
 }

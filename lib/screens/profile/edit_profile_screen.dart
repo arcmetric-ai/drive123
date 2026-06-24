@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
+import '../../constants/app_routes.dart';
 import '../../constants/ontario_locations.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/ontario_licence.dart';
@@ -1089,12 +1091,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           controller: _classesTakenController,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-            labelText: 'How many classes have you taken?',
+            labelText: 'Previous lessons completed (optional)',
             border: OutlineInputBorder(),
           ),
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
-              return 'Let us know how many classes you have taken';
+              return null;
             }
             final parsed = int.tryParse(value.trim());
             if (parsed == null || parsed < 0) {
@@ -1686,7 +1688,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (userId == null) return;
 
     final age = int.tryParse(_ageController.text.trim());
-    final classesTaken = int.tryParse(_classesTakenController.text.trim());
+    final classesTakenText = _classesTakenController.text.trim();
+    final classesTaken =
+        classesTakenText.isEmpty ? 0 : int.tryParse(classesTakenText);
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
     final rawPhone = _phoneController.text.trim();
@@ -1820,7 +1824,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           backgroundColor: AppColors.success,
         ),
       );
-      Navigator.of(context).pop(true);
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+      } else {
+        context.go(AppRoutes.home);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
