@@ -1,0 +1,344 @@
+-- Schedule lesson reminder notification events when lessons are created or moved.
+-- The minute cron remains responsible for delivering due notification_events.
+
+create or replace function private.cancel_queued_lesson_reminders(target_lesson_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.notification_events
+  set
+    status = 'cancelled',
+    processed_at = coalesce(processed_at, now()),
+    error_message = coalesce(error_message, 'Cancelled because the lesson schedule or status changed.'),
+    updated_at = now()
+  where entity_type = 'lesson'
+    and entity_id = target_lesson_id
+    and event_key like 'lesson.reminder.%'
+    and status = 'queued';
+end;
+$$;
+
+revoke all on function private.cancel_queued_lesson_reminders(uuid) from public;
+revoke all on function private.cancel_queued_lesson_reminders(uuid) from anon;
+revoke all on function private.cancel_queued_lesson_reminders(uuid) from authenticated;
+
+create or replace function private.schedule_lesson_reminder_events(
+  target_lesson_id uuid,
+  target_learner_id uuid,
+  target_instructor_id uuid,
+  target_scheduled_at timestamptz
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  reminder record;
+  lesson_time text;
+  learner_name text := private.profile_display_name(target_learner_id);
+  instructor_name text := private.profile_display_name(target_instructor_id);
+  scheduled_for timestamptz;
+  dedupe_suffix text;
+begin
+  if target_lesson_id is null
+    or target_learner_id is null
+    or target_instructor_id is null
+    or target_scheduled_at is null
+    or target_scheduled_at <= now() then
+    return;
+  end if;
+
+  lesson_time := to_char(target_scheduled_at at time zone 'America/Toronto', 'Mon DD at HH12:MI AM');
+  dedupe_suffix := ':' || target_lesson_id::text || ':' || extract(epoch from target_scheduled_at)::bigint::text;
+
+  for reminder in
+    select *
+    from (
+      values
+        ('24h'::text, interval '24 hours', 'Lesson tomorrow'::text),
+        ('1h'::text, interval '1 hour', 'Lesson in 1 hour'::text)
+    ) as reminders(reminder_key, reminder_offset, reminder_title)
+  loop
+    scheduled_for := target_scheduled_at - reminder.reminder_offset;
+
+    if scheduled_for <= now() then
+      continue;
+    end if;
+
+    perform private.enqueue_notification(
+      'lesson.reminder.' || reminder.reminder_key,
+      target_learner_id,
+      target_instructor_id,
+      'lesson',
+      target_lesson_id,
+      reminder.reminder_title,
+      'Your lesson with ' || coalesce(instructor_name, 'your instructor') || ' starts ' || lesson_time || '.',
+      jsonb_build_object(
+        'route', '/lessons',
+        'lessonId', target_lesson_id,
+        'type', 'lesson_reminder',
+        'reminderWindow', reminder.reminder_key
+      ),
+      'high',
+      'lesson-reminder-' || reminder.reminder_key || '-learner' || dedupe_suffix,
+      scheduled_for
+    );
+
+    perform private.enqueue_notification(
+      'lesson.reminder.' || reminder.reminder_key,
+      target_instructor_id,
+      target_learner_id,
+      'lesson',
+      target_lesson_id,
+      reminder.reminder_title,
+      'Lesson with ' || coalesce(learner_name, 'your learner') || ' starts ' || lesson_time || '.',
+      jsonb_build_object(
+        'route', '/instructor/bookings',
+        'lessonId', target_lesson_id,
+        'type', 'lesson_reminder',
+        'reminderWindow', reminder.reminder_key
+      ),
+      'high',
+      'lesson-reminder-' || reminder.reminder_key || '-instructor' || dedupe_suffix,
+      scheduled_for
+    );
+  end loop;
+end;
+$$;
+
+revoke all on function private.schedule_lesson_reminder_events(uuid, uuid, uuid, timestamptz) from public;
+revoke all on function private.schedule_lesson_reminder_events(uuid, uuid, uuid, timestamptz) from anon;
+revoke all on function private.schedule_lesson_reminder_events(uuid, uuid, uuid, timestamptz) from authenticated;
+
+create or replace function private.queue_lesson_notifications()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  learner_name text := private.profile_display_name(new.learner_id);
+  instructor_name text := private.profile_display_name(new.instructor_id);
+  lesson_time text := to_char(new.scheduled_at at time zone 'America/Toronto', 'Mon DD at HH12:MI AM');
+  active_lesson_statuses constant text[] := array['scheduled', 'booked', 'confirmed'];
+  reminders_should_refresh boolean := false;
+begin
+  if new.learner_id is null then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    reminders_should_refresh := true;
+
+    perform private.enqueue_notification(
+      'lesson.booked', new.learner_id, new.instructor_id, 'lesson', new.id,
+      'Lesson booked', instructor_name || ' booked your lesson for ' || lesson_time || '.',
+      jsonb_build_object('route', '/lessons', 'lessonId', new.id),
+      'high', 'lesson-booked-learner:' || new.id::text
+    );
+  elsif tg_op = 'UPDATE' then
+    reminders_should_refresh :=
+      new.status is distinct from old.status
+      or new.scheduled_at is distinct from old.scheduled_at
+      or new.start_time is distinct from old.start_time
+      or new.end_time is distinct from old.end_time;
+
+    if new.scheduled_at is distinct from old.scheduled_at
+      or new.start_time is distinct from old.start_time
+      or new.end_time is distinct from old.end_time then
+      perform private.enqueue_notification(
+        'lesson.rescheduled', new.learner_id, new.instructor_id, 'lesson', new.id,
+        'Lesson rescheduled', 'Your lesson is now scheduled for ' || lesson_time || '.',
+        jsonb_build_object('route', '/lessons', 'lessonId', new.id),
+        'high', 'lesson-rescheduled-learner:' || new.id::text || ':' || extract(epoch from new.updated_at)::bigint::text
+      );
+      perform private.enqueue_notification(
+        'lesson.rescheduled', new.instructor_id, new.learner_id, 'lesson', new.id,
+        'Lesson rescheduled', 'Lesson with ' || learner_name || ' is now ' || lesson_time || '.',
+        jsonb_build_object('route', '/instructor/bookings', 'lessonId', new.id),
+        'high', 'lesson-rescheduled-instructor:' || new.id::text || ':' || extract(epoch from new.updated_at)::bigint::text
+      );
+    end if;
+
+    if new.status is distinct from old.status then
+      if new.status = 'cancelled' then
+        perform private.enqueue_notification(
+          'lesson.cancelled', new.learner_id, new.instructor_id, 'lesson', new.id,
+          'Lesson cancelled', 'Your lesson on ' || lesson_time || ' was cancelled.',
+          jsonb_build_object('route', '/lessons', 'lessonId', new.id),
+          'high', 'lesson-cancelled-learner:' || new.id::text
+        );
+        perform private.enqueue_notification(
+          'lesson.cancelled', new.instructor_id, new.learner_id, 'lesson', new.id,
+          'Lesson cancelled', 'The lesson with ' || learner_name || ' was cancelled.',
+          jsonb_build_object('route', '/instructor/bookings', 'lessonId', new.id),
+          'high', 'lesson-cancelled-instructor:' || new.id::text
+        );
+      elsif new.status in ('completed', 'ended') then
+        perform private.enqueue_notification(
+          'lesson.review.requested', new.learner_id, new.instructor_id, 'lesson', new.id,
+          'How was your lesson?', 'Rate your lesson with ' || instructor_name || '.',
+          jsonb_build_object('route', '/lessons', 'lessonId', new.id),
+          'normal', 'lesson-review-learner:' || new.id::text
+        );
+        perform private.enqueue_notification(
+          'lesson.review.requested', new.instructor_id, new.learner_id, 'lesson', new.id,
+          'How was your lesson?', 'Rate your lesson with ' || learner_name || '.',
+          jsonb_build_object('route', '/instructor/bookings', 'lessonId', new.id),
+          'normal', 'lesson-review-instructor:' || new.id::text
+        );
+      end if;
+    end if;
+  end if;
+
+  if tg_op = 'UPDATE' and reminders_should_refresh then
+    perform private.cancel_queued_lesson_reminders(new.id);
+  end if;
+
+  if reminders_should_refresh
+    and coalesce(new.status, 'scheduled') = any(active_lesson_statuses) then
+    perform private.schedule_lesson_reminder_events(
+      new.id,
+      new.learner_id,
+      new.instructor_id,
+      new.scheduled_at
+    );
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function private.queue_lesson_notifications() from public;
+revoke all on function private.queue_lesson_notifications() from anon;
+revoke all on function private.queue_lesson_notifications() from authenticated;
+
+create or replace function private.queue_lesson_reminders()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  queued_count integer := 0;
+  lesson_row record;
+  reminder_key text;
+  reminder_title text;
+  learner_body text;
+  instructor_body text;
+begin
+  for lesson_row in
+    select
+      l.*,
+      private.profile_display_name(l.learner_id) as learner_name,
+      private.profile_display_name(l.instructor_id) as instructor_name
+    from public.lessons l
+    where coalesce(l.status, 'scheduled') in ('scheduled', 'booked', 'confirmed')
+      and l.learner_id is not null
+      and l.instructor_id is not null
+      and l.scheduled_at > now()
+      and (
+        l.scheduled_at between now() + interval '45 minutes' and now() + interval '75 minutes'
+        or l.scheduled_at between now() + interval '23 hours' and now() + interval '25 hours'
+      )
+  loop
+    if lesson_row.scheduled_at < now() + interval '2 hours' then
+      reminder_key := '1h';
+      reminder_title := 'Lesson in 1 hour';
+    else
+      reminder_key := '24h';
+      reminder_title := 'Lesson tomorrow';
+    end if;
+
+    learner_body := 'Your lesson with ' || coalesce(lesson_row.instructor_name, 'your instructor') ||
+      ' starts ' ||
+      to_char(lesson_row.scheduled_at at time zone 'America/Toronto', 'Mon DD at HH12:MI AM') || '.';
+
+    instructor_body := 'Lesson with ' || coalesce(lesson_row.learner_name, 'your learner') ||
+      ' starts ' ||
+      to_char(lesson_row.scheduled_at at time zone 'America/Toronto', 'Mon DD at HH12:MI AM') || '.';
+
+    if not exists (
+      select 1
+      from public.notification_events existing
+      where existing.entity_type = 'lesson'
+        and existing.entity_id = lesson_row.id
+        and existing.recipient_profile_id = lesson_row.learner_id
+        and existing.event_key = 'lesson.reminder.' || reminder_key
+    ) then
+      perform private.enqueue_notification(
+        'lesson.reminder.' || reminder_key,
+        lesson_row.learner_id,
+        lesson_row.instructor_id,
+        'lesson',
+        lesson_row.id,
+        reminder_title,
+        learner_body,
+        jsonb_build_object(
+          'route', '/lessons',
+          'lessonId', lesson_row.id,
+          'type', 'lesson_reminder',
+          'reminderWindow', reminder_key
+        ),
+        'high',
+        'lesson-reminder-' || reminder_key || '-learner:' || lesson_row.id::text
+      );
+
+      queued_count := queued_count + 1;
+    end if;
+
+    if not exists (
+      select 1
+      from public.notification_events existing
+      where existing.entity_type = 'lesson'
+        and existing.entity_id = lesson_row.id
+        and existing.recipient_profile_id = lesson_row.instructor_id
+        and existing.event_key = 'lesson.reminder.' || reminder_key
+    ) then
+      perform private.enqueue_notification(
+        'lesson.reminder.' || reminder_key,
+        lesson_row.instructor_id,
+        lesson_row.learner_id,
+        'lesson',
+        lesson_row.id,
+        reminder_title,
+        instructor_body,
+        jsonb_build_object(
+          'route', '/instructor/bookings',
+          'lessonId', lesson_row.id,
+          'type', 'lesson_reminder',
+          'reminderWindow', reminder_key
+        ),
+        'high',
+        'lesson-reminder-' || reminder_key || '-instructor:' || lesson_row.id::text
+      );
+
+      queued_count := queued_count + 1;
+    end if;
+  end loop;
+
+  return queued_count;
+end;
+$$;
+
+revoke all on function private.queue_lesson_reminders() from public;
+revoke all on function private.queue_lesson_reminders() from anon;
+revoke all on function private.queue_lesson_reminders() from authenticated;
+
+create or replace function public.queue_due_lesson_reminders()
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  select private.queue_lesson_reminders();
+$$;
+
+revoke all on function public.queue_due_lesson_reminders() from public;
+revoke all on function public.queue_due_lesson_reminders() from anon;
+revoke all on function public.queue_due_lesson_reminders() from authenticated;
+grant execute on function public.queue_due_lesson_reminders() to service_role;
