@@ -140,6 +140,19 @@ Expected artifacts:
 - iOS IPA:
   - `/Users/abhi/Downloads/drive-t-app/build/ios/ipa/Drive Tutor.ipa`
 
+### Latest Local Build Result
+
+After the notification reminder hardening commit, local release builds succeeded with:
+
+- Version: `1.0.0`
+- Build number: `3`
+- Android AAB:
+  - `/Users/abhi/Downloads/drive-t-app/build/app/outputs/bundle/release/app-release.aab`
+- iOS IPA:
+  - `/Users/abhi/Downloads/drive-t-app/build/ios/ipa/Drive Tutor.ipa`
+
+The iOS build emitted a non-blocking warning that the launch image is still the default placeholder.
+
 ## Known Testing Notes
 
 - Test reminder flow by creating a lesson 50-65 minutes in the future, then manually calling `process-notification-queue`.
