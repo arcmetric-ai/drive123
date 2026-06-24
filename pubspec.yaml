@@ -3,7 +3,7 @@ description: A friendly platform connecting driving learners with verified instr
 
 publish_to: 'none'
 
-version: 1.0.0+4
+version: 1.0.0+15
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
