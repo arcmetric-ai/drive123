@@ -7,6 +7,7 @@ import '../../constants/app_spacing.dart';
 import '../../widgets/app_outline_button.dart';
 import '../../widgets/app_primary_button.dart';
 import '../../widgets/brand_intro_header.dart';
+import '../../widgets/keyboard_safe_scroll_view.dart';
 
 class AccountEntryScreen extends StatelessWidget {
   const AccountEntryScreen({super.key});
@@ -16,7 +17,7 @@ class AccountEntryScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
+        child: KeyboardSafeScrollView(
           padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

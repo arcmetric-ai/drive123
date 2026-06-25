@@ -7,6 +7,7 @@ import '../../constants/app_spacing.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/app_primary_button.dart';
 import '../../widgets/auth_back_button.dart';
+import '../../widgets/keyboard_safe_scroll_view.dart';
 import '../../widgets/rounded_input_field.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -78,7 +79,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
+        child: KeyboardSafeScrollView(
           padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
           child: Form(
             key: _formKey,

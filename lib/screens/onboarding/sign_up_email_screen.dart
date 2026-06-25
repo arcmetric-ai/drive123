@@ -119,143 +119,171 @@ class _SignUpEmailScreenState extends State<SignUpEmailScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AuthBackButton(
-                  onPressed: () => context.go(AppRoutes.learnerAccountType),
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
                 ),
-                const SizedBox(height: 44),
-                const Text(
-                  'Create Account',
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w800,
-                    height: 1.08,
-                    letterSpacing: -0.7,
-                    color: AppColors.foreground,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                const Text(
-                  "Enter your email address and we'll send you a confirmation link.",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                    height: 1.45,
-                    color: AppColors.mutedForeground,
-                  ),
-                ),
-                const SizedBox(height: 52),
-                RoundedInputField(
-                  controller: _emailController,
-                  hintText: 'EMAIL ADDRESS',
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.done,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF7F9FF),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.border),
-                  ),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
+                child: Form(
+                  key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CheckboxListTile(
-                        value: _acceptedPolicies,
-                        onChanged: _isLoading
-                            ? null
-                            : (value) => setState(
-                                  () => _acceptedPolicies = value ?? false,
-                                ),
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                        title: Text(
-                          _consentTitle,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            height: 1.35,
-                            color: AppColors.foreground,
-                          ),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            _consentBody,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              height: 1.35,
-                              color: AppColors.mutedForeground,
-                            ),
-                          ),
+                      AuthBackButton(
+                        onPressed: () => context.go(AppRoutes.learnerAccountType),
+                      ),
+                      const SizedBox(height: 44),
+                      const Text(
+                        'Create Account',
+                        style: TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          height: 1.08,
+                          letterSpacing: -0.7,
+                          color: AppColors.foreground,
                         ),
                       ),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          TextButton(
-                            onPressed: () =>
-                                _openPolicy('terms-and-conditions'),
-                            child: const Text('Terms'),
-                          ),
-                          TextButton(
-                            onPressed: () => _openPolicy('privacy-policy'),
-                            child: const Text('Privacy'),
-                          ),
-                          TextButton(
-                            onPressed: () => _openPolicy('data-consent-policy'),
-                            child: const Text('Data Consent'),
-                          ),
-                          TextButton(
-                            onPressed: () => _openPolicy('safety-policy'),
-                            child: const Text('Safety'),
-                          ),
-                          TextButton(
-                            onPressed: () =>
-                                _openPolicy('community-guidelines'),
-                            child: const Text('Community'),
-                          ),
-                          TextButton(
-                            onPressed: () => _openPolicy(
-                              _isGuardian
-                                  ? 'guardian-consent'
-                                  : 'identity-verification-consent',
+                      const SizedBox(height: AppSpacing.md),
+                      const Text(
+                        "Enter your email address and we'll send you a confirmation link.",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                          height: 1.45,
+                          color: AppColors.mutedForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 52),
+                      RoundedInputField(
+                        controller: _emailController,
+                        hintText: 'EMAIL ADDRESS',
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.done,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter your email';
+                          }
+                          if (!value.contains('@')) {
+                            return 'Please enter a valid email';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F9FF),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CheckboxListTile(
+                              value: _acceptedPolicies,
+                              onChanged: _isLoading
+                                  ? null
+                                  : (value) => setState(
+                                        () => _acceptedPolicies = value ?? false,
+                                      ),
+                              contentPadding: EdgeInsets.zero,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              title: Text(
+                                _consentTitle,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.35,
+                                  color: AppColors.foreground,
+                                ),
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  _consentBody,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    height: 1.35,
+                                    color: AppColors.mutedForeground,
+                                  ),
+                                ),
+                              ),
                             ),
-                            child: Text(_isGuardian
-                                ? 'Guardian Consent'
-                                : 'Verification Consent'),
-                          ),
-                        ],
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                TextButton(
+                                  onPressed: () =>
+                                      _openPolicy('terms-and-conditions'),
+                                  child: const Text('Terms'),
+                                ),
+                                TextButton(
+                                  onPressed: () => _openPolicy('privacy-policy'),
+                                  child: const Text('Privacy'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      _openPolicy('data-consent-policy'),
+                                  child: const Text('Data Consent'),
+                                ),
+                                TextButton(
+                                  onPressed: () => _openPolicy('safety-policy'),
+                                  child: const Text('Safety'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      _openPolicy('community-guidelines'),
+                                  child: const Text('Community'),
+                                ),
+                                TextButton(
+                                  onPressed: () => _openPolicy(
+                                    _isGuardian
+                                        ? 'guardian-consent'
+                                        : 'identity-verification-consent',
+                                  ),
+                                  child: Text(
+                                    _isGuardian
+                                        ? 'Guardian Consent'
+                                        : 'Verification Consent',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const Spacer(),
-                AppPrimaryButton(
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.foreground.withValues(alpha: 0.06),
+                    blurRadius: 18,
+                    offset: const Offset(0, -8),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                child: AppPrimaryButton(
                   label: 'Continue',
                   isLoading: _isLoading,
                   onPressed: _isLoading ? null : _handleContinue,
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

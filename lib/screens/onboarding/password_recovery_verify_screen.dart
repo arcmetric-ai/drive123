@@ -9,6 +9,7 @@ import '../../constants/app_spacing.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/app_primary_button.dart';
 import '../../widgets/auth_back_button.dart';
+import '../../widgets/keyboard_safe_scroll_view.dart';
 import '../../widgets/otp_box_row.dart';
 
 class PasswordRecoveryVerifyScreen extends StatefulWidget {
@@ -157,7 +158,7 @@ class _PasswordRecoveryVerifyScreenState
       body: GestureDetector(
         onTap: () => _focusNode.requestFocus(),
         child: SafeArea(
-          child: Padding(
+          child: KeyboardSafeScrollView(
             padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
             child: Column(
               children: [

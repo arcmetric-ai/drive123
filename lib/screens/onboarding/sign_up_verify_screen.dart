@@ -8,6 +8,7 @@ import '../../models/signup_flow_state.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/app_primary_button.dart';
 import '../../widgets/auth_back_button.dart';
+import '../../widgets/keyboard_safe_scroll_view.dart';
 
 class SignUpVerifyScreen extends StatefulWidget {
   const SignUpVerifyScreen({
@@ -130,7 +131,7 @@ class _SignUpVerifyScreenState extends State<SignUpVerifyScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
+        child: KeyboardSafeScrollView(
           padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
