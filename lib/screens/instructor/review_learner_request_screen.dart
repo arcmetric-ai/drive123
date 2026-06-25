@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/verified_profile_badge.dart';
 
 class ReviewLearnerRequestScreen extends StatefulWidget {
   final Map<String, dynamic>? request;
@@ -200,6 +201,36 @@ class _ReviewLearnerRequestScreenState
       return trimmed;
     }
     return null;
+  }
+
+  bool _isVerifiedLearner(Map<String, dynamic>? request) {
+    if (request == null) return false;
+
+    bool? readBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is String) {
+        final normalized = value.trim().toLowerCase();
+        if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
+          return true;
+        }
+        if (normalized == 'false' || normalized == '0' || normalized == 'no') {
+          return false;
+        }
+      }
+      return null;
+    }
+
+    final learner = request['learner'];
+    final learnerProfile = request['learner_profile'];
+    return readBool(request['is_verified']) ??
+        (learner is Map ? readBool(learner['is_verified']) : null) ??
+        (learnerProfile is Map
+            ? readBool(learnerProfile['is_verified'] ??
+                (learnerProfile['profile'] is Map
+                    ? (learnerProfile['profile'] as Map)['is_verified']
+                    : null))
+            : null) ??
+        false;
   }
 
   String? _formatWeeklyAvailability(
@@ -422,8 +453,10 @@ class _ReviewLearnerRequestScreenState
         _stringValue(request?['requested_city']) ??
         _stringValue(request?['city']);
     final age = _deriveAge(learner, request);
-    final accountType = _stringValue(learnerProfile?['account_type']);
+    final accountType =
+        _stringValue(learnerProfile?['account_type'])?.toLowerCase();
     final isGuardianAccount = accountType == 'guardian';
+    final isVerifiedLearner = _isVerifiedLearner(request);
     final guardianName = _displayName(request ?? const {});
     final wardFirst = _stringValue(learnerProfile?['ward_first_name']);
     final wardLast = _stringValue(learnerProfile?['ward_last_name']);
@@ -488,30 +521,69 @@ class _ReviewLearnerRequestScreenState
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      _displayName(request),
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        Text(
+                                          _displayName(request),
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        if (isVerifiedLearner)
+                                          const VerifiedProfileBadge(
+                                            size: 22,
+                                            showCutout: true,
+                                          ),
+                                      ],
                                     ),
                                     const SizedBox(height: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: _statusColor(status)
-                                            .withOpacity(0.12),
-                                        borderRadius:
-                                            BorderRadius.circular(999),
-                                      ),
-                                      child: Text(
-                                        _statusLabel(status),
-                                        style: TextStyle(
-                                          color: _statusColor(status),
-                                          fontWeight: FontWeight.w600,
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 6,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: _statusColor(status)
+                                                .withOpacity(0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
+                                            _statusLabel(status),
+                                            style: TextStyle(
+                                              color: _statusColor(status),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                        if (isGuardianAccount)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary
+                                                  .withOpacity(0.10),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                            child: const Text(
+                                              'Guardian account',
+                                              style: TextStyle(
+                                                color: AppColors.primary,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                     if (createdAt != null) ...[
                                       const SizedBox(height: 6),

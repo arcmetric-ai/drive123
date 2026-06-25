@@ -1371,10 +1371,10 @@ class _ProfileImage extends StatelessWidget {
           _FallbackAvatar(initial: fallbackInitial),
         if (isVerified)
           const Positioned(
-            top: -6,
-            right: -10,
+            top: 2,
+            right: 2,
             child: VerifiedProfileBadge(
-              size: 26,
+              size: 24,
               showCutout: true,
             ),
           ),

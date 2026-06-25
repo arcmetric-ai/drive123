@@ -7,6 +7,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/lesson_request_utils.dart';
+import '../../widgets/verified_profile_badge.dart';
 
 class InstructorPendingRequestsScreen extends StatefulWidget {
   const InstructorPendingRequestsScreen({
@@ -100,6 +101,13 @@ class _InstructorPendingRequestsScreenState
   }
 
   String _subtitle(Map<String, dynamic> request) {
+    if (_isGuardianAccount(request)) {
+      final learnerName = _guardianLearnerName(request);
+      if (learnerName.isNotEmpty) {
+        return 'Guardian account • Learner: $learnerName';
+      }
+      return 'Guardian account';
+    }
     final focus = (request['focus'] as String?)?.trim();
     if (focus != null && focus.isNotEmpty) return focus;
     final city = ((request['requested_city'] ??
@@ -108,6 +116,77 @@ class _InstructorPendingRequestsScreenState
         ?.trim();
     if (city != null && city.isNotEmpty) return city;
     return 'New learner inquiry';
+  }
+
+  bool _isGuardianAccount(Map<String, dynamic> request) {
+    final learnerProfile = request['learner_profile'];
+    if (learnerProfile is Map) {
+      return cleanDisplayString(learnerProfile['account_type']).toLowerCase() ==
+          'guardian';
+    }
+    return false;
+  }
+
+  String _accountHolderName(Map<String, dynamic> request) {
+    final learner = request['learner'];
+    if (learner is Map) {
+      final parts = [
+        cleanDisplayString(learner['first_name']),
+        cleanDisplayString(learner['last_name']),
+      ].where((value) => value.isNotEmpty).join(' ');
+      if (parts.isNotEmpty) return parts;
+      final email = cleanDisplayString(learner['email']);
+      if (email.isNotEmpty) return email;
+    }
+
+    final requested = [
+      cleanDisplayString(request['requested_first_name']),
+      cleanDisplayString(request['requested_last_name']),
+    ].where((value) => value.isNotEmpty).join(' ');
+    if (requested.isNotEmpty) return requested;
+
+    final fallback = cleanDisplayString(request['requested_name']);
+    return fallback.isNotEmpty ? fallback : 'Learner';
+  }
+
+  String _guardianLearnerName(Map<String, dynamic> request) {
+    final learnerProfile = request['learner_profile'];
+    if (learnerProfile is Map) {
+      final wardName = [
+        cleanDisplayString(learnerProfile['ward_first_name']),
+        cleanDisplayString(learnerProfile['ward_last_name']),
+      ].where((value) => value.isNotEmpty).join(' ');
+      if (wardName.isNotEmpty) return wardName;
+    }
+    return '';
+  }
+
+  bool _isVerifiedLearner(Map<String, dynamic> request) {
+    bool? readBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is String) {
+        final normalized = value.trim().toLowerCase();
+        if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
+          return true;
+        }
+        if (normalized == 'false' || normalized == '0' || normalized == 'no') {
+          return false;
+        }
+      }
+      return null;
+    }
+
+    final learner = request['learner'];
+    final learnerProfile = request['learner_profile'];
+    return readBool(request['is_verified']) ??
+        (learner is Map ? readBool(learner['is_verified']) : null) ??
+        (learnerProfile is Map
+            ? readBool(learnerProfile['is_verified'] ??
+                (learnerProfile['profile'] is Map
+                    ? (learnerProfile['profile'] as Map)['is_verified']
+                    : null))
+            : null) ??
+        false;
   }
 
   String _timestampLabel(Map<String, dynamic> request) {
@@ -255,10 +334,13 @@ class _InstructorPendingRequestsScreenState
   }
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
-    final name = formatLessonRequestLearnerName(request);
+    final name = _isGuardianAccount(request)
+        ? _accountHolderName(request)
+        : formatLessonRequestLearnerName(request);
     final subtitle = _subtitle(request);
     final avatarUrl = _avatarUrl(request);
     final timestamp = _timestampLabel(request);
+    final isVerified = _isVerifiedLearner(request);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -302,14 +384,26 @@ class _InstructorPendingRequestsScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        height: 1.15,
-                        color: AppColors.foreground,
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            height: 1.15,
+                            color: AppColors.foreground,
+                          ),
+                        ),
+                        if (isVerified)
+                          const VerifiedProfileBadge(
+                            size: 22,
+                            showCutout: true,
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(

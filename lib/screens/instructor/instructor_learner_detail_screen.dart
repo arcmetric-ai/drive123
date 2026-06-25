@@ -549,9 +549,17 @@ class _InstructorLearnerDetailScreenState
   bool get _isVerifiedLearner {
     final direct = _asNullableBool(_profile['is_verified']);
     if (direct != null) return direct;
+    final learnerDirect = _asNullableBool(_learner['is_verified']);
+    if (learnerDirect != null) return learnerDirect;
     final profileMap = _mapOrNull(_learner['profile']);
     final nested = _asNullableBool(profileMap?['is_verified']);
-    return nested ?? false;
+    if (nested != null) return nested;
+    final learnerProfileMap = _mapOrNull(_learner['learner_profile']);
+    final learnerProfileVerified = _asNullableBool(
+      learnerProfileMap?['is_verified'] ??
+          (_mapOrNull(learnerProfileMap?['profile']))?['is_verified'],
+    );
+    return learnerProfileVerified ?? false;
   }
 
   String? get _profileImageUrl {

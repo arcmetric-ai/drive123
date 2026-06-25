@@ -2312,7 +2312,7 @@ class SupabaseService {
       rows = await _client
           .from('learner_profiles')
           .select(
-            'profile_id, account_type, ward_first_name, ward_last_name, ward_age, ward_gender, learning_focus, transmission_preference, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)',
+            'profile_id, account_type, ward_first_name, ward_last_name, ward_age, ward_gender, learning_focus, transmission_preference, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry, is_verified, verification_status)',
           )
           .inFilter('profile_id', ids.toList());
     } catch (error) {
@@ -2320,7 +2320,7 @@ class SupabaseService {
       rows = await _client
           .from('learner_profiles')
           .select(
-            'profile_id, learning_focus, transmission_preference, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry)',
+            'profile_id, learning_focus, transmission_preference, target_test_date, target_test_centre, notes, classes_taken_sofar, last_class_date, preferred_locations, preferred_location_notes, weekly_availability, availability_recurring, profile:profiles!learner_profiles_profile_id_fkey(id, first_name, last_name, email, phone, profile_image_url, city, gender, age, licence_number, licence_expiry, is_verified, verification_status)',
           )
           .inFilter('profile_id', ids.toList());
     }
@@ -2411,6 +2411,8 @@ class SupabaseService {
         'age',
         'licence_number',
         'licence_expiry',
+        'is_verified',
+        'verification_status',
       ]) {
         learnerProfileMap.putIfAbsent(key, () => nestedProfile[key]);
       }
@@ -2502,7 +2504,7 @@ class SupabaseService {
     final profiles = await _client
         .from('profiles')
         .select(
-          'id, first_name, last_name, email, phone, profile_image_url, city, gender, age',
+          'id, first_name, last_name, email, phone, profile_image_url, city, gender, age, is_verified, verification_status',
         )
         .inFilter('id', ids);
 
