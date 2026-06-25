@@ -42,6 +42,30 @@ serve(async (request) => {
         400,
       );
     }
+    if (!/[a-z]/.test(newPassword)) {
+      return jsonResponse(
+        { error: 'Password must include a lowercase letter.' },
+        400,
+      );
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      return jsonResponse(
+        { error: 'Password must include an uppercase letter.' },
+        400,
+      );
+    }
+    if (!/\d/.test(newPassword)) {
+      return jsonResponse(
+        { error: 'Password must include a number.' },
+        400,
+      );
+    }
+    if (!/[^A-Za-z0-9]/.test(newPassword)) {
+      return jsonResponse(
+        { error: 'Password must include a symbol.' },
+        400,
+      );
+    }
 
     const flowTokenHash = await sha256Hex(flowToken);
     const nowIso = new Date().toISOString();

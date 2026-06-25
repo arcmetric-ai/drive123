@@ -32,6 +32,8 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
   bool _isCapturing = false;
   String? _error;
   int _initializationToken = 0;
+  static const _cameraStartTimeout = Duration(seconds: 12);
+  static const _captureTimeout = Duration(seconds: 15);
 
   @override
   void initState() {
@@ -77,7 +79,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
     });
 
     try {
-      final cameras = await availableCameras();
+      final cameras = await availableCameras().timeout(_cameraStartTimeout);
       if (cameras.isEmpty) {
         throw CameraException('noCamera', 'No camera was found.');
       }
@@ -96,7 +98,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
-      await controller.initialize();
+      await controller.initialize().timeout(_cameraStartTimeout);
 
       if (!mounted || token != _initializationToken) {
         await controller.dispose();
@@ -118,6 +120,12 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
             ? 'Camera permission is required to take this verification photo.'
             : 'Unable to start the camera. Please try again.';
       });
+    } on TimeoutException {
+      if (!mounted || token != _initializationToken) return;
+      setState(() {
+        _isInitializing = false;
+        _error = 'Camera took too long to start. Please try again.';
+      });
     } catch (_) {
       if (!mounted || token != _initializationToken) return;
       setState(() {
@@ -138,10 +146,19 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
 
     setState(() => _isCapturing = true);
     try {
-      final file = await controller.takePicture();
+      final file = await controller.takePicture().timeout(_captureTimeout);
       if (!mounted) return;
       setState(() => _isCapturing = false);
       Navigator.of(context).pop(file.path);
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() => _isCapturing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera took too long to capture. Please try again.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _isCapturing = false);

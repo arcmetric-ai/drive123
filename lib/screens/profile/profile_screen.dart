@@ -13,6 +13,8 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../models/user_model.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/password_rules.dart';
+import '../../widgets/password_strength_meter.dart';
 import '../../widgets/profile_expandable_section.dart';
 import '../../widgets/verified_profile_badge.dart';
 import '../instructor/instructor_bookings_history_screen.dart';
@@ -2081,6 +2083,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final formKey = GlobalKey<FormState>();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
+    final passwordListenable = ValueNotifier<String>('');
     bool isSubmitting = false;
     String? error;
 
@@ -2121,14 +2124,21 @@ class _ProfileScreenState extends State<ProfileScreen>
                           labelText: 'New password',
                           border: OutlineInputBorder(),
                         ),
+                        onChanged: (value) => passwordListenable.value = value,
                         validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
+                          final message =
+                              PasswordRules.validationMessage(value);
+                          if (message == 'Enter a password') {
                             return 'Enter a new password';
                           }
-                          if (value.trim().length < 8) {
-                            return 'Password must be at least 8 characters';
-                          }
-                          return null;
+                          return message;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      ValueListenableBuilder<String>(
+                        valueListenable: passwordListenable,
+                        builder: (context, password, _) {
+                          return PasswordStrengthMeter(password: password);
                         },
                       ),
                       const SizedBox(height: 12),
@@ -2143,8 +2153,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                           if (value == null || value.trim().isEmpty) {
                             return 'Confirm your new password';
                           }
-                          if (value.trim() !=
-                              newPasswordController.text.trim()) {
+                          if (value != newPasswordController.text) {
                             return 'Passwords do not match';
                           }
                           return null;
@@ -2173,7 +2182,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                                   });
                                   try {
                                     await SupabaseService.updatePassword(
-                                      newPasswordController.text.trim(),
+                                      newPasswordController.text,
                                     );
                                     if (context.mounted) {
                                       Navigator.of(context).pop(true);
@@ -2222,6 +2231,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     newPasswordController.dispose();
     confirmPasswordController.dispose();
+    passwordListenable.dispose();
 
     if (success == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -7,6 +7,7 @@ import '../../constants/app_spacing.dart';
 import '../../models/learner_onboarding_draft.dart';
 import '../../models/signup_flow_state.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/password_rules.dart';
 import '../../widgets/app_primary_button.dart';
 import '../../widgets/keyboard_safe_scroll_view.dart';
 import '../../widgets/password_strength_meter.dart';
@@ -80,6 +81,9 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     if (lower.contains('password must be at least') ||
         lower.contains('use at least')) {
       return 'Use a password with at least 8 characters.';
+    }
+    if (lower.contains('password must include')) {
+      return 'Use a password with lowercase and uppercase letters, a number, and a symbol.';
     }
 
     return _isSignUpFlow
@@ -289,13 +293,7 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                   obscureText: true,
                   textInputAction: TextInputAction.next,
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Enter a password';
-                    }
-                    if (value.length < 8) {
-                      return 'Use at least 8 characters';
-                    }
-                    return null;
+                    return PasswordRules.validationMessage(value);
                   },
                 ),
                 const SizedBox(height: AppSpacing.md),
