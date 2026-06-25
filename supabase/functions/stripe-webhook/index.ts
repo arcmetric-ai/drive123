@@ -139,6 +139,35 @@ async function planAccessDays(admin: ReturnType<typeof createServiceClient>, pla
   return Number(data?.access_days ?? 1);
 }
 
+function subscriptionPriceId(subscription: StripeObject) {
+  const items = subscription.items;
+  if (items == null || typeof items !== 'object') return null;
+  const data = (items as { data?: unknown }).data;
+  if (!Array.isArray(data)) return null;
+  const price = (data[0] as { price?: { id?: unknown } } | undefined)?.price;
+  return typeof price?.id === 'string' ? price.id : null;
+}
+
+async function planKeyFromSubscriptionPrice(
+  admin: ReturnType<typeof createServiceClient>,
+  subscription: StripeObject,
+) {
+  const priceId = subscriptionPriceId(subscription);
+  if (priceId == null) return null;
+
+  const { data, error } = await admin
+    .from('instructor_billing_plans')
+    .select('plan_key, stripe_price_env')
+    .eq('is_active', true);
+  if (error != null) throw new Error(error.message);
+
+  for (const plan of data ?? []) {
+    const configuredPriceId = Deno.env.get(String(plan.stripe_price_env ?? ''));
+    if (configuredPriceId === priceId) return String(plan.plan_key);
+  }
+  return null;
+}
+
 async function upsertEntitlement(
   admin: ReturnType<typeof createServiceClient>,
   values: Record<string, unknown>,
@@ -224,11 +253,13 @@ async function handleCheckoutCompleted(
 
   if (mode === 'subscription' && typeof session.subscription === 'string') {
     const subscription = await stripeGet(`subscriptions/${session.subscription}`);
+    const resolvedPlanKey =
+      await planKeyFromSubscriptionPrice(admin, subscription) ?? planKey;
     const accessExpiresAt =
       isoFromUnix(subscription.current_period_end) ?? addDaysIso(30);
     await upsertEntitlement(admin, {
       profile_id: profileId,
-      plan_key: planKey,
+      plan_key: resolvedPlanKey,
       status: String(subscription.status ?? 'incomplete'),
       stripe_customer_id: customerId,
       stripe_subscription_id: subscription.id,
@@ -240,7 +271,7 @@ async function handleCheckoutCompleted(
       cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
       last_stripe_event_id: eventId,
     });
-    await notifyPassActivated(admin, profileId, planKey, accessExpiresAt, session.id);
+    await notifyPassActivated(admin, profileId, resolvedPlanKey, accessExpiresAt, session.id);
     return;
   }
 
@@ -268,7 +299,9 @@ async function handleSubscriptionEvent(
   forceCanceled = false,
 ) {
   let profileId = subscription.metadata?.profile_id;
-  let planKey = subscription.metadata?.plan_key;
+  let planKey =
+    await planKeyFromSubscriptionPrice(admin, subscription) ??
+      subscription.metadata?.plan_key;
 
   if (!profileId || !planKey) {
     const { data, error } = await admin
@@ -278,7 +311,7 @@ async function handleSubscriptionEvent(
       .maybeSingle();
     if (error != null) throw new Error(error.message);
     profileId = data?.profile_id;
-    planKey = data?.plan_key;
+    planKey = planKey ?? data?.plan_key;
   }
 
   if (!profileId || !planKey) return;

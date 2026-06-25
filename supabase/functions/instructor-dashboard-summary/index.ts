@@ -637,6 +637,8 @@ serve(async (request) => {
       pass: {
         active: hasActivePass,
         status: entitlement?.status ?? 'not_active',
+        planKey: activePlan?.plan_key ?? entitlement?.plan_key ?? null,
+        billingInterval: activePlan?.billing_interval ?? null,
         planName: activePlan?.display_name ?? 'No active pass',
         renewalOrExpiryDate: entitlement?.current_period_end ??
           entitlement?.access_expires_at ?? null,
