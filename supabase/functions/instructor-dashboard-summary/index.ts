@@ -76,6 +76,12 @@ function asStringArray(value: unknown) {
     : [];
 }
 
+function offeringLabel(value: string) {
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'PR') return 'Refresher';
+  return value.trim();
+}
+
 function titleCase(value: string) {
   return value
     .split(/[\s_-]+/)
@@ -473,7 +479,7 @@ serve(async (request) => {
     const documents = await Promise.all([
       {
         key: 'government_id',
-        label: 'Government photo ID',
+        label: 'G licence',
         status: profile.identity_license_path
           ? verificationStatus ?? 'uploaded'
           : 'missing',
@@ -592,7 +598,9 @@ serve(async (request) => {
       {
         label: 'Lesson offerings',
         complete: asStringArray(instructor.offerings).length > 0,
-        value: asStringArray(instructor.offerings).join(', ') || 'Not set',
+        value: asStringArray(instructor.offerings).map(offeringLabel).join(
+          ', ',
+        ) || 'Not set',
       },
     ];
     const profileCompletion = Math.round(
