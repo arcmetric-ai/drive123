@@ -79,10 +79,12 @@ class IdentityPendingReviewScreen extends StatelessWidget {
     return 'there';
   }
 
-  String _requestTitle(String? documentType) {
+  String _requestTitle(String? documentType, String effectiveRole) {
     switch (documentType) {
       case 'identity_license':
-        return 'Ontario G1, G2, or G licence';
+        return effectiveRole == 'instructor'
+            ? 'Ontario G licence'
+            : 'Ontario G1, G2, or G licence';
       case 'identity_selfie':
         return 'Selfie photo';
       case 'guardian_identity_license':
@@ -182,7 +184,7 @@ class IdentityPendingReviewScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _requestTitle(documentType),
+                          _requestTitle(documentType, effectiveRole),
                           style: const TextStyle(
                             color: AppColors.foreground,
                             fontSize: 16,
