@@ -395,17 +395,29 @@ class SupabaseService {
     final userId = _client.auth.currentUser?.id;
     if (userId == null || fcmToken.trim().isEmpty) return;
 
-    await _client.from('device_tokens').upsert({
-      'profile_id': userId,
-      'fcm_token': fcmToken.trim(),
-      'platform': platform,
-      'app_version': appVersion,
-      'device_label': deviceLabel,
-      'is_active': true,
-      'revoked_at': null,
-      'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, onConflict: 'fcm_token');
+    try {
+      await _client.rpc(
+        'register_device_token',
+        params: {
+          'p_fcm_token': fcmToken.trim(),
+          'p_platform': platform,
+          'p_app_version': appVersion,
+          'p_device_label': deviceLabel,
+        },
+      );
+    } catch (_) {
+      await _client.from('device_tokens').upsert({
+        'profile_id': userId,
+        'fcm_token': fcmToken.trim(),
+        'platform': platform,
+        'app_version': appVersion,
+        'device_label': deviceLabel,
+        'is_active': true,
+        'revoked_at': null,
+        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'fcm_token');
+    }
   }
 
   static Future<void> revokeCurrentDeviceToken({String? fcmToken}) async {

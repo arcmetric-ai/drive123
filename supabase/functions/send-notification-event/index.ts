@@ -430,6 +430,18 @@ Deno.serve(async (request) => {
 
       if (tokensError != null) throw new Error(tokensError.message);
 
+      if ((tokens ?? []).length === 0) {
+        await admin.from('notification_deliveries').insert({
+          event_id: event.id,
+          profile_id: event.recipient_profile_id,
+          channel: 'fcm',
+          status: 'skipped',
+          error_message: 'No active device token for recipient.',
+          attempts: 0,
+        });
+        results.push({ channel: 'fcm', status: 'skipped' });
+      }
+
       for (const row of tokens ?? []) {
         try {
           const providerId = await sendFcm(String(row.fcm_token), event);
@@ -499,7 +511,12 @@ Deno.serve(async (request) => {
 
     const hasSent = results.some((result) => result.status === 'sent');
     const hasFailed = results.some((result) => result.status === 'failed');
-    const status = hasSent && hasFailed ? 'partial' : hasSent ? 'sent' : 'failed';
+    const hasUnsent = results.some((result) => result.status !== 'sent');
+    const status = hasSent && (hasFailed || hasUnsent)
+      ? 'partial'
+      : hasSent
+        ? 'sent'
+        : 'failed';
 
     await admin
       .from('notification_events')

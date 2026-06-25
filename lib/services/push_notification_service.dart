@@ -98,18 +98,29 @@ class PushNotificationService {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
 
-    await Supabase.instance.client.from('device_tokens').upsert(
-      {
-        'profile_id': userId,
-        'fcm_token': token,
-        'platform': _platformName,
-        'is_active': true,
-        'revoked_at': null,
-        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      onConflict: 'fcm_token',
-    );
+    try {
+      await Supabase.instance.client.rpc(
+        'register_device_token',
+        params: {
+          'p_fcm_token': token,
+          'p_platform': _platformName,
+        },
+      );
+    } catch (error) {
+      debugPrint('RPC device token registration failed: $error');
+      await Supabase.instance.client.from('device_tokens').upsert(
+        {
+          'profile_id': userId,
+          'fcm_token': token,
+          'platform': _platformName,
+          'is_active': true,
+          'revoked_at': null,
+          'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'fcm_token',
+      );
+    }
     await _ensureDefaultPreferences(userId);
     _lastRegisteredToken = token;
   }
