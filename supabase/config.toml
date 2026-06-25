@@ -22,6 +22,9 @@ verify_jwt = true
 [functions.create-instructor-checkout-session]
 verify_jwt = true
 
+[functions.create-instructor-billing-portal-session]
+verify_jwt = true
+
 [functions.instructor-dashboard-summary]
 verify_jwt = false
 
