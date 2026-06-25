@@ -14,6 +14,10 @@ const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')!;
 const successUrl = Deno.env.get('STRIPE_CHECKOUT_SUCCESS_URL')!;
 const cancelUrl = Deno.env.get('STRIPE_CHECKOUT_CANCEL_URL')!;
+const configuredTrialDays = Number(Deno.env.get('STRIPE_INSTRUCTOR_TRIAL_DAYS') ?? '14');
+const instructorTrialDays = Number.isFinite(configuredTrialDays) && configuredTrialDays > 0
+  ? Math.floor(configuredTrialDays)
+  : 14;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -221,6 +225,7 @@ Deno.serve(async (request) => {
   if (mode === 'subscription') {
     appendForm(sessionForm, user.id, 'subscription_data[metadata][profile_id]');
     appendForm(sessionForm, plan.plan_key, 'subscription_data[metadata][plan_key]');
+    appendForm(sessionForm, instructorTrialDays, 'subscription_data[trial_period_days]');
   } else {
     appendForm(sessionForm, user.id, 'payment_intent_data[metadata][profile_id]');
     appendForm(sessionForm, plan.plan_key, 'payment_intent_data[metadata][plan_key]');
