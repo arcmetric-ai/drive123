@@ -6,7 +6,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/guided_capture_frame.dart';
-import '../../widgets/identity_capture_scene.dart';
+import '../../widgets/identity_capture_step_scaffold.dart';
 import '../../widgets/in_app_camera_capture_screen.dart';
 
 class VerificationDocumentResubmissionScreen extends StatefulWidget {
@@ -30,8 +30,9 @@ class VerificationDocumentResubmissionScreen extends StatefulWidget {
 
 class _VerificationDocumentResubmissionScreenState
     extends State<VerificationDocumentResubmissionScreen> {
-  String? _imagePath;
   bool _isSubmitting = false;
+  bool _didOpenCamera = false;
+  String? _error;
 
   bool get _isSelfie => widget.documentType.contains('selfie');
 
@@ -55,15 +56,20 @@ class _VerificationDocumentResubmissionScreenState
     }
   }
 
-  String get _sceneTitle => _isSelfie
-      ? 'Position your face within the oval'
-      : 'Position $_documentTitle inside the frame';
-
   String get _cameraTitle =>
       _isSelfie ? 'Capture $_documentTitle' : 'Capture $_documentTitle';
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _captureAndSubmit();
+    });
+  }
+
   Future<void> _captureAndSubmit() async {
-    if (_isSubmitting) return;
+    if (_isSubmitting || _didOpenCamera) return;
+    _didOpenCamera = true;
 
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -75,23 +81,26 @@ class _VerificationDocumentResubmissionScreenState
         ),
       ),
     );
-    if (imagePath == null || !mounted) return;
+    if (!mounted) return;
+
+    if (imagePath == null) {
+      context.go(
+        AppRoutes.identityPendingReview,
+        extra: {'role': widget.role},
+      );
+      return;
+    }
 
     setState(() {
-      _imagePath = imagePath;
       _isSubmitting = true;
     });
 
     final user = SupabaseService.currentUser;
     if (user == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please sign in again before uploading.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      setState(() => _isSubmitting = false);
+      setState(() {
+        _isSubmitting = false;
+        _error = 'Please sign in again before uploading.';
+      });
       return;
     }
 
@@ -115,30 +124,35 @@ class _VerificationDocumentResubmissionScreenState
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to upload requested document: $error'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      setState(() => _isSubmitting = false);
+      setState(() {
+        _isSubmitting = false;
+        _error = 'Unable to upload requested document: $error';
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return IdentityCaptureScene(
-      stepLabel: 'Action needed',
-      title: _sceneTitle,
-      imagePath: _imagePath,
-      shape: _shape,
+    return IdentityCaptureStepScaffold(
+      title: 'Opening $_documentTitle camera',
+      message: _isSubmitting
+          ? 'Uploading $_documentTitle.'
+          : _isSelfie
+              ? 'Position the face inside the oval and tap the shutter once.'
+              : 'Place $_documentTitle inside the frame and tap the shutter once.',
       onClose: () => context.go(
         AppRoutes.identityPendingReview,
         extra: {'role': widget.role},
       ),
-      onAction: _captureAndSubmit,
-      onCapture: _captureAndSubmit,
       isBusy: _isSubmitting,
+      error: _error,
+      onRetry: () {
+        setState(() {
+          _didOpenCamera = false;
+          _error = null;
+        });
+        _captureAndSubmit();
+      },
     );
   }
 }

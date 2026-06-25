@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/guided_capture_frame.dart';
-import '../../widgets/identity_capture_scene.dart';
+import '../../widgets/identity_capture_step_scaffold.dart';
 import '../../widgets/in_app_camera_capture_screen.dart';
 
 class IdentitySelfieCaptureScreen extends StatefulWidget {
@@ -27,17 +27,21 @@ class IdentitySelfieCaptureScreen extends StatefulWidget {
 
 class _IdentitySelfieCaptureScreenState
     extends State<IdentitySelfieCaptureScreen> {
-  String? _imagePath;
   bool _isSubmitting = false;
+  bool _didOpenCamera = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _imagePath = widget.selfieImagePath;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _captureSelfie();
+    });
   }
 
   Future<void> _captureSelfie() async {
-    if (_isSubmitting) return;
+    if (_isSubmitting || _didOpenCamera) return;
+    _didOpenCamera = true;
 
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -50,20 +54,20 @@ class _IdentitySelfieCaptureScreenState
         ),
       ),
     );
-    if (imagePath == null || !mounted) return;
+    if (!mounted) return;
 
-    setState(() => _imagePath = imagePath);
+    if (imagePath == null) {
+      context.pop();
+      return;
+    }
 
     final licenseImagePath = widget.licenseImagePath;
     final user = SupabaseService.currentUser;
 
     if (licenseImagePath == null || user == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to submit verification. Please try again.'),
-        ),
-      );
+      setState(() {
+        _error = 'Unable to submit verification. Please try again.';
+      });
       return;
     }
 
@@ -97,28 +101,32 @@ class _IdentitySelfieCaptureScreenState
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to upload verification: $error'),
-        ),
-      );
-      setState(() => _isSubmitting = false);
+      setState(() {
+        _isSubmitting = false;
+        _error = 'Unable to upload verification: $error';
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return IdentityCaptureScene(
-      stepLabel: 'Step 3 of 4',
+    return IdentityCaptureStepScaffold(
       title: widget.role == 'guardian'
-          ? 'Position the learner within the oval'
-          : 'Position your face within the oval',
-      imagePath: _imagePath,
-      shape: CaptureFrameShape.oval,
+          ? 'Opening learner selfie camera'
+          : 'Opening selfie camera',
+      message: _isSubmitting
+          ? 'Uploading your verification photos.'
+          : 'Position the face inside the oval and tap the shutter once.',
       onClose: () => context.pop(),
-      onAction: _captureSelfie,
-      onCapture: _captureSelfie,
       isBusy: _isSubmitting,
+      error: _error,
+      onRetry: () {
+        setState(() {
+          _didOpenCamera = false;
+          _error = null;
+        });
+        _captureSelfie();
+      },
     );
   }
 }

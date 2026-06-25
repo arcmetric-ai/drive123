@@ -2,11 +2,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/guided_capture_frame.dart';
-import '../../widgets/identity_capture_scene.dart';
+import '../../widgets/identity_capture_step_scaffold.dart';
 import '../../widgets/in_app_camera_capture_screen.dart';
 
 class GuardianSelfieCaptureScreen extends StatefulWidget {
@@ -32,17 +31,21 @@ class GuardianSelfieCaptureScreen extends StatefulWidget {
 
 class _GuardianSelfieCaptureScreenState
     extends State<GuardianSelfieCaptureScreen> {
-  String? _imagePath;
   bool _isSubmitting = false;
+  bool _didOpenCamera = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _imagePath = widget.guardianSelfieImagePath;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _captureGuardianSelfie();
+    });
   }
 
   Future<void> _captureGuardianSelfie() async {
-    if (_isSubmitting) return;
+    if (_isSubmitting || _didOpenCamera) return;
+    _didOpenCamera = true;
 
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -55,10 +58,19 @@ class _GuardianSelfieCaptureScreenState
     );
 
     final user = SupabaseService.currentUser;
-    if (imagePath == null || user == null || !mounted) return;
+    if (!mounted) return;
+    if (imagePath == null) {
+      context.pop();
+      return;
+    }
+    if (user == null) {
+      setState(() {
+        _error = 'Please sign in again before uploading.';
+      });
+      return;
+    }
 
     setState(() {
-      _imagePath = imagePath;
       _isSubmitting = true;
     });
 
@@ -78,27 +90,30 @@ class _GuardianSelfieCaptureScreenState
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to upload guardian consent: $error'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      setState(() => _isSubmitting = false);
+      setState(() {
+        _isSubmitting = false;
+        _error = 'Unable to upload guardian consent: $error';
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return IdentityCaptureScene(
-      stepLabel: 'Guardian Step 2 of 2',
-      title: 'Guardian face within the oval',
-      imagePath: _imagePath,
-      shape: CaptureFrameShape.oval,
+    return IdentityCaptureStepScaffold(
+      title: 'Opening guardian selfie camera',
+      message: _isSubmitting
+          ? 'Uploading guardian verification photos.'
+          : 'Position the guardian face inside the oval and tap the shutter once.',
       onClose: () => context.pop(),
-      onAction: _captureGuardianSelfie,
-      onCapture: _captureGuardianSelfie,
       isBusy: _isSubmitting,
+      error: _error,
+      onRetry: () {
+        setState(() {
+          _didOpenCamera = false;
+          _error = null;
+        });
+        _captureGuardianSelfie();
+      },
     );
   }
 }

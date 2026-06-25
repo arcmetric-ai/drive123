@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../constants/app_routes.dart';
 import '../../widgets/guided_capture_frame.dart';
-import '../../widgets/identity_capture_scene.dart';
+import '../../widgets/identity_capture_step_scaffold.dart';
 import '../../widgets/in_app_camera_capture_screen.dart';
 
 class GuardianLicenseCaptureScreen extends StatefulWidget {
@@ -27,15 +27,20 @@ class GuardianLicenseCaptureScreen extends StatefulWidget {
 
 class _GuardianLicenseCaptureScreenState
     extends State<GuardianLicenseCaptureScreen> {
-  String? _imagePath;
+  bool _didOpenCamera = false;
 
   @override
   void initState() {
     super.initState();
-    _imagePath = widget.guardianLicenseImagePath;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _captureGuardianId();
+    });
   }
 
   Future<void> _captureGuardianId() async {
+    if (_didOpenCamera) return;
+    _didOpenCamera = true;
+
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => const InAppCameraCaptureScreen(
@@ -44,9 +49,13 @@ class _GuardianLicenseCaptureScreenState
         ),
       ),
     );
-    if (imagePath == null || !mounted) return;
+    if (!mounted) return;
 
-    setState(() => _imagePath = imagePath);
+    if (imagePath == null) {
+      context.pop();
+      return;
+    }
+
     context.go(
       AppRoutes.guardianSelfieCapture,
       extra: {
@@ -60,14 +69,14 @@ class _GuardianLicenseCaptureScreenState
 
   @override
   Widget build(BuildContext context) {
-    return IdentityCaptureScene(
-      stepLabel: 'Guardian Step 1 of 2',
-      title: 'Position guardian government ID inside the frame',
-      imagePath: _imagePath,
-      shape: CaptureFrameShape.rectangle,
+    return IdentityCaptureStepScaffold(
+      title: 'Opening guardian ID camera',
+      message: 'Place the ID inside the frame and tap the shutter once.',
       onClose: () => context.pop(),
-      onAction: _captureGuardianId,
-      onCapture: _captureGuardianId,
+      onRetry: () {
+        setState(() => _didOpenCamera = false);
+        _captureGuardianId();
+      },
     );
   }
 }
