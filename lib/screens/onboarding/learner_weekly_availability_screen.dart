@@ -131,7 +131,7 @@ class _LearnerWeeklyAvailabilityScreenState
         await SupabaseService.upsertLearnerProfile(
           userId: userId,
           weeklyAvailability: draft.weeklyAvailabilityPayload,
-          availabilityRecurring: widget.availabilityRecurring,
+          availabilityRecurring: draft.availabilityRecurring,
         );
         if (!mounted) return;
         context.pop(true);
