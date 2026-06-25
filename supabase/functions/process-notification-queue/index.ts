@@ -28,6 +28,9 @@ Deno.serve(async (request) => {
     'queue_due_lesson_reminders',
   );
   if (reminderError != null) {
+    console.error('process-notification-queue reminder RPC failed', {
+      error: reminderError.message,
+    });
     return response({ error: reminderError.message }, 500);
   }
 
@@ -39,7 +42,12 @@ Deno.serve(async (request) => {
     .order('scheduled_for', { ascending: true })
     .limit(50);
 
-  if (error != null) return response({ error: error.message }, 500);
+  if (error != null) {
+    console.error('process-notification-queue event fetch failed', {
+      error: error.message,
+    });
+    return response({ error: error.message }, 500);
+  }
 
   const results = await Promise.allSettled(
     (events ?? []).map(async (event) => {
@@ -61,9 +69,31 @@ Deno.serve(async (request) => {
     }),
   );
 
+  const processed = results.filter((result) => result.status === 'fulfilled').length;
+  const failed = results.filter((result) => result.status === 'rejected').length;
+  const failedEventIds = results
+    .map((result, index) => (
+      result.status === 'rejected' ? events?.[index]?.id : null
+    ))
+    .filter((eventId): eventId is string => typeof eventId === 'string');
+
+  if (failed > 0) {
+    console.error('process-notification-queue dispatch failures', {
+      failed,
+      failedEventIds,
+    });
+  }
+
+  console.log('process-notification-queue completed', {
+    queuedReminders: queuedReminders ?? 0,
+    dueEvents: events?.length ?? 0,
+    processed,
+    failed,
+  });
+
   return response({
     queuedReminders: queuedReminders ?? 0,
-    processed: results.filter((result) => result.status === 'fulfilled').length,
-    failed: results.filter((result) => result.status === 'rejected').length,
+    processed,
+    failed,
   });
 });
