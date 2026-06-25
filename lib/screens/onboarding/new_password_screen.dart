@@ -94,6 +94,74 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     super.dispose();
   }
 
+  Future<void> _finishSignUpAfterPassword({
+    required SignupFlowState flowState,
+    required String password,
+  }) async {
+    Object? signInError;
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await SupabaseService.signIn(
+          email: flowState.email,
+          password: password,
+        );
+        signInError = null;
+        break;
+      } catch (error) {
+        signInError = error;
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      }
+    }
+
+    if (signInError != null) {
+      throw signInError;
+    }
+
+    if (!mounted) return;
+    try {
+      await SupabaseService.ensureCurrentProfile();
+    } catch (error) {
+      debugPrint(
+          'Password created; profile bootstrap will continue later: $error');
+    }
+
+    final signedInUser = SupabaseService.currentUser;
+    if (signedInUser == null) {
+      throw Exception('Unable to finish sign up. Please sign in again.');
+    }
+
+    try {
+      await SupabaseService.assignUserRole(
+        userId: signedInUser.id,
+        role: flowState.role,
+        learnerAccountType: flowState.learnerAccountType,
+      );
+    } catch (error) {
+      debugPrint('Password created; role sync will continue later: $error');
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Password created. Continue account setup.'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+    final usesLearnerQuestionnaire =
+        flowState.role == 'learner' || flowState.role == 'guardian';
+    if (usesLearnerQuestionnaire) {
+      context.go(
+        AppRoutes.learnerQuestionnaire,
+        extra: LearnerOnboardingDraft(
+          role: flowState.role,
+          learnerAccountType: flowState.learnerAccountType,
+        ),
+      );
+    } else {
+      context.go(AppRoutes.identityVerificationIntro, extra: flowState.role);
+    }
+  }
+
   Future<void> _handleSubmitPassword() async {
     if (!_formKey.currentState!.validate()) return;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -125,45 +193,23 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
           learnerAccountType: widget.learnerAccountType ?? 'learner',
         );
 
-        await SupabaseService.completeSignUpPassword(
-          flowState: flowState,
-          newPassword: _passwordController.text,
-        );
-        await SupabaseService.signIn(
-          email: email,
-          password: _passwordController.text,
-        );
-        if (!mounted) return;
-        await SupabaseService.ensureCurrentProfile();
-        final signedInUser = SupabaseService.currentUser;
-        if (signedInUser == null) {
-          throw Exception('Unable to finish sign up. Please sign in again.');
-        }
-        await SupabaseService.assignUserRole(
-          userId: signedInUser.id,
-          role: flowState.role,
-          learnerAccountType: flowState.learnerAccountType,
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password created. Continue account setup.'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        final usesLearnerQuestionnaire =
-            flowState.role == 'learner' || flowState.role == 'guardian';
-        if (usesLearnerQuestionnaire) {
-          context.go(
-            AppRoutes.learnerQuestionnaire,
-            extra: LearnerOnboardingDraft(
-              role: flowState.role,
-              learnerAccountType: flowState.learnerAccountType,
-            ),
+        Object? passwordStepError;
+        try {
+          await SupabaseService.completeSignUpPassword(
+            flowState: flowState,
+            newPassword: _passwordController.text,
           );
-        } else {
-          context.go(AppRoutes.identityVerificationIntro,
-              extra: flowState.role);
+        } catch (error) {
+          passwordStepError = error;
+        }
+
+        try {
+          await _finishSignUpAfterPassword(
+            flowState: flowState,
+            password: _passwordController.text,
+          );
+        } catch (finishError) {
+          throw passwordStepError ?? finishError;
         }
       } else {
         await SupabaseService.updatePassword(_passwordController.text);

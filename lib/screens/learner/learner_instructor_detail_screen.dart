@@ -1206,7 +1206,7 @@ class _LearnerInstructorDetailScreenState
       return _statusBanner(
         icon: Icons.hourglass_top,
         message: 'Request pending. Your instructor will reply soon.',
-        textColor: AppColors.golden,
+        textColor: AppColors.foreground,
         backgroundColor: AppColors.golden.withOpacity(0.15),
       );
     }

@@ -132,6 +132,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   String? _licenceNumber;
   DateTime? _licenceExpiry;
   String? _learnerCity;
+  String? _learnerAccountType;
   int? _learnerAge;
   String? _learnerGender;
   int? _learnerClassesTaken;
@@ -157,6 +158,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool _isInstructorDetailsExpanded = false;
   Map<String, dynamic>? _graduatedRelationship;
   bool _resumingTraining = false;
+
+  bool get _isLearnerProfile =>
+      _roleLabel == 'Learner' || _roleLabel == 'Guardian';
 
   @override
   void initState() {
@@ -211,7 +215,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     const SizedBox(height: 18),
                     _buildPersonalInfoSection(),
                     const SizedBox(height: 18),
-                    if (_roleLabel == 'Learner')
+                    if (_isLearnerProfile)
                       Column(
                         children: [
                           if (_graduatedRelationship != null) ...[
@@ -455,7 +459,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ),
           ),
-          if (_roleLabel.toLowerCase() == 'learner') ...[
+          if (_isLearnerProfile) ...[
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
@@ -973,6 +977,14 @@ class _ProfileScreenState extends State<ProfileScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildInfoRow(
+                  icon: Icons.supervisor_account_outlined,
+                  label: 'Account Type',
+                  value: _learnerAccountType == 'guardian'
+                      ? 'Guardian-managed learner'
+                      : 'Learner',
+                ),
+                const SizedBox(height: 16),
+                _buildInfoRow(
                   icon: Icons.credit_card,
                   label: 'G1/G2/G Licence',
                   value: licenceParts.isEmpty
@@ -1161,6 +1173,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     _licenceNumber = null;
     _licenceExpiry = null;
     _learnerCity = null;
+    _learnerAccountType = null;
     _learnerAge = null;
     _learnerGender = null;
     _learnerClassesTaken = null;
@@ -1246,6 +1259,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
       final profileMap = _mergeNonNull(rawProfile, nestedProfile);
       final learnerMap = _mergeNonNull(detail, profileMap);
+      final accountType = _firstString([
+        detail['account_type'],
+        detail['accountType'],
+        learnerMap['account_type'],
+        learnerMap['accountType'],
+      ])?.toLowerCase();
       final locations = _locationSummaries(
         detail['preferred_locations'] ??
             profileMap['preferred_locations'] ??
@@ -1253,6 +1272,10 @@ class _ProfileScreenState extends State<ProfileScreen>
       );
       setState(() {
         _graduatedRelationship = graduation;
+        _learnerAccountType = accountType;
+        if (accountType == 'guardian') {
+          _roleLabel = 'Guardian';
+        }
         _licenceNumber = _firstString([
           profileMap['licence_number'],
           learnerMap['licence_number'],

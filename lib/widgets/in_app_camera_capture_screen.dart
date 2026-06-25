@@ -31,6 +31,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
   bool _isInitializing = true;
   bool _isCapturing = false;
   String? _error;
+  int _initializationToken = 0;
 
   @override
   void initState() {
@@ -41,6 +42,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
 
   @override
   void dispose() {
+    _initializationToken += 1;
     WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
     super.dispose();
@@ -52,6 +54,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
 
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
+      _initializationToken += 1;
       _controller = null;
       final disposeFuture = controller?.dispose();
       if (disposeFuture != null) unawaited(disposeFuture);
@@ -67,6 +70,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
   }
 
   Future<void> _initializeCamera() async {
+    final token = ++_initializationToken;
     setState(() {
       _isInitializing = true;
       _error = null;
@@ -83,22 +87,28 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
         orElse: () => cameras.first,
       );
 
-      await _controller?.dispose();
+      final previousController = _controller;
+      _controller = null;
+      await previousController?.dispose();
       final controller = CameraController(
         camera,
         ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
-      _controller = controller;
       await controller.initialize();
 
+      if (!mounted || token != _initializationToken) {
+        await controller.dispose();
+        return;
+      }
+      _controller = controller;
       if (!mounted) return;
       setState(() {
         _isInitializing = false;
       });
     } on CameraException catch (error) {
-      if (!mounted) return;
+      if (!mounted || token != _initializationToken) return;
       final denied = error.code == 'CameraAccessDenied' ||
           error.code == 'CameraAccessDeniedWithoutPrompt' ||
           error.code == 'CameraAccessRestricted';
@@ -109,7 +119,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
             : 'Unable to start the camera. Please try again.';
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || token != _initializationToken) return;
       setState(() {
         _isInitializing = false;
         _error = 'Unable to start the camera. Please try again.';
@@ -130,6 +140,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
     try {
       final file = await controller.takePicture();
       if (!mounted) return;
+      setState(() => _isCapturing = false);
       Navigator.of(context).pop(file.path);
     } catch (_) {
       if (!mounted) return;

@@ -505,10 +505,14 @@ class SupabaseService {
     required SignupFlowState flowState,
     required String newPassword,
   }) async {
-    await _client.functions.invoke(
+    final response = await _client.functions.invoke(
       'complete-signup-password',
       body: {...flowState.toMap(), 'newPassword': newPassword},
     );
+    final data = response.data;
+    if (data is Map && data['error'] != null) {
+      throw Exception(data['error']);
+    }
   }
 
   static Future<AuthResponse> verifySignUpCode({
