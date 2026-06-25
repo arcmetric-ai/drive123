@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../constants/app_colors.dart';
@@ -26,7 +27,7 @@ class PasswordRecoveryVerifyScreen extends StatefulWidget {
 }
 
 class _PasswordRecoveryVerifyScreenState
-    extends State<PasswordRecoveryVerifyScreen> {
+    extends State<PasswordRecoveryVerifyScreen> with WidgetsBindingObserver {
   static const _otpLength = 6;
   static const _initialResendSeconds = 45;
 
@@ -39,20 +40,35 @@ class _PasswordRecoveryVerifyScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _otpController = TextEditingController();
     _focusNode = FocusNode();
     _startTimer();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusNode.requestFocus();
-    });
+    _requestOtpFocus();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _otpController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _requestOtpFocus();
+    }
+  }
+
+  void _requestOtpFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(_focusNode);
+      unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+    });
   }
 
   void _startTimer() {
@@ -203,29 +219,46 @@ class _PasswordRecoveryVerifyScreenState
                   ),
                 ),
                 const SizedBox(height: 74),
-                Offstage(
-                  child: TextField(
-                    controller: _otpController,
-                    focusNode: _focusNode,
-                    autofocus: true,
-                    keyboardType: TextInputType.number,
-                    maxLength: _otpLength,
-                    onChanged: (value) {
-                      final digitsOnly =
-                          value.replaceAll(RegExp(r'[^0-9]'), '');
-                      if (digitsOnly != value) {
-                        _otpController.value = TextEditingValue(
-                          text: digitsOnly,
-                          selection: TextSelection.collapsed(
-                            offset: digitsOnly.length,
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _requestOtpFocus,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      OtpBoxRow(code: _otpController.text),
+                      Positioned.fill(
+                        child: Opacity(
+                          opacity: 0.01,
+                          child: TextField(
+                            controller: _otpController,
+                            focusNode: _focusNode,
+                            autofocus: true,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            autofillHints: const [AutofillHints.oneTimeCode],
+                            enableSuggestions: false,
+                            autocorrect: false,
+                            maxLength: _otpLength,
+                            showCursor: false,
+                            cursorColor: Colors.transparent,
+                            style: const TextStyle(color: Colors.transparent),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              counterText: '',
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(_otpLength),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                            onSubmitted: (_) => _handleVerify(),
                           ),
-                        );
-                      }
-                      setState(() {});
-                    },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                OtpBoxRow(code: _otpController.text),
                 const SizedBox(height: 58),
                 const Text(
                   "Didn't receive code?",

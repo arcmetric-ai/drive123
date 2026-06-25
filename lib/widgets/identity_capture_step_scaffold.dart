@@ -81,7 +81,7 @@ class IdentityCaptureStepScaffold extends StatelessWidget {
                   child: CircularProgressIndicator(color: Colors.white),
                 ),
               ],
-              if (errorText != null && onRetry != null) ...[
+              if (!isBusy && onRetry != null) ...[
                 const SizedBox(height: 28),
                 FilledButton(
                   onPressed: onRetry,
@@ -90,7 +90,7 @@ class IdentityCaptureStepScaffold extends StatelessWidget {
                     foregroundColor: Colors.white,
                     minimumSize: const Size.fromHeight(54),
                   ),
-                  child: const Text('Try again'),
+                  child: Text(errorText == null ? 'Open camera' : 'Try again'),
                 ),
               ],
               const Spacer(),

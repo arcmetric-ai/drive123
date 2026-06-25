@@ -24,6 +24,7 @@ class IdentityLicenseCaptureScreen extends StatefulWidget {
 class _IdentityLicenseCaptureScreenState
     extends State<IdentityLicenseCaptureScreen> {
   bool _didOpenCamera = false;
+  String? _error;
 
   @override
   void initState() {
@@ -36,6 +37,7 @@ class _IdentityLicenseCaptureScreenState
   Future<void> _captureLicense() async {
     if (_didOpenCamera) return;
     _didOpenCamera = true;
+    setState(() => _error = null);
 
     final title = widget.role == 'instructor'
         ? 'Capture your Ontario G licence'
@@ -51,7 +53,10 @@ class _IdentityLicenseCaptureScreenState
     if (!mounted) return;
 
     if (imagePath == null) {
-      context.pop();
+      setState(() {
+        _didOpenCamera = false;
+        _error = 'No photo was captured. Open the camera to try again.';
+      });
       return;
     }
 
@@ -69,9 +74,16 @@ class _IdentityLicenseCaptureScreenState
     return IdentityCaptureStepScaffold(
       title: 'Opening licence camera',
       message: 'Place the licence inside the frame and tap the shutter once.',
-      onClose: () => context.pop(),
+      onClose: () => context.go(
+        AppRoutes.identityVerificationIntro,
+        extra: widget.role,
+      ),
+      error: _error,
       onRetry: () {
-        setState(() => _didOpenCamera = false);
+        setState(() {
+          _didOpenCamera = false;
+          _error = null;
+        });
         _captureLicense();
       },
     );

@@ -42,6 +42,7 @@ class _IdentitySelfieCaptureScreenState
   Future<void> _captureSelfie() async {
     if (_isSubmitting || _didOpenCamera) return;
     _didOpenCamera = true;
+    setState(() => _error = null);
 
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -57,7 +58,10 @@ class _IdentitySelfieCaptureScreenState
     if (!mounted) return;
 
     if (imagePath == null) {
-      context.pop();
+      setState(() {
+        _didOpenCamera = false;
+        _error = 'No selfie was captured. Open the camera to try again.';
+      });
       return;
     }
 
@@ -117,7 +121,10 @@ class _IdentitySelfieCaptureScreenState
       message: _isSubmitting
           ? 'Uploading your verification photos.'
           : 'Position the face inside the oval and tap the shutter once.',
-      onClose: () => context.pop(),
+      onClose: () => context.go(
+        AppRoutes.identityVerificationIntro,
+        extra: widget.role,
+      ),
       isBusy: _isSubmitting,
       error: _error,
       onRetry: () {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -47,10 +49,18 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
 
-    if (state == AppLifecycleState.inactive) {
-      controller.dispose();
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _controller = null;
+      final disposeFuture = controller?.dispose();
+      if (disposeFuture != null) unawaited(disposeFuture);
+      if (mounted) {
+        setState(() {
+          _isInitializing = true;
+          _isCapturing = false;
+        });
+      }
     } else if (state == AppLifecycleState.resumed) {
       _initializeCamera();
     }
@@ -240,8 +250,20 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
       );
     }
 
-    return Center(
-      child: CameraPreview(controller),
+    final previewSize = controller.value.previewSize;
+    if (previewSize == null) {
+      return Center(child: CameraPreview(controller));
+    }
+
+    return SizedBox.expand(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: previewSize.height,
+          height: previewSize.width,
+          child: CameraPreview(controller),
+        ),
+      ),
     );
   }
 }

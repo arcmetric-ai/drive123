@@ -39,6 +39,7 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
+  String? _errorMessage;
 
   bool get _isSignUpFlow => widget.flow == 'signup';
 
@@ -95,7 +96,12 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
 
   Future<void> _handleSubmitPassword() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
+    FocusManager.instance.primaryFocus?.unfocus();
+    ScaffoldMessenger.of(context).clearSnackBars();
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
       if (_isSignUpFlow) {
@@ -175,12 +181,9 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     } catch (e) {
       debugPrint('Password setup failed: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${_failureTitle()}: ${_friendlyFailureMessage(e)}'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      setState(() {
+        _errorMessage = '${_failureTitle()}: ${_friendlyFailureMessage(e)}';
+      });
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -260,6 +263,29 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                     return null;
                   },
                 ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        color: AppColors.error,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 AppPrimaryButton(
                   label: _isSignUpFlow ? 'Continue' : 'Reset Password',

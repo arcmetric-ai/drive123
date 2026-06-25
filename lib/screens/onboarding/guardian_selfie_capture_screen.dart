@@ -46,6 +46,7 @@ class _GuardianSelfieCaptureScreenState
   Future<void> _captureGuardianSelfie() async {
     if (_isSubmitting || _didOpenCamera) return;
     _didOpenCamera = true;
+    setState(() => _error = null);
 
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -60,7 +61,11 @@ class _GuardianSelfieCaptureScreenState
     final user = SupabaseService.currentUser;
     if (!mounted) return;
     if (imagePath == null) {
-      context.pop();
+      setState(() {
+        _didOpenCamera = false;
+        _error =
+            'No guardian selfie was captured. Open the camera to try again.';
+      });
       return;
     }
     if (user == null) {
@@ -104,7 +109,10 @@ class _GuardianSelfieCaptureScreenState
       message: _isSubmitting
           ? 'Uploading guardian verification photos.'
           : 'Position the guardian face inside the oval and tap the shutter once.',
-      onClose: () => context.pop(),
+      onClose: () => context.go(
+        AppRoutes.identityVerificationIntro,
+        extra: widget.role,
+      ),
       isBusy: _isSubmitting,
       error: _error,
       onRetry: () {
