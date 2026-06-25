@@ -56,6 +56,11 @@ class PushNotificationService {
   static Future<void> registerCurrentDevice() async {
     if (kIsWeb) return;
 
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    await _ensureDefaultPreferences(userId);
+
     final settings = await _messaging.requestPermission();
 
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
