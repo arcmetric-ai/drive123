@@ -925,10 +925,25 @@ class SupabaseService {
     if (role == 'instructor') {
       final identityStatus =
           verificationState?.verificationStatus?.trim().toLowerCase();
+      final identityApproved = verificationState?.isApproved ?? false;
       final hasIdentityDocs =
           verificationState?.identityLicensePath?.trim().isNotEmpty == true &&
               verificationState?.identitySelfiePath?.trim().isNotEmpty == true;
-      if (!hasIdentityDocs || identityStatus == 'rejected') {
+      final instructorDetail = await getInstructorProfileDetail(userId);
+      final credentialsStatus =
+          (instructorDetail?['credentials_status'] as String?)
+              ?.trim()
+              .toLowerCase();
+
+      if (identityApproved && credentialsStatus == 'approved') {
+        if (await requiresContactVerification(userId)) {
+          return AppRoutes.editProfile;
+        }
+        return AppRoutes.instructorHome;
+      }
+
+      if (!identityApproved &&
+          (!hasIdentityDocs || identityStatus == 'rejected')) {
         return AppRoutes.identityVerificationIntro;
       }
 
@@ -937,11 +952,6 @@ class SupabaseService {
         return AppRoutes.instructorQuestionnaire;
       }
 
-      final instructorDetail = await getInstructorProfileDetail(userId);
-      final credentialsStatus =
-          (instructorDetail?['credentials_status'] as String?)
-              ?.trim()
-              .toLowerCase();
       if (credentialsStatus == 'pending') {
         return AppRoutes.identityPendingReview;
       }
@@ -951,13 +961,6 @@ class SupabaseService {
       );
       if (hasPendingCredentialDocumentRequest) {
         return AppRoutes.instructorCredentialsPortal;
-      }
-      if ((verificationState?.isApproved ?? false) &&
-          credentialsStatus == 'approved') {
-        if (await requiresContactVerification(userId)) {
-          return AppRoutes.editProfile;
-        }
-        return AppRoutes.instructorHome;
       }
       final hasPendingIdentityDocumentRequest = pendingDocumentRequests.any(
         (request) => request['review_type'] == 'identity_verification',
