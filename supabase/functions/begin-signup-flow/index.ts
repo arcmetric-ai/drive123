@@ -9,9 +9,9 @@ const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const NON_INSTRUCTOR_ACCOUNT_MESSAGE =
   'This email is already registered for a learner or guardian account. Use a separate instructor email or contact Drive Tutor support.';
 const PROFILE_SELECT =
-  'email, role, first_name, last_name, phone, age, gender, languages, licence_number, licence_expiry, onboarding_stage';
+  'email, role, first_name, last_name, phone, age, gender, languages, licence_number, licence_expiry, city, onboarding_stage';
 const INSTRUCTOR_PROFILE_SELECT =
-  'bio, years_of_experience, vehicles, offerings, offering_rates, pickup_preference, preferred_locations, credentials_status';
+  'bio, years_of_experience, service_area_city, areas_of_operation, vehicles, offerings, offering_rates, pickup_preference, preferred_locations, credentials_status';
 const AGREEMENT_KEYS = [
   'terms-and-conditions',
   'privacy-policy',
@@ -199,6 +199,7 @@ async function saveInstructorQuestionnaire(
     : {};
 
   const licenceNumber = stringValue(profile.licenceNumber).toUpperCase();
+  const operatingCity = stringValue(profile.city || instructor.serviceAreaCity);
   const languages = stringArray(profile.languages);
   const offerings = stringArray(instructor.offerings);
   const offeringRates = instructor.offeringRates &&
@@ -219,6 +220,7 @@ async function saveInstructorQuestionnaire(
       languages,
       licence_number: licenceNumber,
       licence_expiry: nullableString(profile.licenceExpiry),
+      city: nullableString(operatingCity),
       onboarding_stage: 'questionnaire_complete',
       is_verified: false,
     })
@@ -254,6 +256,10 @@ async function saveInstructorQuestionnaire(
       profile_id: authUserId,
       bio: nullableString(instructor.bio),
       years_of_experience: numberValue(instructor.yearsOfExperience),
+      service_area_city: nullableString(operatingCity),
+      areas_of_operation: operatingCity
+        ? [{ city: operatingCity }]
+        : [],
       vehicles: Array.isArray(instructor.vehicles) ? instructor.vehicles : [],
       offerings,
       offering_rates: offeringRates,
