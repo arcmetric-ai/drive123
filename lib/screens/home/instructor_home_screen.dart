@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -91,6 +92,17 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
     setState(() => _selectedIndex = index);
   }
 
+  Widget _secondaryTabForIndex(int index) {
+    return switch (index) {
+      1 => const InstructorPendingRequestsScreen(),
+      2 => const _ScheduleTab(),
+      3 => const _BookingsTab(),
+      4 => const _StudentsTab(),
+      5 => const ProfileScreen(),
+      _ => const SizedBox.shrink(),
+    };
+  }
+
   String get _instructorName {
     final user = SupabaseService.currentUser;
     final metadata = user?.userMetadata;
@@ -104,32 +116,36 @@ class _InstructorHomeScreenState extends State<InstructorHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = <Widget>[
-      _DashboardTab(
-        name: _instructorName,
-        reduceMotion: _reduceMotion,
-        billingLoading: _billingLoading,
-        hasActiveBilling: _hasActiveBilling,
-        isOpeningActivation: _isOpeningActivation,
-        onToggleMotion: _toggleMotion,
-        onActivate: _openActivationWebsite,
-        onRefreshBilling: _refreshBillingGate,
-        onOpenBookings: () => _onTabTap(3),
-        onOpenRequests: () => _onTabTap(1),
-      ),
-      const InstructorPendingRequestsScreen(),
-      const _ScheduleTab(),
-      const _BookingsTab(),
-      const _StudentsTab(),
-      const ProfileScreen(),
-    ];
+    final dashboardTab = _DashboardTab(
+      name: _instructorName,
+      reduceMotion: _reduceMotion,
+      billingLoading: _billingLoading,
+      hasActiveBilling: _hasActiveBilling,
+      isOpeningActivation: _isOpeningActivation,
+      onToggleMotion: _toggleMotion,
+      onActivate: _openActivationWebsite,
+      onRefreshBilling: _refreshBillingGate,
+      onOpenBookings: () => _onTabTap(3),
+      onOpenRequests: () => _onTabTap(1),
+    );
 
     return _InstructorBillingLifecycle(
       onResume: _refreshBillingGate,
       child: Stack(
         children: [
           Scaffold(
-            body: pages[_selectedIndex],
+            body: Stack(
+              children: [
+                Offstage(
+                  offstage: _selectedIndex != 0,
+                  child: TickerMode(
+                    enabled: _selectedIndex == 0,
+                    child: dashboardTab,
+                  ),
+                ),
+                if (_selectedIndex != 0) _secondaryTabForIndex(_selectedIndex),
+              ],
+            ),
             bottomNavigationBar: _GlassBottomNavBar(
               currentIndex: _selectedIndex,
               onTap: _onTabTap,
@@ -366,6 +382,9 @@ class _DashboardTabState extends State<_DashboardTab> {
   String? _profileImageUrl;
   String? _displayName;
   bool _isVerified = false;
+  _InstructorAnalyticsSummary? _analyticsSummary;
+  String? _analyticsError;
+  bool _insightsExpanded = false;
   List<InstructorNotification> _notifications = [];
   String? _notificationsError;
   bool _notificationsLoading = false;
@@ -395,7 +414,7 @@ class _DashboardTabState extends State<_DashboardTab> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool forceAnalyticsRefresh = false}) async {
     final userId = _userId;
     if (userId == null) {
       setState(() {
@@ -407,6 +426,8 @@ class _DashboardTabState extends State<_DashboardTab> {
         _profileImageUrl = null;
         _displayName = null;
         _isVerified = false;
+        _analyticsSummary = null;
+        _analyticsError = 'Analytics are unavailable until you sign in.';
         _notifications = [];
         _notificationsError = 'Instructor not found.';
         _notificationsLoading = false;
@@ -432,6 +453,9 @@ class _DashboardTabState extends State<_DashboardTab> {
         ),
         SupabaseService.getAccountNotificationEvents(userId),
         SupabaseService.getExternalLearners(userId),
+        SupabaseService.getInstructorDashboardSummary(
+          forceRefresh: forceAnalyticsRefresh,
+        ).catchError((_) => null),
       ]);
 
       final lessons = (results[0] as List)
@@ -451,6 +475,9 @@ class _DashboardTabState extends State<_DashboardTab> {
       final accountEvents = List<Map<String, dynamic>>.from(results[5] as List);
       final externalLearners =
           List<Map<String, dynamic>>.from(results[6] as List);
+      final analyticsRaw = results[7] is Map
+          ? Map<String, dynamic>.from(results[7] as Map)
+          : null;
 
       final pendingRequests = requests
           .where(
@@ -518,6 +545,11 @@ class _DashboardTabState extends State<_DashboardTab> {
             derivedProfileImage.isNotEmpty ? derivedProfileImage : null;
         _displayName = derivedName;
         _isVerified = profile?['is_verified'] == true;
+        _analyticsSummary = analyticsRaw != null
+            ? _InstructorAnalyticsSummary.fromJson(analyticsRaw)
+            : null;
+        _analyticsError =
+            analyticsRaw == null ? 'Unable to load insights right now.' : null;
         _notifications = notifications;
         _notificationsError = null;
         _notificationsLoading = false;
@@ -534,6 +566,8 @@ class _DashboardTabState extends State<_DashboardTab> {
         _profileImageUrl = null;
         _displayName = null;
         _isVerified = false;
+        _analyticsSummary = null;
+        _analyticsError = 'Unable to load insights right now.';
         _notifications = [];
         _notificationsError =
             'Unable to load notifications right now. Please try again soon.';
@@ -988,7 +1022,7 @@ class _DashboardTabState extends State<_DashboardTab> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : RefreshIndicator(
-                  onRefresh: _load,
+                  onRefresh: () => _load(forceAnalyticsRefresh: true),
                   child: ListView(
                     padding: EdgeInsets.zero,
                     children: [
@@ -1039,13 +1073,29 @@ class _DashboardTabState extends State<_DashboardTab> {
                                   onRefresh: widget.onRefreshBilling,
                                 ),
                               ],
-                              const SizedBox(height: 22),
+                              const SizedBox(height: 24),
+                              _InstructorSectionHeader(
+                                title: 'Instructor Insights',
+                                isExpanded: _insightsExpanded,
+                                onTap: () => setState(
+                                  () => _insightsExpanded = !_insightsExpanded,
+                                ),
+                              ),
+                              if (_insightsExpanded) ...[
+                                const SizedBox(height: 14),
+                                _InstructorAnalyticsSection(
+                                  summary: _analyticsSummary,
+                                  errorText: _analyticsError,
+                                ),
+                                const SizedBox(height: 22),
+                              ] else
+                                const SizedBox(height: 22),
                               _RequestsCard(
                                 requests: _requests,
                                 onTap: widget.onOpenRequests,
                               ),
                               const SizedBox(height: 28),
-                              _InstructorSectionHeader(
+                              const _InstructorSectionHeader(
                                 title: "Today's Itinerary",
                               ),
                               const SizedBox(height: 16),
@@ -3372,6 +3422,757 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+class _InstructorAnalyticsSummary {
+  const _InstructorAnalyticsSummary({
+    required this.completedLifetime,
+    required this.monthlyTrend,
+    required this.focusThisMonth,
+    required this.focusLifetime,
+    required this.requestsReceived,
+    required this.requestsAccepted,
+    required this.requestsPending,
+    required this.serviceAreaDemand,
+    required this.selectedServiceAreas,
+  });
+
+  final int completedLifetime;
+  final List<_AnalyticsCountItem> monthlyTrend;
+  final List<_AnalyticsCountItem> focusThisMonth;
+  final List<_AnalyticsCountItem> focusLifetime;
+  final int requestsReceived;
+  final int requestsAccepted;
+  final int requestsPending;
+  final List<_AnalyticsCountItem> serviceAreaDemand;
+  final List<String> selectedServiceAreas;
+
+  factory _InstructorAnalyticsSummary.fromJson(Map<String, dynamic> json) {
+    final activity = _mapFrom(json['activity']);
+    final requests = _mapFrom(json['requests']);
+    final serviceAreas = _mapFrom(json['serviceAreas']);
+
+    return _InstructorAnalyticsSummary(
+      completedLifetime: _intFrom(activity['completedLifetime']),
+      monthlyTrend: _listFrom(activity['monthlyTrend'])
+          .map(
+            (item) => _AnalyticsCountItem(
+              label: _stringFrom(item['label']).isNotEmpty
+                  ? _stringFrom(item['label'])
+                  : _stringFrom(item['key']),
+              count: _intFrom(item['completed']),
+            ),
+          )
+          .where((item) => item.label.isNotEmpty)
+          .toList(growable: false),
+      focusThisMonth: _countItems(activity['focusThisMonth']),
+      focusLifetime: _countItems(activity['focusLifetime']),
+      requestsReceived: _intFrom(requests['totalCounted']),
+      requestsAccepted: _intFrom(requests['acceptedTotal']),
+      requestsPending: _intFrom(requests['pending']),
+      serviceAreaDemand: _listFrom(serviceAreas['topRequestCities'])
+          .map(
+            (item) => _AnalyticsCountItem(
+              label: _stringFrom(item['city']),
+              count: _intFrom(item['count']),
+            ),
+          )
+          .where((item) => item.label.isNotEmpty)
+          .toList(growable: false),
+      selectedServiceAreas: _stringListFrom(serviceAreas['selected']),
+    );
+  }
+
+  static Map<String, dynamic> _mapFrom(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const <String, dynamic>{};
+  }
+
+  static List<Map<String, dynamic>> _listFrom(dynamic value) {
+    if (value is! List) return const <Map<String, dynamic>>[];
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  static List<String> _stringListFrom(dynamic value) {
+    if (value is! List) return const <String>[];
+    return value
+        .map((item) => item?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static List<_AnalyticsCountItem> _countItems(dynamic value) {
+    return _listFrom(value)
+        .map(
+          (item) => _AnalyticsCountItem(
+            label: _stringFrom(item['label']),
+            count: _intFrom(item['count']),
+          ),
+        )
+        .where((item) => item.label.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static String _stringFrom(dynamic value) => value?.toString().trim() ?? '';
+
+  static int _intFrom(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+}
+
+class _AnalyticsCountItem {
+  const _AnalyticsCountItem({required this.label, required this.count});
+
+  final String label;
+  final int count;
+}
+
+class _InstructorAnalyticsSection extends StatelessWidget {
+  const _InstructorAnalyticsSection({
+    required this.summary,
+    required this.errorText,
+  });
+
+  final _InstructorAnalyticsSummary? summary;
+  final String? errorText;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = summary;
+    if (data == null) {
+      return _InstructorAnalyticsCard(
+        eyebrow: 'INSIGHTS',
+        title: 'Dashboard insights',
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.insights_outlined,
+              color: AppColors.primaryBlue,
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                errorText ?? 'Insights appear after your first activity.',
+                style: const TextStyle(
+                  color: AppColors.mutedForeground,
+                  fontSize: 14,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        _CompletedLessonsTrendCard(summary: data),
+        const SizedBox(height: 14),
+        _RequestPerformanceCard(summary: data),
+        const SizedBox(height: 14),
+        _LessonFocusCard(summary: data),
+        const SizedBox(height: 14),
+        _ServiceAreaDemandCard(summary: data),
+      ],
+    );
+  }
+}
+
+class _InstructorAnalyticsCard extends StatelessWidget {
+  const _InstructorAnalyticsCard({
+    required this.eyebrow,
+    required this.title,
+    required this.child,
+  });
+
+  final String eyebrow;
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: _outlinedSurfaceDecoration(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            eyebrow,
+            style: const TextStyle(
+              color: AppColors.primaryBlue,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.foreground,
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+              height: 1.15,
+            ),
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _CompletedLessonsTrendCard extends StatelessWidget {
+  const _CompletedLessonsTrendCard({required this.summary});
+
+  final _InstructorAnalyticsSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = summary.monthlyTrend;
+    final maxCount = points.fold<int>(0, (max, item) {
+      return item.count > max ? item.count : max;
+    });
+    final maxY = math.max(1, maxCount).toDouble();
+    final spots = <FlSpot>[
+      for (var i = 0; i < points.length; i++)
+        FlSpot(i.toDouble(), points[i].count.toDouble()),
+    ];
+
+    return _InstructorAnalyticsCard(
+      eyebrow: 'LESSON ACTIVITY',
+      title: 'Completed lessons trend',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _AnalyticsPill('${summary.completedLifetime} lifetime'),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 170,
+            child: points.isEmpty
+                ? const _AnalyticsEmptyMessage(
+                    text: 'Completed lesson trends will appear here.',
+                  )
+                : LineChart(
+                    LineChartData(
+                      minX: 0,
+                      maxX: (points.length - 1).clamp(1, 100).toDouble(),
+                      minY: 0,
+                      maxY: maxY,
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: maxY,
+                        getDrawingHorizontalLine: (_) => const FlLine(
+                          color: AppColors.border,
+                          strokeWidth: 1,
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      titlesData: FlTitlesData(
+                        leftTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 34,
+                            interval: 1,
+                            getTitlesWidget: (value, meta) {
+                              final index = value.toInt();
+                              if (index < 0 || index >= points.length) {
+                                return const SizedBox.shrink();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  points[index].label.replaceAll(' 20', '\n20'),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: AppColors.mutedForeground,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (_) => Colors.white,
+                          tooltipBorder: const BorderSide(
+                            color: AppColors.border,
+                          ),
+                          getTooltipItems: (items) => items.map((item) {
+                            final index = item.x.toInt();
+                            final label = index >= 0 && index < points.length
+                                ? points[index].label
+                                : '';
+                            return LineTooltipItem(
+                              '$label\n${item.y.toInt()} completed',
+                              const TextStyle(
+                                color: AppColors.foreground,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: spots,
+                          isCurved: true,
+                          color: AppColors.primaryBlue,
+                          barWidth: 5,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (_, __, ___, ____) =>
+                                FlDotCirclePainter(
+                              radius: 5,
+                              color: Colors.white,
+                              strokeColor: AppColors.primaryBlue,
+                              strokeWidth: 4,
+                            ),
+                          ),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.primaryBlue.withOpacity(0.18),
+                                AppColors.primaryBlue.withOpacity(0.02),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RequestPerformanceCard extends StatelessWidget {
+  const _RequestPerformanceCard({required this.summary});
+
+  final _InstructorAnalyticsSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxValue = [
+      summary.requestsReceived,
+      summary.requestsAccepted,
+      summary.completedLifetime,
+      1,
+    ].fold<int>(1, (max, value) => value > max ? value : max);
+
+    return _InstructorAnalyticsCard(
+      eyebrow: 'REQUESTS',
+      title: 'Request performance',
+      child: Column(
+        children: [
+          _AnalyticsProgressRow(
+            label: 'Received',
+            value: summary.requestsReceived,
+            maxValue: maxValue,
+          ),
+          const SizedBox(height: 12),
+          _AnalyticsProgressRow(
+            label: 'Accepted',
+            value: summary.requestsAccepted,
+            maxValue: maxValue,
+          ),
+          const SizedBox(height: 12),
+          _AnalyticsProgressRow(
+            label: 'Completed lessons',
+            value: summary.completedLifetime,
+            maxValue: maxValue,
+          ),
+          if (summary.requestsPending > 0) ...[
+            const SizedBox(height: 12),
+            _AnalyticsProgressRow(
+              label: 'Pending',
+              value: summary.requestsPending,
+              maxValue: maxValue,
+              color: AppColors.warning,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LessonFocusCard extends StatelessWidget {
+  const _LessonFocusCard({required this.summary});
+
+  final _InstructorAnalyticsSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final monthMax = math.max(
+      1,
+      summary.focusThisMonth.fold<int>(
+        0,
+        (max, item) => item.count > max ? item.count : max,
+      ),
+    );
+    final lifetimeTotal = summary.focusLifetime.fold<int>(
+      0,
+      (total, item) => total + item.count,
+    );
+    const colors = [
+      AppColors.primaryBlue,
+      AppColors.success,
+      AppColors.warning,
+      Color(0xFFD4DAE8),
+    ];
+
+    return _InstructorAnalyticsCard(
+      eyebrow: 'LESSON FOCUS',
+      title: 'Focus mix',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This month',
+            style: TextStyle(
+              color: AppColors.foreground,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final item in summary.focusThisMonth) ...[
+            _AnalyticsProgressRow(
+              label: item.label,
+              value: item.count,
+              maxValue: monthMax,
+              compact: true,
+            ),
+            const SizedBox(height: 10),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 132,
+                height: 132,
+                child: lifetimeTotal == 0
+                    ? const _AnalyticsEmptyRing()
+                    : PieChart(
+                        PieChartData(
+                          sectionsSpace: 2,
+                          centerSpaceRadius: 38,
+                          sections: [
+                            for (var i = 0;
+                                i < summary.focusLifetime.length;
+                                i++)
+                              PieChartSectionData(
+                                value:
+                                    summary.focusLifetime[i].count.toDouble(),
+                                color: colors[i % colors.length],
+                                showTitle: false,
+                                radius: 22,
+                              ),
+                          ],
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  children: [
+                    for (var i = 0; i < summary.focusLifetime.length; i++)
+                      _AnalyticsLegendRow(
+                        label: summary.focusLifetime[i].label,
+                        value: summary.focusLifetime[i].count,
+                        color: colors[i % colors.length],
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceAreaDemandCard extends StatelessWidget {
+  const _ServiceAreaDemandCard({required this.summary});
+
+  final _InstructorAnalyticsSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxValue = math.max(
+      1,
+      summary.serviceAreaDemand.fold<int>(
+        0,
+        (max, item) => item.count > max ? item.count : max,
+      ),
+    );
+
+    return _InstructorAnalyticsCard(
+      eyebrow: 'SERVICE AREAS',
+      title: 'Demand signals',
+      child: summary.serviceAreaDemand.isEmpty
+          ? _AnalyticsEmptyMessage(
+              text: summary.selectedServiceAreas.isEmpty
+                  ? 'Set service areas in your instructor profile to start tracking demand.'
+                  : 'Demand by city appears after learner requests arrive.',
+            )
+          : Column(
+              children: [
+                for (final item in summary.serviceAreaDemand) ...[
+                  _AnalyticsProgressRow(
+                    label: item.label,
+                    value: item.count,
+                    maxValue: maxValue,
+                    compact: true,
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _AnalyticsPill extends StatelessWidget {
+  const _AnalyticsPill(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F5FF),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFDDE8FF)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.foreground,
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _AnalyticsProgressRow extends StatelessWidget {
+  const _AnalyticsProgressRow({
+    required this.label,
+    required this.value,
+    required this.maxValue,
+    this.color = AppColors.primaryBlue,
+    this.compact = false,
+  });
+
+  final String label;
+  final int value;
+  final int maxValue;
+  final Color color;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio =
+        maxValue <= 0 ? 0.0 : (value / maxValue).clamp(0.0, 1.0).toDouble();
+
+    return Row(
+      children: [
+        SizedBox(
+          width: compact ? 86 : 128,
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.foreground,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: SizedBox(
+              height: compact ? 12 : 38,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const DecoratedBox(
+                    decoration: BoxDecoration(color: Color(0xFFF1F5FB)),
+                  ),
+                  FractionallySizedBox(
+                    widthFactor: ratio,
+                    alignment: Alignment.centerLeft,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [color, AppColors.success],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 28,
+          child: Text(
+            value.toString(),
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: AppColors.foreground,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AnalyticsLegendRow extends StatelessWidget {
+  const _AnalyticsLegendRow({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.mutedForeground,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Text(
+            value.toString(),
+            style: const TextStyle(
+              color: AppColors.foreground,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalyticsEmptyRing extends StatelessWidget {
+  const _AnalyticsEmptyRing();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFDDE8FF), width: 22),
+      ),
+      child: const Center(
+        child: Text(
+          '0',
+          style: TextStyle(
+            color: AppColors.foreground,
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AnalyticsEmptyMessage extends StatelessWidget {
+  const _AnalyticsEmptyMessage({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F8FF),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDDE8FF)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: AppColors.mutedForeground,
+          fontSize: 14,
+          height: 1.35,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class _WelcomeCard extends StatelessWidget {
   final String name;
   final String scheduleSummary;
@@ -3809,7 +4610,7 @@ class _UpcomingLessonsCard extends StatelessWidget {
     if (lower == 'g' || lower.contains(' g ') || lower.contains('g test')) {
       return 'G Test Prep';
     }
-    if (lower.contains('pr')) return 'PR Lesson';
+    if (lower.contains('pr')) return 'Refresher Lesson';
     return raw;
   }
 
@@ -4246,16 +5047,18 @@ class _InstructorSectionHeader extends StatelessWidget {
   const _InstructorSectionHeader({
     required this.title,
     this.actionLabel,
+    this.isExpanded,
     this.onTap,
   });
 
   final String title;
   final String? actionLabel;
+  final bool? isExpanded;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final row = Row(
       children: [
         Expanded(
           child: Text(
@@ -4269,6 +5072,12 @@ class _InstructorSectionHeader extends StatelessWidget {
             ),
           ),
         ),
+        if (isExpanded != null)
+          Icon(
+            isExpanded! ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+            color: AppColors.primary,
+            size: 28,
+          ),
         if (actionLabel != null && onTap != null)
           TextButton(
             onPressed: onTap,
@@ -4283,6 +5092,18 @@ class _InstructorSectionHeader extends StatelessWidget {
             ),
           ),
       ],
+    );
+    if (onTap == null) return row;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: row,
+        ),
+      ),
     );
   }
 }

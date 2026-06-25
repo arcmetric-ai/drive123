@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../constants/ontario_locations.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../models/instructor_document_type.dart';
@@ -84,6 +85,61 @@ class _InstructorCredentialsPortalScreenState
     await _refresh();
   }
 
+  List<String> _serviceLocations(Map<String, dynamic> profile) {
+    final locations = <String>{};
+
+    void add(dynamic value) {
+      if (value is String) {
+        final trimmed = value.trim();
+        if (trimmed.isNotEmpty) {
+          locations.add(trimmed);
+        }
+      }
+    }
+
+    void collect(dynamic value) {
+      if (value is List) {
+        for (final item in value) {
+          collect(item);
+        }
+        return;
+      }
+      if (value is Map) {
+        add(value['city']);
+        add(value['service_area_city']);
+        add(value['serviceAreaCity']);
+        add(value['areaName']);
+        add(value['area']);
+        add(value['label']);
+        add(value['name']);
+      }
+    }
+
+    collect(profile['preferred_locations']);
+    collect(profile['areas_of_operation']);
+    add(profile['service_area_city']);
+    add(profile['serviceAreaCity']);
+    add(profile['service_area']);
+    add(profile['serviceArea']);
+    final nestedProfile = profile['profile'];
+    if (nestedProfile is Map) {
+      add(nestedProfile['city']);
+    }
+    return locations.toList(growable: false);
+  }
+
+  bool _isRequiredDocument(
+    Map<String, dynamic> profile,
+    InstructorDocumentType type,
+  ) {
+    if (type != InstructorDocumentType.municipalLicense) {
+      return type.isRequired;
+    }
+    return OntarioLocations.municipalLicenseRequiredForLocations(
+      _serviceLocations(profile),
+    );
+  }
+
   Future<void> _submitForReview(Map<String, dynamic> profile) async {
     if (_isSubmitting) return;
     final userId = SupabaseService.currentUser?.id;
@@ -98,7 +154,7 @@ class _InstructorCredentialsPortalScreenState
     }
 
     final missingRequired = InstructorDocumentType.values.where((type) {
-      if (!type.isRequired) return false;
+      if (!_isRequiredDocument(profile, type)) return false;
       final path = profile[type.columnName] as String?;
       return path == null || path.trim().isEmpty;
     }).toList();
@@ -234,6 +290,7 @@ class _InstructorCredentialsPortalScreenState
                   ),
                   const SizedBox(height: 8),
                   ...InstructorDocumentType.values.map((type) {
+                    final isRequired = _isRequiredDocument(profile, type);
                     final path = profile[type.columnName] as String?;
                     final hasUpload = path != null && path.trim().isNotEmpty;
                     final expiryStatus = _expiryStatusFor(profile, type);
@@ -245,12 +302,12 @@ class _InstructorCredentialsPortalScreenState
                             ? (requestedTypes.contains(type.storageKey)
                                 ? 'UPDATE REQUESTED'
                                 : (expiryStatus ?? 'UPLOADED'))
-                            : (type.isRequired ? 'REQUIRED' : 'OPTIONAL'),
+                            : (isRequired ? 'REQUIRED' : 'OPTIONAL'),
                         statusColor: requestedTypes.contains(type.storageKey)
                             ? AppColors.error
                             : hasUpload
                                 ? AppColors.primary
-                                : (type.isRequired
+                                : (isRequired
                                     ? AppColors.primary
                                     : AppColors.mutedForeground),
                         icon: _iconForType(type),

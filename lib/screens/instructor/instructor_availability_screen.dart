@@ -345,6 +345,7 @@ class _InstructorAvailabilityScreenState
       builder: (context) {
         return _CommittedSlotSheet(
           slot: slot,
+          canCancel: slot.canCancelAt(DateTime.now()),
           onCancel: () => _cancelLesson(slot),
           onEdit: () => _editCommittedLesson(slot),
         );
@@ -389,6 +390,14 @@ class _InstructorAvailabilityScreenState
   Future<void> _cancelLesson(_ScheduledSlot slot) async {
     final lessonId = slot.lessonId;
     if (lessonId == null) return;
+    if (!slot.canCancelAt(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Finished lessons can no longer be cancelled.'),
+        ),
+      );
+      return;
+    }
     final confirmed = await _confirmLessonCancellation(slot);
     if (!confirmed) return;
 
@@ -628,6 +637,7 @@ class _InstructorAvailabilityScreenState
           learnerOptions: availableLearners,
           existing: editableSlot,
           existingHourSlots: hourSlots,
+          allowRemove: editableSlot.canCancelAt(DateTime.now()),
           onExistingSlotTap: (slot) {
             if (!slot.isDraft) {
               _editCommittedLesson(slot);
@@ -641,6 +651,14 @@ class _InstructorAvailabilityScreenState
     if (!mounted || result == null) return;
 
     if (result.remove) {
+      if (!editableSlot.canCancelAt(DateTime.now())) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Finished lessons can no longer be cancelled.'),
+          ),
+        );
+        return;
+      }
       await _cancelLesson(editableSlot);
       return;
     }
@@ -1514,6 +1532,10 @@ class _ScheduledSlot {
 
   DateTime get end => start.add(Duration(minutes: durationMinutes));
 
+  bool canCancelAt(DateTime now) {
+    return end.toLocal().isAfter(now.toLocal());
+  }
+
   bool overlaps(DateTime rangeStart, DateTime rangeEnd) {
     return start.isBefore(rangeEnd) && end.isAfter(rangeStart);
   }
@@ -1632,6 +1654,7 @@ class _SlotEditorSheet extends StatefulWidget {
     this.saveLabel = 'Save',
     this.existing,
     this.existingHourSlots = const [],
+    this.allowRemove = true,
     this.onExistingSlotTap,
   });
 
@@ -1641,6 +1664,7 @@ class _SlotEditorSheet extends StatefulWidget {
   final String saveLabel;
   final _ScheduledSlot? existing;
   final List<_ScheduledSlot> existingHourSlots;
+  final bool allowRemove;
   final ValueChanged<_ScheduledSlot>? onExistingSlotTap;
 
   @override
@@ -2093,7 +2117,7 @@ class _SlotEditorSheetState extends State<_SlotEditorSheet> {
               const SizedBox(height: 20),
               Row(
                 children: [
-                  if (widget.existing != null)
+                  if (widget.existing != null && widget.allowRemove)
                     TextButton.icon(
                       onPressed: () {
                         Navigator.of(
@@ -2157,11 +2181,13 @@ class _SlotDraftResult {
 class _CommittedSlotSheet extends StatelessWidget {
   const _CommittedSlotSheet({
     required this.slot,
+    required this.canCancel,
     required this.onCancel,
     required this.onEdit,
   });
 
   final _ScheduledSlot slot;
+  final bool canCancel;
   final VoidCallback onCancel;
   final VoidCallback onEdit;
 
@@ -2229,15 +2255,16 @@ class _CommittedSlotSheet extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              TextButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  onCancel();
-                },
-                style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                icon: const Icon(Icons.cancel_outlined),
-                label: const Text('Cancel lesson'),
-              ),
+              if (canCancel)
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    onCancel();
+                  },
+                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Cancel lesson'),
+                ),
               const Spacer(),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),

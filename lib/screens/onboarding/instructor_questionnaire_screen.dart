@@ -82,7 +82,7 @@ class _InstructorQuestionnaireScreenState
   final List<_OfferingOption> _offeringOptions = const [
     _OfferingOption(code: 'G2', label: 'G2 Road Test'),
     _OfferingOption(code: 'G', label: 'G Road Test'),
-    _OfferingOption(code: 'PR', label: 'Practice Sessions'),
+    _OfferingOption(code: 'PR', label: 'Refresher Lessons'),
   ];
   final Map<String, bool> _selectedOfferings = {};
   final Map<String, TextEditingController> _rateControllers = {};

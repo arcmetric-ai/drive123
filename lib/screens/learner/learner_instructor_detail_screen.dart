@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
+import '../../constants/ontario_locations.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/glass_panel.dart';
 import '../../widgets/verified_profile_badge.dart';
@@ -255,8 +256,12 @@ class _LearnerInstructorDetailScreenState
       }
     } catch (error) {
       if (!mounted) return;
+      final errorText = error.toString().replaceFirst('Exception: ', '');
+      final message = errorText == OntarioLocations.requestRestrictionMessage
+          ? errorText
+          : 'Unable to update request: $errorText';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to update request: $error')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) {
@@ -594,7 +599,7 @@ class _LearnerInstructorDetailScreenState
       case 'G':
         return 'G Road Test';
       case 'PR':
-        return 'Practice Sessions';
+        return 'Refresher Lessons';
       default:
         return code.trim().isEmpty ? 'Lesson' : code.trim();
     }
@@ -1008,8 +1013,13 @@ class _LearnerInstructorDetailScreenState
                               .map(
                                 (offering) => Chip(
                                   label: Text(_labelForOffering(offering)),
-                                  backgroundColor: AppColors.golden.withOpacity(
+                                  backgroundColor:
+                                      AppColors.primaryBlue.withOpacity(
                                     0.12,
+                                  ),
+                                  labelStyle: const TextStyle(
+                                    color: AppColors.primaryBlue,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               )

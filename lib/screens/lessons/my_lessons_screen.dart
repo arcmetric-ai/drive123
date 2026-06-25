@@ -743,7 +743,9 @@ class _MyLessonsScreenState extends State<MyLessonsScreen>
     final normalized = focus.toLowerCase();
     if (normalized.contains('g2')) return 'G2 PREP';
     if (normalized == 'g' || normalized.contains('g prep')) return 'G PREP';
-    if (normalized.contains('refresh')) return 'REFRESHER';
+    if (normalized.contains('refresh') || normalized == 'pr') {
+      return 'REFRESHER';
+    }
     return focus.toUpperCase();
   }
 

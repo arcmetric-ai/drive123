@@ -15,6 +15,23 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type',
 };
 
+const defaultMunicipalLicenseRequiredCities = [
+  'toronto',
+  'ottawa',
+  'mississauga',
+  'brampton',
+  'vaughan',
+  'markham',
+  'barrie',
+  'guelph',
+  'oshawa',
+];
+const municipalLicenseNotRequiredCities = new Set([
+  'etobicoke',
+  'downsview',
+  'port union',
+]);
+
 type NotificationChannel = 'fcm' | 'email';
 
 type QueueNotificationInput = {
@@ -38,6 +55,75 @@ function jsonResponse(body: unknown, status = 200) {
       ...corsHeaders,
       'Content-Type': 'application/json',
     },
+  });
+}
+
+function cleanString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function parseLocations(value: unknown) {
+  const locations = new Set<string>();
+
+  const visit = (entry: unknown) => {
+    if (!entry) return;
+    if (typeof entry === 'string') {
+      const cleaned = entry.trim();
+      if (cleaned) locations.add(cleaned);
+      return;
+    }
+    if (Array.isArray(entry)) {
+      entry.forEach(visit);
+      return;
+    }
+    if (typeof entry === 'object') {
+      const map = entry as Record<string, unknown>;
+      [
+        'city',
+        'label',
+        'name',
+        'area',
+        'areaName',
+        'address',
+        'municipality',
+        'location',
+        'service_area',
+        'serviceArea',
+        'service_area_city',
+        'serviceAreaCity',
+      ].forEach((key) => visit(map[key]));
+    }
+  };
+
+  visit(value);
+  return Array.from(locations);
+}
+
+function mergeLocations(...values: unknown[]) {
+  const seen = new Set<string>();
+  const locations: string[] = [];
+  values.flatMap(parseLocations).forEach((location) => {
+    const key = location.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    locations.push(location);
+  });
+  return locations;
+}
+
+function configuredMunicipalCities() {
+  const configured = (Deno.env.get('MUNICIPAL_LICENSE_REQUIRED_CITIES') ?? '')
+    .split(',')
+    .map((city) => city.trim().toLowerCase())
+    .filter((city) => city && !municipalLicenseNotRequiredCities.has(city));
+  return configured.length ? configured : defaultMunicipalLicenseRequiredCities;
+}
+
+function municipalLicenseRequired(serviceAreas: string[]) {
+  const requiredCities = configuredMunicipalCities();
+  return serviceAreas.some((area) => {
+    const normalized = area.toLowerCase();
+    return requiredCities.some((city) => normalized.includes(city));
   });
 }
 
@@ -405,12 +491,14 @@ serve(async (request) => {
             profile_id,
             credentials_status,
             credentials_review_started_at,
+            preferred_locations,
             profile:profiles!instructor_profiles_profile_id_fkey(
               id,
               role,
               first_name,
               last_name,
-              verification_status
+              verification_status,
+              city
             )
           `,
         )
@@ -426,6 +514,21 @@ serve(async (request) => {
       }
 
       if (status === 'approved' && requireDocumentScan) {
+        const profile = Array.isArray(instructorProfile.profile)
+          ? instructorProfile.profile[0]
+          : instructorProfile.profile;
+        const serviceAreas = mergeLocations(
+          profile?.city,
+          instructorProfile.preferred_locations,
+        );
+        const requiredCredentialDocuments = [
+          'instructor_license',
+          'insurance_document',
+          'background_check',
+        ];
+        if (municipalLicenseRequired(serviceAreas)) {
+          requiredCredentialDocuments.push('municipal_license');
+        }
         await assertCurrentDocumentsScanned(
           admin,
           userId,
@@ -435,7 +538,7 @@ serve(async (request) => {
             'background_check',
             'municipal_license',
           ],
-          ['instructor_license', 'insurance_document', 'background_check'],
+          requiredCredentialDocuments,
         );
       }
 

@@ -257,7 +257,7 @@ class _OngoingLessonScreenState extends State<OngoingLessonScreen> {
       return 'G preparation';
     }
     if (normalized.contains('refresh') || normalized == 'pr') {
-      return 'Practice refresher';
+      return 'Refresher lesson';
     }
     return focus;
   }

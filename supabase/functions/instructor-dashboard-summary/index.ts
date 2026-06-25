@@ -40,6 +40,23 @@ type RequestRow = {
   requested_city?: string | null;
 };
 
+const defaultMunicipalLicenseRequiredCities = [
+  'toronto',
+  'ottawa',
+  'mississauga',
+  'brampton',
+  'vaughan',
+  'markham',
+  'barrie',
+  'guelph',
+  'oshawa',
+];
+const municipalLicenseNotRequiredCities = new Set([
+  'etobicoke',
+  'downsview',
+  'port union',
+]);
+
 const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
     autoRefreshToken: false,
@@ -211,10 +228,11 @@ function instructorServiceAreas(instructor: JsonMap, profile: JsonMap) {
 }
 
 function configuredMunicipalCities() {
-  return (Deno.env.get('MUNICIPAL_LICENSE_REQUIRED_CITIES') ?? '')
+  const configured = (Deno.env.get('MUNICIPAL_LICENSE_REQUIRED_CITIES') ?? '')
     .split(',')
     .map((city) => city.trim().toLowerCase())
-    .filter(Boolean);
+    .filter((city) => city && !municipalLicenseNotRequiredCities.has(city));
+  return configured.length ? configured : defaultMunicipalLicenseRequiredCities;
 }
 
 function municipalRequirement(serviceAreas: string[]) {
@@ -516,7 +534,9 @@ serve(async (request) => {
         label: 'Municipal licence',
         status: instructor.municipal_license_path
           ? documentReviewStatus ?? 'uploaded'
-          : 'missing',
+          : municipal.required
+          ? 'missing'
+          : 'not_required',
         expiry: cleanString(instructor.municipal_license_expiry) ??
           cleanString(instructor.municipal_licence_expiry),
         required: municipal.required,

@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'dart:io';
 import 'dart:convert';
 import '../constants/app_routes.dart';
+import '../constants/ontario_locations.dart';
 import '../models/identity_verification_state.dart';
 import '../models/instructor_billing.dart';
 import '../models/instructor_document_type.dart';
@@ -83,6 +84,11 @@ class SupabaseService {
       'verification_pending';
   static const String onboardingStageQuestionnaireComplete =
       'questionnaire_complete';
+  static const Duration _instructorDashboardSummaryCacheTtl =
+      Duration(minutes: 10);
+  static String? _instructorDashboardSummaryCacheUserId;
+  static DateTime? _instructorDashboardSummaryCacheFetchedAt;
+  static Map<String, dynamic>? _instructorDashboardSummaryCache;
 
   static String? _normalizeRole(dynamic role) {
     if (role is! String) return null;
@@ -1619,6 +1625,46 @@ class SupabaseService {
     return result == true;
   }
 
+  static Future<Map<String, dynamic>?> getInstructorDashboardSummary({
+    bool forceRefresh = false,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return null;
+
+    final cached = _instructorDashboardSummaryCache;
+    final fetchedAt = _instructorDashboardSummaryCacheFetchedAt;
+    final cacheIsFresh = fetchedAt != null &&
+        DateTime.now().difference(fetchedAt) <
+            _instructorDashboardSummaryCacheTtl;
+    if (!forceRefresh &&
+        cached != null &&
+        cacheIsFresh &&
+        _instructorDashboardSummaryCacheUserId == userId) {
+      return Map<String, dynamic>.from(cached);
+    }
+
+    try {
+      final response = await _client.functions.invoke(
+        'instructor-dashboard-summary',
+      );
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected instructor dashboard summary response.');
+      }
+
+      final summary = Map<String, dynamic>.from(data);
+      _instructorDashboardSummaryCacheUserId = userId;
+      _instructorDashboardSummaryCacheFetchedAt = DateTime.now();
+      _instructorDashboardSummaryCache = summary;
+      return Map<String, dynamic>.from(summary);
+    } catch (_) {
+      if (cached != null && _instructorDashboardSummaryCacheUserId == userId) {
+        return Map<String, dynamic>.from(cached);
+      }
+      rethrow;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getLearnerProfileDetail(
     String userId,
   ) async {
@@ -2868,6 +2914,16 @@ class SupabaseService {
     final normalizedVehicleLabel = _clean(requestedVehicleLabel)?.trim();
     final normalizedVehicleType = _clean(requestedVehicleType)?.trim();
 
+    final instructorServiceCities = await _getInstructorRequestServiceCities(
+      instructorId,
+    );
+    if (!OntarioLocations.canRequestBetweenCities(
+      learnerCity: requestedCity,
+      instructorCities: instructorServiceCities,
+    )) {
+      throw Exception(OntarioLocations.requestRestrictionMessage);
+    }
+
     final inserted = await _client
         .from('learner_requests')
         .insert({
@@ -2904,6 +2960,64 @@ class SupabaseService {
         },
       );
     }
+  }
+
+  static Future<List<String>> _getInstructorRequestServiceCities(
+    String instructorId,
+  ) async {
+    final cities = <String>{};
+
+    void addCity(dynamic value) {
+      if (value is! String) return;
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty && trimmed.toLowerCase() != 'null') {
+        cities.add(trimmed);
+      }
+    }
+
+    void collectCities(dynamic value) {
+      if (value is List) {
+        for (final item in value) {
+          collectCities(item);
+        }
+        return;
+      }
+      if (value is Map) {
+        addCity(value['city']);
+        addCity(value['service_area_city']);
+        addCity(value['serviceAreaCity']);
+        addCity(value['areaName']);
+        addCity(value['area']);
+        addCity(value['label']);
+        addCity(value['name']);
+      }
+    }
+
+    try {
+      final detail = await _client
+          .from('instructor_profiles')
+          .select(
+            'preferred_locations, profile:profiles!instructor_profiles_profile_id_fkey(city)',
+          )
+          .eq('profile_id', instructorId)
+          .maybeSingle();
+      if (detail is Map<String, dynamic>) {
+        collectCities(detail['preferred_locations']);
+        final profile = detail['profile'];
+        if (profile is Map) {
+          addCity(profile['city']);
+        }
+      }
+    } catch (_) {}
+
+    if (cities.isEmpty) {
+      try {
+        final profile = await getRawProfile(instructorId);
+        addCity(profile?['city']);
+      } catch (_) {}
+    }
+
+    return cities.toList(growable: false);
   }
 
   static Future<Map<String, dynamic>> claimInstructorReferralCode(

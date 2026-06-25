@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -221,13 +222,22 @@ class PushNotificationService {
 
   static void _navigateFromData(Map<String, dynamic> data, [int attempt = 0]) {
     final screen = data['screen']?.toString();
+    final route = data['route']?.toString();
     final context = AppRoutes.navigatorKey.currentContext;
-    if (screen == null) return;
+    if ((screen == null || screen.isEmpty) &&
+        (route == null || route.isEmpty)) {
+      return;
+    }
     if (context == null) {
       if (attempt >= 5) return;
       Future<void>.delayed(const Duration(milliseconds: 600), () {
         _navigateFromData(data, attempt + 1);
       });
+      return;
+    }
+
+    if (screen == null || screen.isEmpty) {
+      _navigateFromRoute(context, route!);
       return;
     }
 
@@ -262,6 +272,26 @@ class PushNotificationService {
         context.go(AppRoutes.home);
         break;
     }
+  }
+
+  static void _navigateFromRoute(BuildContext context, String route) {
+    if (route.startsWith('/instructor')) {
+      context.go(AppRoutes.instructorHome);
+      return;
+    }
+    if (route.startsWith('/lessons')) {
+      context.go(AppRoutes.myLessons);
+      return;
+    }
+    if (route.startsWith('/find-instructor')) {
+      context.go(AppRoutes.findInstructor);
+      return;
+    }
+    if (route.startsWith('/home')) {
+      context.go(AppRoutes.home);
+      return;
+    }
+    context.go(AppRoutes.home);
   }
 
   static String get _platformName {

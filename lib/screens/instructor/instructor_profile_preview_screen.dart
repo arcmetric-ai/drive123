@@ -535,9 +535,11 @@ class _InstructorProfilePreviewScreenState
                               (code) => Chip(
                                 label: Text(_labelForOffering(code)),
                                 backgroundColor:
-                                    AppColors.golden.withOpacity(0.16),
-                                labelStyle:
-                                    const TextStyle(color: AppColors.golden),
+                                    AppColors.primaryBlue.withOpacity(0.1),
+                                labelStyle: const TextStyle(
+                                  color: AppColors.primaryBlue,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             )
                             .toList(),
@@ -548,8 +550,9 @@ class _InstructorProfilePreviewScreenState
                       ),
                 if (offeringRates.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  ...offeringRates.entries.map(
-                    (entry) => _bullet('${entry.key}: ${entry.value}'),
+                  _PreviewRatesSection(
+                    rates: offeringRates,
+                    labelForOffering: _labelForOffering,
                   ),
                 ],
               ],
@@ -734,7 +737,7 @@ class _InstructorProfilePreviewScreenState
       case 'G':
         return 'G Road Test';
       case 'PR':
-        return 'Practice Sessions';
+        return 'Refresher Lessons';
     }
     return code;
   }
@@ -829,6 +832,81 @@ class _HeaderCard extends StatelessWidget {
               color: Colors.white.withOpacity(0.95),
               height: 1.5,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewRatesSection extends StatelessWidget {
+  const _PreviewRatesSection({
+    required this.rates,
+    required this.labelForOffering,
+  });
+
+  final Map<String, String> rates;
+  final String Function(String code) labelForOffering;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: rates.entries
+          .map(
+            (entry) => _PreviewRatePill(
+              label: labelForOffering(entry.key),
+              value: entry.value,
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _PreviewRatePill extends StatelessWidget {
+  const _PreviewRatePill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedValue =
+        value.trim().startsWith(r'$') ? value.trim() : '\$${value.trim()}';
+    final displayValue = normalizedValue.toLowerCase().contains('/hr')
+        ? normalizedValue
+        : '$normalizedValue/hr';
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 128),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBlue.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primaryBlue.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Colors.grey[700],
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            displayValue,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppColors.primaryBlue,
+                  fontWeight: FontWeight.w800,
+                ),
           ),
         ],
       ),
