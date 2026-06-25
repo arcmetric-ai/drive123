@@ -12,6 +12,12 @@ const PROFILE_SELECT =
   'email, role, first_name, last_name, phone, age, gender, languages, licence_number, licence_expiry, onboarding_stage';
 const INSTRUCTOR_PROFILE_SELECT =
   'bio, years_of_experience, vehicles, offerings, offering_rates, pickup_preference, preferred_locations, credentials_status';
+const AGREEMENT_KEYS = [
+  'terms-and-conditions',
+  'privacy-policy',
+  'data-consent-policy',
+  'instructor-verification-consent',
+];
 
 const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
@@ -154,6 +160,156 @@ async function prepareInstructorProfile(authUserId: string, email: string) {
   return { profile, instructorProfile };
 }
 
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function nullableString(value: unknown) {
+  const cleaned = stringValue(value);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function numberValue(value: unknown) {
+  const parsed = typeof value === 'number'
+    ? value
+    : Number.parseFloat(String(value ?? '').trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => stringValue(item))
+    .filter((item) => item.length > 0);
+}
+
+async function saveInstructorQuestionnaire(
+  authUserId: string,
+  email: string,
+  payload: Record<string, unknown>,
+) {
+  const prepared = await prepareInstructorProfile(authUserId, email);
+  if ('error' in prepared) return prepared;
+
+  const profile = payload.profile && typeof payload.profile === 'object'
+    ? payload.profile as Record<string, unknown>
+    : {};
+  const instructor = payload.instructor && typeof payload.instructor === 'object'
+    ? payload.instructor as Record<string, unknown>
+    : {};
+
+  const licenceNumber = stringValue(profile.licenceNumber).toUpperCase();
+  const languages = stringArray(profile.languages);
+  const offerings = stringArray(instructor.offerings);
+  const offeringRates = instructor.offeringRates &&
+      typeof instructor.offeringRates === 'object' &&
+      !Array.isArray(instructor.offeringRates)
+    ? instructor.offeringRates
+    : {};
+
+  const { error: profileError } = await admin
+    .from('profiles')
+    .update({
+      email,
+      first_name: stringValue(profile.firstName),
+      last_name: stringValue(profile.lastName),
+      phone: nullableString(profile.phone),
+      age: numberValue(profile.age),
+      gender: stringValue(profile.gender),
+      languages,
+      licence_number: licenceNumber,
+      licence_expiry: nullableString(profile.licenceExpiry),
+      onboarding_stage: 'questionnaire_complete',
+      is_verified: false,
+    })
+    .eq('id', authUserId)
+    .eq('role', 'instructor');
+
+  if (profileError != null) {
+    return { error: profileError.message, status: 500 };
+  }
+
+  const pickupPreference = instructor.pickupPreference !== false;
+  const preferredLocations = pickupPreference
+    ? null
+    : Array.isArray(instructor.preferredLocations)
+      ? instructor.preferredLocations
+      : [];
+  const defaultRate = numberValue(instructor.defaultRate);
+
+  const { data: existingInstructorProfile, error: instructorFetchError } =
+    await admin
+      .from('instructor_profiles')
+      .select('credentials_status')
+      .eq('profile_id', authUserId)
+      .maybeSingle();
+
+  if (instructorFetchError != null) {
+    return { error: instructorFetchError.message, status: 500 };
+  }
+
+  const { error: instructorError } = await admin
+    .from('instructor_profiles')
+    .upsert({
+      profile_id: authUserId,
+      bio: nullableString(instructor.bio),
+      years_of_experience: numberValue(instructor.yearsOfExperience),
+      vehicles: Array.isArray(instructor.vehicles) ? instructor.vehicles : [],
+      offerings,
+      offering_rates: offeringRates,
+      default_rate: defaultRate,
+      pickup_preference: pickupPreference,
+      preferred_locations: preferredLocations,
+      credentials_status:
+        existingInstructorProfile?.credentials_status ?? 'not_started',
+    }, { onConflict: 'profile_id' });
+
+  if (instructorError != null) {
+    return { error: instructorError.message, status: 500 };
+  }
+
+  const agreementVersion = stringValue(payload.agreementVersion) || '2026-06-24';
+  const { data: existingAgreements, error: agreementFetchError } = await admin
+    .from('user_agreements')
+    .select('agreement_key')
+    .eq('profile_id', authUserId)
+    .eq('agreement_version', agreementVersion)
+    .in('agreement_key', AGREEMENT_KEYS);
+
+  if (agreementFetchError != null) {
+    return { error: agreementFetchError.message, status: 500 };
+  }
+
+  const existingKeys = new Set(
+    (existingAgreements ?? []).map((row) => String(row.agreement_key)),
+  );
+  const now = new Date().toISOString();
+  const agreements = AGREEMENT_KEYS
+    .filter((agreementKey) => !existingKeys.has(agreementKey))
+    .map((agreementKey) => ({
+      profile_id: authUserId,
+      agreement_key: agreementKey,
+      agreement_version: agreementVersion,
+      accepted_at: now,
+      policy_url: `https://www.drivetutor.ca/${agreementKey}`,
+      source: 'website_instructor_questionnaire',
+      role: 'instructor',
+      metadata: { source: 'website_instructor_questionnaire' },
+    }));
+
+  if (agreements.length > 0) {
+    const { error: agreementError } = await admin
+      .from('user_agreements')
+      .insert(agreements);
+
+    if (agreementError != null) {
+      return { error: agreementError.message, status: 500 };
+    }
+  }
+
+  return await prepareInstructorProfile(authUserId, email);
+}
+
 serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -191,6 +347,28 @@ serve(async (request) => {
       }
 
       const result = await prepareInstructorProfile(authUserId, email);
+      if ('error' in result) {
+        return jsonResponse({ error: result.error }, result.status);
+      }
+
+      return jsonResponse({
+        success: true,
+        profile: result.profile,
+        instructorProfile: result.instructorProfile,
+      });
+    }
+
+    if (action === 'saveInstructorQuestionnaire') {
+      const currentUser = await authenticatedUser(request);
+      if (currentUser?.id !== authUserId) {
+        return jsonResponse({ error: 'Unauthorized.' }, 401);
+      }
+
+      const result = await saveInstructorQuestionnaire(
+        authUserId,
+        email,
+        payload,
+      );
       if ('error' in result) {
         return jsonResponse({ error: result.error }, result.status);
       }
