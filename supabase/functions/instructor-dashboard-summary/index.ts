@@ -162,13 +162,52 @@ function parseLocations(value: unknown) {
     }
     if (typeof entry === 'object') {
       const map = entry as JsonMap;
-      ['city', 'label', 'name', 'address', 'municipality', 'location']
+      [
+        'city',
+        'label',
+        'name',
+        'area',
+        'areaName',
+        'address',
+        'municipality',
+        'location',
+        'service_area',
+        'serviceArea',
+        'service_area_city',
+        'serviceAreaCity',
+      ]
         .forEach((key) => visit(map[key]));
     }
   };
 
   visit(value);
   return Array.from(locations);
+}
+
+function mergeLocations(...values: unknown[]) {
+  const seen = new Set<string>();
+  const locations: string[] = [];
+  values.flatMap(parseLocations).forEach((location) => {
+    const key = location.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    locations.push(location);
+  });
+  return locations;
+}
+
+function instructorServiceAreas(instructor: JsonMap, profile: JsonMap) {
+  return mergeLocations(
+    profile.city,
+    instructor.service_area_city,
+    instructor.serviceAreaCity,
+    instructor.areas_of_operation,
+    instructor.service_area,
+    instructor.serviceArea,
+    instructor.service_area_area,
+    instructor.serviceAreaArea,
+    instructor.preferred_locations,
+  );
 }
 
 function configuredMunicipalCities() {
@@ -404,7 +443,7 @@ serve(async (request) => {
       .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city))
       .slice(0, 5);
 
-    const serviceAreas = parseLocations(instructor.preferred_locations);
+    const serviceAreas = instructorServiceAreas(instructor, profile);
     const municipal = municipalRequirement(serviceAreas);
     const documentReviewStatus = cleanString(instructor.credentials_status);
     const verificationStatus = cleanString(profile.verification_status);
