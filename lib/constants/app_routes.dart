@@ -242,7 +242,9 @@ class AppRoutes {
           final extra = state.extra;
           final email = extra is String
               ? extra
-              : (extra is Map ? extra['email'] as String? : null);
+              : (extra is Map
+                  ? extra['email'] as String?
+                  : state.uri.queryParameters['email']);
           final authUserId =
               extra is Map ? extra['authUserId'] as String? : null;
           final flowToken = extra is Map ? extra['flowToken'] as String? : null;
@@ -251,7 +253,7 @@ class AppRoutes {
               extra is Map ? extra['learnerAccountType'] as String? : null;
           final flow = extra is Map
               ? (extra['flow'] as String? ?? 'recovery')
-              : 'recovery';
+              : (state.uri.queryParameters['flow'] ?? 'recovery');
           return NewPasswordScreen(
             email: email,
             authUserId: authUserId,

@@ -136,6 +136,7 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
         role: flowState.role,
         learnerAccountType: flowState.learnerAccountType,
       );
+      await SupabaseService.clearPendingSignUpFlow();
     } catch (error) {
       debugPrint('Password created; role sync will continue later: $error');
     }
@@ -173,25 +174,10 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
 
     try {
       if (_isSignUpFlow) {
-        final email = widget.email?.trim();
-        final authUserId = widget.authUserId?.trim();
-        final flowToken = widget.flowToken?.trim();
-        if (email == null ||
-            email.isEmpty ||
-            authUserId == null ||
-            authUserId.isEmpty ||
-            flowToken == null ||
-            flowToken.isEmpty) {
+        final flowState = await _resolveSignUpFlowState();
+        if (flowState == null) {
           throw Exception('Missing sign-up flow state. Please start again.');
         }
-
-        final flowState = SignupFlowState(
-          email: email,
-          authUserId: authUserId,
-          flowToken: flowToken,
-          role: widget.role ?? 'learner',
-          learnerAccountType: widget.learnerAccountType ?? 'learner',
-        );
 
         Object? passwordStepError;
         try {
@@ -233,6 +219,32 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<SignupFlowState?> _resolveSignUpFlowState() async {
+    final email = widget.email?.trim();
+    final authUserId = widget.authUserId?.trim();
+    final flowToken = widget.flowToken?.trim();
+    if (email != null &&
+        email.isNotEmpty &&
+        authUserId != null &&
+        authUserId.isNotEmpty &&
+        flowToken != null &&
+        flowToken.isNotEmpty) {
+      return SignupFlowState(
+        email: email,
+        authUserId: authUserId,
+        flowToken: flowToken,
+        role: widget.role ?? 'learner',
+        learnerAccountType: widget.learnerAccountType ?? 'learner',
+      );
+    }
+
+    final currentUserId = SupabaseService.currentUser?.id;
+    return SupabaseService.getPendingSignUpFlow(
+      email: email,
+      authUserId: authUserId?.isNotEmpty == true ? authUserId : currentUserId,
+    );
   }
 
   @override

@@ -50,7 +50,6 @@ serve(async (request) => {
       .select('auth_user_id, completed_at, expires_at')
       .eq('auth_user_id', authUserId)
       .eq('flow_token_hash', flowTokenHash)
-      .gt('expires_at', nowIso)
       .maybeSingle();
 
     if (flowError != null) {
@@ -63,6 +62,11 @@ serve(async (request) => {
 
     if (flow['completed_at'] != null) {
       return jsonResponse({ success: true, alreadyCompleted: true });
+    }
+
+    const expiresAt = String(flow['expires_at'] ?? '');
+    if (expiresAt.length === 0 || expiresAt <= nowIso) {
+      return jsonResponse({ error: 'Signup flow not found or expired.' }, 404);
     }
 
     const { data, error } = await admin.auth.admin.getUserById(authUserId);

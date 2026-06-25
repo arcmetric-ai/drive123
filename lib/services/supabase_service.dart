@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path_util;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:io';
@@ -78,6 +79,7 @@ class SupabaseService {
   static const String _baseAppUrl = 'https://www.drivetutor.ca';
   static const String _authRedirectUrl = '$_baseAppUrl/auth-redirect';
   static const String _signUpRedirectUrl = _authRedirectUrl;
+  static const String _pendingSignUpFlowKey = 'drive_t_pending_signup_flow_v1';
   static const String agreementVersion = '2026-06-24';
   static const String onboardingStageRoleSelected = 'role_selected';
   static const String onboardingStageVerificationPending =
@@ -484,7 +486,60 @@ class SupabaseService {
       rethrow;
     }
 
+    await savePendingSignUpFlow(flowState);
     return flowState;
+  }
+
+  static Future<void> savePendingSignUpFlow(SignupFlowState flowState) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _pendingSignUpFlowKey,
+      jsonEncode({
+        ...flowState.toMap(),
+        'savedAt': DateTime.now().toUtc().toIso8601String(),
+      }),
+    );
+  }
+
+  static Future<SignupFlowState?> getPendingSignUpFlow({
+    String? email,
+    String? authUserId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_pendingSignUpFlowKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final flowState = SignupFlowState.fromMap(decoded);
+      final requestedEmail = email?.trim().toLowerCase();
+      if (requestedEmail != null &&
+          requestedEmail.isNotEmpty &&
+          flowState.email.trim().toLowerCase() != requestedEmail) {
+        return null;
+      }
+      final requestedUserId = authUserId?.trim();
+      if (requestedUserId != null &&
+          requestedUserId.isNotEmpty &&
+          flowState.authUserId != requestedUserId) {
+        return null;
+      }
+      if (flowState.email.isEmpty ||
+          flowState.authUserId.isEmpty ||
+          flowState.flowToken.isEmpty) {
+        return null;
+      }
+      return flowState;
+    } catch (_) {
+      await prefs.remove(_pendingSignUpFlowKey);
+      return null;
+    }
+  }
+
+  static Future<void> clearPendingSignUpFlow() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingSignUpFlowKey);
   }
 
   static Future<bool> checkSignUpConfirmation({
@@ -865,6 +920,10 @@ class SupabaseService {
     final verificationState = await getIdentityVerificationState(userId);
 
     if (role == null) {
+      final pendingFlow = await getPendingSignUpFlow(authUserId: userId);
+      if (pendingFlow != null) {
+        return '${AppRoutes.newPassword}?flow=signup';
+      }
       return AppRoutes.roleSelection;
     }
 

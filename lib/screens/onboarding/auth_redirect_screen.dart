@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
+import '../../models/signup_flow_state.dart';
 import '../../services/supabase_service.dart';
 
 class AuthRedirectScreen extends StatefulWidget {
@@ -34,7 +35,7 @@ class _AuthRedirectScreenState extends State<AuthRedirectScreen> {
       (data) {
         final user = data.session?.user;
         if (user != null) {
-          _continueToPassword(user.email);
+          unawaited(_continueToPassword(user.email));
         }
       },
     );
@@ -72,13 +73,21 @@ class _AuthRedirectScreenState extends State<AuthRedirectScreen> {
     });
   }
 
-  void _continueToPassword(String? email) {
+  Future<void> _continueToPassword(String? email) async {
+    if (!mounted || _hasNavigated) return;
+    SignupFlowState? flowState;
+    if (!_isRecoveryFlow) {
+      flowState = await SupabaseService.getPendingSignUpFlow(
+        email: email,
+        authUserId: SupabaseService.currentUser?.id,
+      );
+    }
     if (!mounted || _hasNavigated) return;
     _hasNavigated = true;
     context.go(
       AppRoutes.newPassword,
       extra: {
-        'email': email,
+        if (flowState != null) ...flowState.toMap() else 'email': email,
         'flow': widget.flow,
       },
     );
