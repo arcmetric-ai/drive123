@@ -131,12 +131,25 @@ async function queueNotificationEvent(
   admin: SupabaseClient,
   input: QueueNotificationInput,
 ) {
+  let actorProfileId = input.actorProfileId ?? null;
+  if (actorProfileId != null) {
+    const { data: actorProfile, error: actorProfileError } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('id', actorProfileId)
+      .maybeSingle();
+    if (actorProfileError != null) {
+      throw new Error(actorProfileError.message);
+    }
+    actorProfileId = actorProfile == null ? null : actorProfileId;
+  }
+
   const { data, error } = await admin
     .from('notification_events')
     .insert({
       event_key: input.eventKey,
       recipient_profile_id: input.recipientProfileId,
-      actor_profile_id: input.actorProfileId ?? null,
+      actor_profile_id: actorProfileId,
       entity_type: input.entityType ?? null,
       entity_id: input.entityId ?? null,
       title: input.title,
