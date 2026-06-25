@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/app_colors.dart';
@@ -17,17 +18,17 @@ import '../../widgets/verified_profile_badge.dart';
 import '../instructor/instructor_bookings_history_screen.dart';
 
 class _LegalPolicy {
-  final String title;
-  final String path;
-  final String summary;
-  final List<String> bullets;
-
   const _LegalPolicy({
     required this.title,
     required this.path,
     required this.summary,
     required this.bullets,
   });
+
+  final String title;
+  final String path;
+  final String summary;
+  final List<String> bullets;
 }
 
 const _policyTerms = _LegalPolicy(
@@ -677,7 +678,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                         if (_isVerified)
                           const VerifiedProfileBadge(
                             size: 22,
-                            showCutout: false,
                           )
                         else
                           const Icon(
@@ -799,10 +799,24 @@ class _ProfileScreenState extends State<ProfileScreen>
                         ),
                       ),
                       const SizedBox(height: 10),
-                      TextButton.icon(
-                        onPressed: () => _copyInstructorReferral(code),
-                        icon: const Icon(Icons.copy_rounded, size: 18),
-                        label: const Text('Copy code'),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => _shareInstructorReferral(
+                              code: code,
+                              inviteUrl: inviteUrl,
+                            ),
+                            icon: const Icon(Icons.ios_share_rounded, size: 18),
+                            label: const Text('Share'),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _copyInstructorReferral(inviteUrl),
+                            icon: const Icon(Icons.copy_rounded, size: 18),
+                            label: const Text('Copy link'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -823,12 +837,25 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Future<void> _copyInstructorReferral(String code) async {
-    await Clipboard.setData(ClipboardData(text: code));
+  Future<void> _copyInstructorReferral(String inviteUrl) async {
+    await Clipboard.setData(ClipboardData(text: inviteUrl));
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Instructor code copied.')));
+    ).showSnackBar(
+        const SnackBar(content: Text('Instructor invite link copied.')));
+  }
+
+  Future<void> _shareInstructorReferral({
+    required String code,
+    required String inviteUrl,
+  }) async {
+    final message = 'Book driving lessons with me on Drive Tutor: $inviteUrl\n'
+        'Instructor code: $code';
+    await Share.share(
+      message,
+      subject: 'Drive Tutor instructor invite',
+    );
   }
 
   Future<void> _generateInstructorReferralCode() async {
