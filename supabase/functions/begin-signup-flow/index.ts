@@ -11,7 +11,7 @@ const NON_INSTRUCTOR_ACCOUNT_MESSAGE =
 const PROFILE_SELECT =
   'email, role, first_name, last_name, phone, age, gender, languages, licence_number, licence_expiry, city, onboarding_stage';
 const INSTRUCTOR_PROFILE_SELECT =
-  'bio, years_of_experience, areas_of_operation, vehicles, offerings, offering_rates, pickup_preference, preferred_locations, credentials_status';
+  'bio, years_of_experience, vehicles, offerings, offering_rates, pickup_preference, preferred_locations, credentials_status';
 const AGREEMENT_KEYS = [
   'terms-and-conditions',
   'privacy-policy',
@@ -256,9 +256,6 @@ async function saveInstructorQuestionnaire(
       profile_id: authUserId,
       bio: nullableString(instructor.bio),
       years_of_experience: numberValue(instructor.yearsOfExperience),
-      areas_of_operation: operatingCity
-        ? [{ city: operatingCity }]
-        : [],
       vehicles: Array.isArray(instructor.vehicles) ? instructor.vehicles : [],
       offerings,
       offering_rates: offeringRates,
