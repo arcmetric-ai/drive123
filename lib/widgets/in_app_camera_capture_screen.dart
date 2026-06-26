@@ -34,6 +34,7 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
   int _initializationToken = 0;
   static const _cameraStartTimeout = Duration(seconds: 12);
   static const _captureTimeout = Duration(seconds: 15);
+  static const _cameraDisposeTimeout = Duration(seconds: 3);
 
   @override
   void initState() {
@@ -84,10 +85,16 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
         throw CameraException('noCamera', 'No camera was found.');
       }
 
-      final camera = cameras.firstWhere(
-        (candidate) => candidate.lensDirection == widget.lensDirection,
-        orElse: () => cameras.first,
-      );
+      final matchingCameras = cameras
+          .where((candidate) => candidate.lensDirection == widget.lensDirection)
+          .toList(growable: false);
+      if (matchingCameras.isEmpty) {
+        throw CameraException(
+          'cameraUnavailable',
+          'Requested camera is not available.',
+        );
+      }
+      final camera = matchingCameras.first;
 
       final previousController = _controller;
       _controller = null;
@@ -148,7 +155,12 @@ class _InAppCameraCaptureScreenState extends State<InAppCameraCaptureScreen>
     try {
       final file = await controller.takePicture().timeout(_captureTimeout);
       if (!mounted) return;
-      setState(() => _isCapturing = false);
+      _controller = null;
+      await controller.dispose().timeout(
+            _cameraDisposeTimeout,
+            onTimeout: () {},
+          );
+      if (!mounted) return;
       Navigator.of(context).pop(file.path);
     } on TimeoutException {
       if (!mounted) return;

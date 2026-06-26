@@ -30,6 +30,7 @@ class VerificationDocumentResubmissionScreen extends StatefulWidget {
 
 class _VerificationDocumentResubmissionScreenState
     extends State<VerificationDocumentResubmissionScreen> {
+  static const _frontCameraWarmupDelay = Duration(milliseconds: 700);
   bool _isSubmitting = false;
   bool _didOpenCamera = false;
   String? _error;
@@ -70,6 +71,11 @@ class _VerificationDocumentResubmissionScreenState
   Future<void> _captureAndSubmit() async {
     if (_isSubmitting || _didOpenCamera) return;
     _didOpenCamera = true;
+
+    if (_isSelfie) {
+      await Future<void>.delayed(_frontCameraWarmupDelay);
+      if (!mounted) return;
+    }
 
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(

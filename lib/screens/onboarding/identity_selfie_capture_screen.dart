@@ -27,6 +27,7 @@ class IdentitySelfieCaptureScreen extends StatefulWidget {
 
 class _IdentitySelfieCaptureScreenState
     extends State<IdentitySelfieCaptureScreen> {
+  static const _frontCameraWarmupDelay = Duration(milliseconds: 700);
   bool _isSubmitting = false;
   bool _didOpenCamera = false;
   String? _error;
@@ -43,6 +44,9 @@ class _IdentitySelfieCaptureScreenState
     if (_isSubmitting || _didOpenCamera) return;
     _didOpenCamera = true;
     setState(() => _error = null);
+
+    await Future<void>.delayed(_frontCameraWarmupDelay);
+    if (!mounted) return;
 
     final imagePath = await Navigator.of(context).push<String>(
       MaterialPageRoute(
