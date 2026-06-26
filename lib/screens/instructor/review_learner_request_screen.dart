@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/lesson_request_utils.dart';
+import '../../widgets/learner_account_tag.dart';
 import '../../widgets/verified_profile_badge.dart';
 
 class ReviewLearnerRequestScreen extends StatefulWidget {
@@ -136,6 +138,15 @@ class _ReviewLearnerRequestScreenState
   }
 
   String _displayName(Map<String, dynamic> request) {
+    final guardianLearnerName = formatLessonRequestLearnerName(request);
+    final learnerProfile = request['learner_profile'];
+    if (learnerProfile is Map &&
+        _stringValue(learnerProfile['account_type'])?.toLowerCase() ==
+            'guardian' &&
+        guardianLearnerName != 'Learner') {
+      return guardianLearnerName;
+    }
+
     final learner = request['learner'] is Map
         ? Map<String, dynamic>.from(request['learner'] as Map)
         : <String, dynamic>{};
@@ -150,6 +161,20 @@ class _ReviewLearnerRequestScreenState
         (request['requested_email'] as String?) ??
         '';
     return name.isNotEmpty ? name : 'Learner';
+  }
+
+  String _accountHolderName(Map<String, dynamic> request) {
+    final learner = request['learner'] is Map
+        ? Map<String, dynamic>.from(request['learner'] as Map)
+        : <String, dynamic>{};
+    final parts = [
+      _stringValue(learner['first_name']),
+      _stringValue(learner['last_name']),
+    ].whereType<String>().join(' ').trim();
+    if (parts.isNotEmpty) return parts;
+    return _stringValue(learner['email']) ??
+        _stringValue(request['requested_email']) ??
+        'Guardian';
   }
 
   String _statusLabel(String status) {
@@ -376,44 +401,74 @@ class _ReviewLearnerRequestScreenState
     return null;
   }
 
-  Widget _infoTile(String title, String value, {IconData? icon}) {
+  Widget _profileSection({
+    required String title,
+    required List<Widget> children,
+    IconData? icon,
+  }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[200]!),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.border),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 22, color: AppColors.primary),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.foreground,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (icon != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 12, top: 2),
-              child: Icon(icon, color: AppColors.ocean),
+          SizedBox(
+            width: 128,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.mutedForeground,
+              ),
             ),
+          ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    letterSpacing: 0.2,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 16,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+                color: AppColors.foreground,
+              ),
             ),
           ),
         ],
@@ -457,13 +512,16 @@ class _ReviewLearnerRequestScreenState
         _stringValue(learnerProfile?['account_type'])?.toLowerCase();
     final isGuardianAccount = accountType == 'guardian';
     final isVerifiedLearner = _isVerifiedLearner(request);
-    final guardianName = _displayName(request ?? const {});
+    final accountHolderName = _accountHolderName(request ?? const {});
     final wardFirst = _stringValue(learnerProfile?['ward_first_name']);
     final wardLast = _stringValue(learnerProfile?['ward_last_name']);
     final wardName = [
       if (wardFirst != null) wardFirst,
       if (wardLast != null) wardLast,
     ].join(' ').trim();
+    final displayName = isGuardianAccount && wardName.isNotEmpty
+        ? wardName
+        : _displayName(request ?? const {});
     final wardGender = _stringValue(learnerProfile?['ward_gender']);
     final availabilitySummary = _formatWeeklyAvailability(
       learner['weekly_availability'] ??
@@ -501,156 +559,179 @@ class _ReviewLearnerRequestScreenState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              CircleAvatar(
-                                radius: 32,
-                                backgroundColor:
-                                    AppColors.ocean.withOpacity(0.12),
-                                backgroundImage: profileImage != null
-                                    ? NetworkImage(profileImage)
-                                    : null,
-                                child: profileImage == null
-                                    ? const Icon(Icons.person,
-                                        color: AppColors.ocean, size: 32)
-                                    : null,
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 4,
-                                      crossAxisAlignment:
-                                          WrapCrossAlignment.center,
-                                      children: [
-                                        Text(
-                                          _displayName(request),
-                                          style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        if (isVerifiedLearner)
-                                          const VerifiedProfileBadge(
-                                            size: 22,
-                                            showCutout: true,
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 6,
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: _statusColor(status)
-                                                .withOpacity(0.12),
-                                            borderRadius:
-                                                BorderRadius.circular(999),
-                                          ),
-                                          child: Text(
-                                            _statusLabel(status),
-                                            style: TextStyle(
-                                              color: _statusColor(status),
-                                              fontWeight: FontWeight.w600,
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(26),
+                              border: Border.all(color: AppColors.border),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x0A111827),
+                                  blurRadius: 16,
+                                  offset: Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 34,
+                                  backgroundColor:
+                                      AppColors.ocean.withOpacity(0.12),
+                                  backgroundImage: profileImage != null
+                                      ? NetworkImage(profileImage)
+                                      : null,
+                                  child: profileImage == null
+                                      ? const Icon(Icons.person,
+                                          color: AppColors.ocean, size: 32)
+                                      : null,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 6,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          Text(
+                                            displayName,
+                                            style: const TextStyle(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.foreground,
                                             ),
                                           ),
-                                        ),
-                                        if (isGuardianAccount)
+                                          if (isVerifiedLearner)
+                                            const VerifiedProfileBadge(
+                                              size: 22,
+                                              showCutout: true,
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
                                           Container(
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 12,
-                                              vertical: 4,
+                                              vertical: 5,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: AppColors.primary
-                                                  .withOpacity(0.10),
+                                              color: _statusColor(status)
+                                                  .withOpacity(0.12),
                                               borderRadius:
                                                   BorderRadius.circular(999),
                                             ),
-                                            child: const Text(
-                                              'Guardian account',
+                                            child: Text(
+                                              _statusLabel(status),
                                               style: TextStyle(
-                                                color: AppColors.primary,
-                                                fontWeight: FontWeight.w600,
+                                                color: _statusColor(status),
+                                                fontWeight: FontWeight.w800,
                                               ),
                                             ),
                                           ),
-                                      ],
-                                    ),
-                                    if (createdAt != null) ...[
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Requested on ${DateFormat('MMM d, yyyy - h:mm a').format(createdAt)}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                        ),
+                                          if (isGuardianAccount)
+                                            const LearnerAccountTag.guardian(),
+                                        ],
                                       ),
+                                      if (isGuardianAccount) ...[
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          'Managed by $accountHolderName',
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.mutedForeground,
+                                          ),
+                                        ),
+                                      ],
+                                      if (createdAt != null) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Requested on ${DateFormat('MMM d, yyyy - h:mm a').format(createdAt)}',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: AppColors.mutedForeground,
+                                          ),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          _profileSection(
+                            title: 'Lesson request',
+                            icon: Icons.route_outlined,
+                            children: [
+                              _detailRow('Focus', focus ?? 'Not provided'),
+                              _detailRow(
+                                'Vehicle',
+                                requestedVehicle ?? 'No preference provided',
+                              ),
+                              _detailRow(
+                                'Message',
+                                message?.isNotEmpty == true
+                                    ? message!
+                                    : 'No message provided.',
                               ),
                             ],
                           ),
-                          const SizedBox(height: 24),
-                          if (focus != null && focus.isNotEmpty)
-                            _infoTile('Focus', focus,
-                                icon: Icons.center_focus_strong),
-                          if (requestedVehicle != null &&
-                              requestedVehicle.isNotEmpty)
-                            _infoTile(
-                              'Preferred vehicle',
-                              requestedVehicle,
-                              icon: Icons.directions_car_outlined,
-                            ),
-                          if (isGuardianAccount)
-                            _infoTile(
-                              'Guardian-managed request',
-                              [
-                                'Guardian: $guardianName',
-                                if (wardName.isNotEmpty) 'Learner: $wardName',
-                                if (age != null) 'Learner age: $age years',
-                              ].join('\n'),
-                              icon: Icons.supervisor_account_outlined,
-                            ),
-                          _infoTile(
-                            'Message',
-                            message?.isNotEmpty == true
-                                ? message!
-                                : 'No message provided.',
-                            icon: Icons.message_outlined,
+                          _profileSection(
+                            title: isGuardianAccount
+                                ? 'Learner and guardian'
+                                : 'Learner profile',
+                            icon: isGuardianAccount
+                                ? Icons.supervisor_account_outlined
+                                : Icons.person_outline,
+                            children: [
+                              if (isGuardianAccount)
+                                _detailRow('Guardian', accountHolderName),
+                              _detailRow(
+                                'Learner',
+                                displayName,
+                              ),
+                              _detailRow(
+                                'Age',
+                                age != null ? '$age years' : 'Not provided',
+                              ),
+                              _detailRow(
+                                'Gender',
+                                isGuardianAccount
+                                    ? wardGender ?? 'Not provided'
+                                    : gender ?? 'Not provided',
+                              ),
+                              _detailRow('City', city ?? 'Not provided'),
+                            ],
                           ),
                           if (availabilitySummary != null)
-                            _infoTile(
-                              'Weekly availability',
-                              availabilitySummary,
+                            _profileSection(
+                              title: 'Weekly availability',
                               icon: Icons.access_time,
+                              children: [
+                                Text(
+                                  availabilitySummary,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    height: 1.45,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.foreground,
+                                  ),
+                                ),
+                              ],
                             ),
-                          _infoTile(
-                            'Age',
-                            age != null ? '$age years' : 'Not provided',
-                            icon: Icons.cake_outlined,
-                          ),
-                          _infoTile(
-                            'Gender',
-                            isGuardianAccount
-                                ? wardGender ?? 'Not provided'
-                                : gender ?? 'Not provided',
-                            icon: Icons.wc_outlined,
-                          ),
-                          _infoTile(
-                            'City',
-                            city ?? 'Not provided',
-                            icon: Icons.location_city_outlined,
-                          ),
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,

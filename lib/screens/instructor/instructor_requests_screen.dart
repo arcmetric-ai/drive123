@@ -10,6 +10,7 @@ import '../../services/supabase_service.dart';
 import '../../utils/learner_color_utils.dart';
 import '../../utils/lesson_request_utils.dart';
 import '../../widgets/glass_panel.dart';
+import '../../widgets/learner_account_tag.dart';
 
 BoxDecoration _outlinedSurfaceDecoration(double radius, {Color? color}) {
   return BoxDecoration(
@@ -451,6 +452,17 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
   }
 
   String _learnerName(Map<String, dynamic> learner) {
+    if (_isGuardianLearner(learner)) {
+      final learnerProfile = _learnerProfileMap(learner);
+      final wardName = [
+        _stringValue(
+            learnerProfile?['ward_first_name'] ?? learner['ward_first_name']),
+        _stringValue(
+            learnerProfile?['ward_last_name'] ?? learner['ward_last_name']),
+      ].whereType<String>().join(' ').trim();
+      if (wardName.isNotEmpty) return wardName;
+    }
+
     final learnerProfile = learner['learner'] as Map?;
     final first = _stringValue(
           learnerProfile?['first_name'] ??
@@ -487,6 +499,31 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     return learner['is_external_learner'] == true ||
         learner['is_offline'] == true ||
         _stringValue(learner['external_learner_id']) != null;
+  }
+
+  Map<String, dynamic>? _learnerProfileMap(Map<String, dynamic> learner) {
+    final direct = learner['learner_profile'];
+    if (direct is Map) return Map<String, dynamic>.from(direct);
+    final nestedLearner = learner['learner'];
+    if (nestedLearner is Map && nestedLearner['learner_profile'] is Map) {
+      return Map<String, dynamic>.from(
+        nestedLearner['learner_profile'] as Map,
+      );
+    }
+    return null;
+  }
+
+  bool _isGuardianLearner(Map<String, dynamic> learner) {
+    final learnerProfile = _learnerProfileMap(learner);
+    final accountType = _stringValue(
+          learnerProfile?['account_type'] ??
+              learner['account_type'] ??
+              (learner['learner'] is Map
+                  ? (learner['learner'] as Map)['account_type']
+                  : null),
+        )?.toLowerCase() ??
+        '';
+    return accountType == 'guardian';
   }
 
   String _licenseTier(Map<String, dynamic> learner) {
@@ -1228,6 +1265,7 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
     ].join(' • ');
     final nextLesson = _nextLessonLabel(learner);
     final isExternal = _isExternalLearner(learner);
+    final isGuardian = _isGuardianLearner(learner);
     final isGraduated = _isGraduatedLearner(learner);
     final nextLessonLabel =
         nextLesson != null ? 'Next: $nextLesson' : 'Next: TBD';
@@ -1290,19 +1328,15 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                           ),
                           if (isExternal) ...[
                             const SizedBox(width: 8),
-                            const _FocusBadge(
-                              label: 'Offline',
-                              backgroundColor: Color(0xFFFFF7CC),
-                              foregroundColor: Color(0xFF8A6500),
-                            ),
+                            const LearnerAccountTag.offline(),
+                          ],
+                          if (isGuardian) ...[
+                            const SizedBox(width: 8),
+                            const LearnerAccountTag.guardian(),
                           ],
                           if (isGraduated) ...[
                             const SizedBox(width: 8),
-                            const _FocusBadge(
-                              label: 'Graduated',
-                              backgroundColor: Color(0xFFE7F8EF),
-                              foregroundColor: Color(0xFF0B7A3B),
-                            ),
+                            const LearnerAccountTag.graduated(),
                           ],
                         ],
                       ),
@@ -1354,8 +1388,14 @@ class _LearnerRosterViewState extends State<LearnerRosterView> {
                   child: _InlineInfo(
                     icon: isExternal
                         ? Icons.person_off_outlined
-                        : Icons.verified_user_outlined,
-                    value: isExternal ? 'Offline learner' : 'App learner',
+                        : isGuardian
+                            ? Icons.supervisor_account_outlined
+                            : Icons.verified_user_outlined,
+                    value: isExternal
+                        ? 'Offline learner'
+                        : isGuardian
+                            ? 'Guardian account'
+                            : 'App learner',
                     color: colors.accent,
                   ),
                 ),

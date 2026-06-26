@@ -7,6 +7,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/lesson_request_utils.dart';
+import '../../widgets/learner_account_tag.dart';
 import '../../widgets/verified_profile_badge.dart';
 
 class InstructorPendingRequestsScreen extends StatefulWidget {
@@ -102,9 +103,9 @@ class _InstructorPendingRequestsScreenState
 
   String _subtitle(Map<String, dynamic> request) {
     if (_isGuardianAccount(request)) {
-      final learnerName = _guardianLearnerName(request);
-      if (learnerName.isNotEmpty) {
-        return 'Guardian account • Learner: $learnerName';
+      final guardianName = _accountHolderName(request);
+      if (guardianName.isNotEmpty) {
+        return 'Managed by $guardianName';
       }
       return 'Guardian account';
     }
@@ -125,6 +126,12 @@ class _InstructorPendingRequestsScreenState
           'guardian';
     }
     return false;
+  }
+
+  bool _isOfflineRequest(Map<String, dynamic> request) {
+    return request['is_external_learner'] == true ||
+        request['is_offline'] == true ||
+        cleanDisplayString(request['external_learner_id']).isNotEmpty;
   }
 
   String _accountHolderName(Map<String, dynamic> request) {
@@ -334,8 +341,12 @@ class _InstructorPendingRequestsScreenState
   }
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
-    final name = _isGuardianAccount(request)
-        ? _accountHolderName(request)
+    final isGuardian = _isGuardianAccount(request);
+    final isOffline = _isOfflineRequest(request);
+    final name = isGuardian
+        ? (_guardianLearnerName(request).isNotEmpty
+            ? _guardianLearnerName(request)
+            : formatLessonRequestLearnerName(request))
         : formatLessonRequestLearnerName(request);
     final subtitle = _subtitle(request);
     final avatarUrl = _avatarUrl(request);
@@ -403,6 +414,8 @@ class _InstructorPendingRequestsScreenState
                             size: 22,
                             showCutout: true,
                           ),
+                        if (isGuardian) const LearnerAccountTag.guardian(),
+                        if (isOffline) const LearnerAccountTag.offline(),
                       ],
                     ),
                     const SizedBox(height: 4),
