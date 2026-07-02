@@ -94,7 +94,7 @@ class _IdentitySelfieCaptureScreenState
     setState(() => _isSubmitting = true);
 
     try {
-      await SupabaseService.submitIdentityVerification(
+      final effectiveRole = await SupabaseService.submitIdentityVerification(
         userId: user.id,
         role: widget.role,
         licenseImagePath: licenseImagePath,
@@ -102,18 +102,28 @@ class _IdentitySelfieCaptureScreenState
       );
       if (!mounted) return;
       context.go(
-        widget.role == 'instructor'
+        effectiveRole == 'instructor'
             ? AppRoutes.instructorQuestionnaire
             : AppRoutes.identityPendingReview,
-        extra: {'role': widget.role},
+        extra: {'role': effectiveRole},
       );
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _isSubmitting = false;
-        _error = 'Unable to upload verification: $error';
+        _error = 'Unable to upload verification: ${_friendlyError(error)}';
       });
     }
+  }
+
+  String _friendlyError(Object error) {
+    final message = error.toString().trim();
+    return message
+        .replaceFirst(RegExp(r'^Exception:\s*'), '')
+        .replaceFirst(RegExp(r'^PostgrestException\(message:\s*'), '')
+        .split(', code:')
+        .first
+        .trim();
   }
 
   @override

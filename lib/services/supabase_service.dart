@@ -1063,7 +1063,7 @@ class SupabaseService {
     return AppRoutes.roleSelection;
   }
 
-  static Future<void> submitIdentityVerification({
+  static Future<String> submitIdentityVerification({
     required String userId,
     required String role,
     required String licenseImagePath,
@@ -1071,10 +1071,37 @@ class SupabaseService {
     String? guardianLicenseImagePath,
     String? guardianSelfieImagePath,
   }) async {
+    final normalizedRole = _normalizeRole(role);
+    if (normalizedRole == null) {
+      throw ArgumentError('Unsupported role "$role"');
+    }
+
+    final currentProfile = await _client
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle();
+    final currentRole = _normalizeRole(currentProfile?['role']);
+    final effectiveRole = currentRole ?? normalizedRole;
+    if (normalizedRole == 'instructor' && currentRole == null) {
+      throw Exception(
+        'Finish the instructor application on the website first, then sign in with that same instructor account in the app.',
+      );
+    }
+    if (currentRole != null && currentRole != normalizedRole) {
+      if (currentRole != 'instructor') {
+        throw Exception(
+          normalizedRole == 'instructor'
+              ? 'Use the dedicated instructor account you created on the website. Learner and guardian accounts cannot be converted here.'
+              : 'This account is already set up as $currentRole. Please sign in with the correct account.',
+        );
+      }
+    }
+
     final submittedAt = DateTime.now().toUtc().toIso8601String();
     await recordRequiredAgreements(
       userId: userId,
-      role: role,
+      role: effectiveRole,
       source: 'mobile_app_identity_verification',
     );
     final licensePath = await _uploadImmutableIdentityDocument(
@@ -1104,7 +1131,6 @@ class SupabaseService {
     }
 
     final updates = <String, dynamic>{
-      'role': role,
       'verification_status': 'pending',
       'verification_submitted_at': submittedAt,
       'verification_review_started_at': null,
@@ -1112,9 +1138,10 @@ class SupabaseService {
       'identity_license_path': licensePath,
       'identity_selfie_path': selfiePath,
       'is_verified': false,
-      'onboarding_stage': (role == 'learner' || role == 'guardian')
-          ? onboardingStageQuestionnaireComplete
-          : onboardingStageVerificationPending,
+      'onboarding_stage':
+          (effectiveRole == 'learner' || effectiveRole == 'guardian')
+              ? onboardingStageQuestionnaireComplete
+              : onboardingStageVerificationPending,
     };
 
     if (guardianLicensePath != null && guardianSelfiePath != null) {
@@ -1123,13 +1150,14 @@ class SupabaseService {
       updates['guardian_consent_submitted_at'] = submittedAt;
       await recordRequiredAgreements(
         userId: userId,
-        role: role,
+        role: effectiveRole,
         learnerAccountType: 'guardian',
         source: 'mobile_app_guardian_verification',
       );
     }
 
     await _client.from('profiles').update(updates).eq('id', userId);
+    return effectiveRole;
   }
 
   static Future<void> submitRequestedVerificationDocument({
