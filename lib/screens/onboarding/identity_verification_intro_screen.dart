@@ -70,7 +70,9 @@ class IdentityVerificationIntroScreen extends StatelessWidget {
                   Text(
                     isGuardian
                         ? 'To keep our community safe, we collect the learner\'s Ontario G1, G2, or G licence and selfie first. Then we verify the guardian with government ID and a guardian selfie before lessons can be requested.'
-                        : 'To keep our community safe, we need to verify the account holder\'s $licenceLabel before lessons can be requested.',
+                        : isInstructor
+                            ? 'To keep our community safe, we need to verify your Ontario G licence before your instructor account can be reviewed.'
+                            : 'To keep our community safe, we need to verify the account holder\'s $licenceLabel before lessons can be requested.',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w500,

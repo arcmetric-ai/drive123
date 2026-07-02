@@ -1023,14 +1023,14 @@ class SupabaseService {
         return AppRoutes.instructorHome;
       }
 
-      if (!identityApproved &&
-          (!hasIdentityDocs || identityStatus == 'rejected')) {
-        return AppRoutes.identityVerificationIntro;
-      }
-
       if (verificationState?.onboardingStage !=
           onboardingStageQuestionnaireComplete) {
         return AppRoutes.instructorQuestionnaire;
+      }
+
+      if (!identityApproved &&
+          (!hasIdentityDocs || identityStatus == 'rejected')) {
+        return '${AppRoutes.identityVerificationIntro}?role=instructor';
       }
 
       if (credentialsStatus == 'pending') {
@@ -1138,11 +1138,11 @@ class SupabaseService {
       'identity_license_path': licensePath,
       'identity_selfie_path': selfiePath,
       'is_verified': false,
-      'onboarding_stage':
-          (effectiveRole == 'learner' || effectiveRole == 'guardian')
-              ? onboardingStageQuestionnaireComplete
-              : onboardingStageVerificationPending,
     };
+
+    if (effectiveRole == 'learner' || effectiveRole == 'guardian') {
+      updates['onboarding_stage'] = onboardingStageQuestionnaireComplete;
+    }
 
     if (guardianLicensePath != null && guardianSelfiePath != null) {
       updates['guardian_identity_license_path'] = guardianLicensePath;

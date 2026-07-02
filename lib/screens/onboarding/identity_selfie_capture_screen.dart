@@ -103,7 +103,7 @@ class _IdentitySelfieCaptureScreenState
       if (!mounted) return;
       context.go(
         effectiveRole == 'instructor'
-            ? AppRoutes.instructorQuestionnaire
+            ? AppRoutes.instructorCredentialsPortal
             : AppRoutes.identityPendingReview,
         extra: {'role': effectiveRole},
       );
