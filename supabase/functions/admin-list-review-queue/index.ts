@@ -140,6 +140,12 @@ function normalizeCredentialReview(row: Row) {
     rejectedAt: row.credentials_rejected_at,
     rejectionReason: row.credentials_rejection_reason,
     reviewNotes: row.credentials_review_notes,
+    hasIdentityLicenseDocument:
+      typeof profile.identity_license_path === 'string' &&
+      profile.identity_license_path.trim().length > 0,
+    hasIdentitySelfieDocument:
+      typeof profile.identity_selfie_path === 'string' &&
+      profile.identity_selfie_path.trim().length > 0,
     hasInstructorLicense:
       typeof row.instructor_license_path === 'string' &&
       row.instructor_license_path.trim().length > 0,
@@ -156,6 +162,64 @@ function normalizeCredentialReview(row: Row) {
       row.municipal_license_path.trim().length > 0,
     municipalLicenseExpiresAt: row.municipal_license_expires_at,
     profile: normalizeProfile(profile),
+  };
+}
+
+function incrementCounter(target: Record<string, number>, key: unknown) {
+  const normalized = stringValue(key)?.toLowerCase() ?? 'unknown';
+  target[normalized] = (target[normalized] ?? 0) + 1;
+}
+
+function summarizeStatus(rows: Row[]) {
+  const summary: Record<string, number> = {};
+  for (const row of rows) incrementCounter(summary, row.status);
+  return summary;
+}
+
+function normalizeNotificationEvent(row: Row) {
+  return {
+    id: row.id,
+    eventKey: row.event_key,
+    recipientProfileId: row.recipient_profile_id,
+    actorProfileId: row.actor_profile_id,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    title: row.title,
+    body: row.body,
+    channels: row.channels,
+    priority: row.priority,
+    status: row.status,
+    scheduledFor: row.scheduled_for,
+    processedAt: row.processed_at,
+    errorMessage: row.error_message,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeNotificationDelivery(row: Row) {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    profileId: row.profile_id,
+    channel: row.channel,
+    destination: row.destination,
+    status: row.status,
+    errorMessage: row.error_message,
+    attempts: row.attempts,
+    sentAt: row.sent_at,
+    openedAt: row.opened_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function buildNotificationCenter(eventRows: Row[], deliveryRows: Row[]) {
+  return {
+    eventSummary: summarizeStatus(eventRows),
+    deliverySummary: summarizeStatus(deliveryRows),
+    recentEvents: eventRows.slice(0, 50).map(normalizeNotificationEvent),
+    recentDeliveries: deliveryRows.slice(0, 100).map(normalizeNotificationDelivery),
   };
 }
 
@@ -541,6 +605,8 @@ serve(async (request) => {
             city,
             created_at,
             verification_status,
+            identity_license_path,
+            identity_selfie_path,
             is_verified
           )
         `,
@@ -631,6 +697,26 @@ serve(async (request) => {
       return jsonResponse({ error: instructorError.message }, 400);
     }
 
+    const { data: notificationEventRows, error: notificationEventError } = await admin
+      .from('notification_events')
+      .select('id,event_key,recipient_profile_id,actor_profile_id,entity_type,entity_id,title,body,channels,priority,status,scheduled_for,processed_at,error_message,created_at,updated_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (notificationEventError != null) {
+      return jsonResponse({ error: notificationEventError.message }, 400);
+    }
+
+    const { data: notificationDeliveryRows, error: notificationDeliveryError } = await admin
+      .from('notification_deliveries')
+      .select('id,event_id,profile_id,channel,destination,status,error_message,attempts,sent_at,opened_at,created_at,updated_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (notificationDeliveryError != null) {
+      return jsonResponse({ error: notificationDeliveryError.message }, 400);
+    }
+
     const identitySourceRows = ((identityRows ?? []) as Row[]).filter(
       (row) => !isInstructorIdentityRow(row),
     );
@@ -663,6 +749,10 @@ serve(async (request) => {
       lessonHistory: normalizedLessonHistory.slice(0, 200),
       instructorUsage,
       lessonMetrics,
+      notifications: buildNotificationCenter(
+        (notificationEventRows ?? []) as Row[],
+        (notificationDeliveryRows ?? []) as Row[],
+      ),
     });
   } catch (error) {
     return jsonResponse(

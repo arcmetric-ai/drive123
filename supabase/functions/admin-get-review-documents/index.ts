@@ -5,7 +5,9 @@ import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
 
 const documentLabels: Record<string, string> = {
   identity_license: 'Identity Licence',
+  identity_selfie: 'Identity Selfie',
   guardian_identity_license: 'Guardian Government ID',
+  guardian_identity_selfie: 'Guardian Verification Selfie',
   instructor_license: 'Instructor Licence',
   insurance_document: '6D Insurance Document',
   background_check: 'Background Check',
@@ -20,6 +22,7 @@ async function loadDocumentVersions(
   admin: any,
   userId: string,
   documentTypes: string[],
+  labelOverrides: Record<string, string> = {},
 ) {
   const { data, error } = await admin
     .from('verification_document_versions')
@@ -56,10 +59,11 @@ async function loadDocumentVersions(
       const scanStatus = requireDocumentScan
         ? String(scan?.status ?? 'pending')
         : 'manual_review_allowed';
+      const key = String(document.document_type);
       return {
         id: document.id,
-        key: document.document_type,
-        label: documentLabels[String(document.document_type)] ?? 'Document',
+        key,
+        label: labelOverrides[key] ?? documentLabels[key] ?? 'Document',
         version: document.version_number,
         path: document.storage_path,
         originalFileName: document.original_file_name,
@@ -81,6 +85,32 @@ async function loadDocumentVersions(
       };
     }),
   );
+}
+
+async function buildDirectDocument(
+  admin: any,
+  key: string,
+  label: string,
+  path: unknown,
+) {
+  const storagePath = typeof path === 'string' && path.trim().length > 0
+    ? path
+    : null;
+  if (storagePath == null) return null;
+
+  return {
+    key,
+    label,
+    path: storagePath,
+    scanStatus: requireDocumentScan
+      ? 'manual_review_required'
+      : 'manual_review_allowed',
+    signedUrl: await createSignedDocumentUrl(
+      admin,
+      'identity-verification',
+      storagePath,
+    ),
+  };
 }
 
 async function readInput(request: Request) {
@@ -223,6 +253,8 @@ serve(async (request) => {
               first_name,
               last_name,
               verification_status,
+              identity_license_path,
+              identity_selfie_path,
               is_verified
             )
           `,
@@ -243,12 +275,38 @@ serve(async (request) => {
         ? ((rawProfile[0] as Record<string, unknown> | undefined) ?? {})
         : ((rawProfile as Record<string, unknown> | null) ?? {});
 
-      const documents = await loadDocumentVersions(admin, userId, [
+      const identityDocuments = await loadDocumentVersions(
+        admin,
+        userId,
+        ['identity_license'],
+        { identity_license: 'Instructor G Licence' },
+      );
+      const identityLicenceFallback = identityDocuments.length === 0
+        ? await buildDirectDocument(
+          admin,
+          'identity_license',
+          'Instructor G Licence',
+          profile.identity_license_path,
+        )
+        : null;
+      const identitySelfie = await buildDirectDocument(
+        admin,
+        'identity_selfie',
+        'Instructor Selfie',
+        profile.identity_selfie_path,
+      );
+      const credentialDocuments = await loadDocumentVersions(admin, userId, [
         'instructor_license',
         'insurance_document',
         'background_check',
         'municipal_license',
       ]);
+      const documents = [
+        ...identityDocuments,
+        identityLicenceFallback,
+        identitySelfie,
+        ...credentialDocuments,
+      ].filter((item) => item != null);
 
       return jsonResponse({
         reviewType,

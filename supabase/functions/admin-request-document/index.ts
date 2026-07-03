@@ -23,12 +23,24 @@ const allowedByReviewType: Record<string, Set<string>> = {
     'guardian_identity_selfie',
   ]),
   instructor_credentials: new Set([
+    'identity_license',
+    'identity_selfie',
     'instructor_license',
     'insurance_document',
     'background_check',
     'municipal_license',
   ]),
 };
+
+function documentLabelFor(reviewType: string, documentType: string): string {
+  if (reviewType === 'instructor_credentials' && documentType === 'identity_license') {
+    return 'instructor G licence';
+  }
+  if (reviewType === 'instructor_credentials' && documentType === 'identity_selfie') {
+    return 'instructor selfie';
+  }
+  return documentLabels[documentType] ?? 'document';
+}
 
 serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -109,7 +121,7 @@ serve(async (request) => {
       requestId = String(data.id);
     }
 
-    const documentLabel = documentLabels[documentType];
+    const documentLabel = documentLabelFor(reviewType, documentType);
     const title = `Action needed: Upload ${documentLabel}`;
     const body = adminMessage ||
       `Drive Tutor needs your ${documentLabel}. Open the app and upload it to continue your review.`;
