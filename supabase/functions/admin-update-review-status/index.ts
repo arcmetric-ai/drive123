@@ -511,6 +511,7 @@ serve(async (request) => {
               first_name,
               last_name,
               verification_status,
+              verification_review_started_at,
               city
             )
           `,
@@ -526,10 +527,12 @@ serve(async (request) => {
         return jsonResponse({ error: 'Instructor profile not found.' }, 404);
       }
 
+      const rawProfile = instructorProfile.profile as unknown;
+      const profile = Array.isArray(rawProfile)
+        ? ((rawProfile[0] as Record<string, unknown> | undefined) ?? {})
+        : ((rawProfile as Record<string, unknown> | null) ?? {});
+
       if (status === 'approved' && requireDocumentScan) {
-        const profile = Array.isArray(instructorProfile.profile)
-          ? instructorProfile.profile[0]
-          : instructorProfile.profile;
         const serviceAreas = mergeLocations(
           profile?.city,
           instructorProfile.preferred_locations,
@@ -587,6 +590,7 @@ serve(async (request) => {
         admin,
         userId,
         [
+          'identity_license',
           'instructor_license',
           'insurance_document',
           'background_check',
@@ -598,19 +602,28 @@ serve(async (request) => {
         rejectionReason,
       );
 
-      const rawProfile = instructorProfile.profile as unknown;
-      const profile = Array.isArray(rawProfile)
-        ? ((rawProfile[0] as Record<string, unknown> | undefined) ?? {})
-        : ((rawProfile as Record<string, unknown> | null) ?? {});
       const identityApproved =
         String(profile.verification_status ?? '').trim().toLowerCase() ===
         'approved';
+      const profileUpdate: Record<string, unknown> = {
+        is_verified: status === 'approved',
+      };
+
+      if (status === 'approved' && !identityApproved) {
+        profileUpdate.verification_status = 'approved';
+        profileUpdate.verification_reviewed_by = adminUser.user_id;
+        profileUpdate.verification_review_started_at =
+          profile.verification_review_started_at ?? nowIso;
+        profileUpdate.verification_review_notes =
+          reviewNotes.length === 0 ? null : reviewNotes;
+        profileUpdate.verification_approved_at = nowIso;
+        profileUpdate.verification_rejected_at = null;
+        profileUpdate.verification_rejection_reason = null;
+      }
 
       const { error: profileUpdateError } = await admin
         .from('profiles')
-        .update({
-          is_verified: status === 'approved' && identityApproved,
-        })
+        .update(profileUpdate)
         .eq('id', userId);
 
       if (profileUpdateError != null) {

@@ -69,6 +69,16 @@ class SupabaseService {
 
   static final SupabaseClient _client = Supabase.instance.client;
   static const int learnerSkillCatalogSize = 8;
+  static const Set<String> learnerSkillCatalogIds = {
+    'three_point_turn',
+    'uphill_park',
+    'downhill_park',
+    'reverse_park',
+    'parallel_parking',
+    'u_turn_left_turn',
+    'lane_change',
+    'emergency_full_stop',
+  };
   static const Set<String> _supportedRoles = {
     'learner',
     'guardian',
@@ -2105,12 +2115,16 @@ class SupabaseService {
     if (learnerIds.isEmpty) return {};
     final response = await _client
         .from('learner_skill_progress')
-        .select('profile_id, is_completed, status')
+        .select('profile_id, skill_id, is_completed, status')
         .inFilter('profile_id', learnerIds);
     final counts = <String, int>{};
     for (final row in response) {
       final profileId = row['profile_id']?.toString();
       if (profileId == null || profileId.isEmpty) continue;
+      final skillId = row['skill_id']?.toString();
+      if (skillId == null || !learnerSkillCatalogIds.contains(skillId)) {
+        continue;
+      }
       final status = row['status']?.toString().trim().toLowerCase();
       final isCompleted = row['is_completed'] == true ||
           status == 'test_ready' ||

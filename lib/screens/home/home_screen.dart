@@ -91,24 +91,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const int _totalSkills = 8;
   static const List<String> _skillOrder = [
-    'basic_vehicle_control',
-    'parking',
-    'city_driving',
-    'highway_driving',
-    'night_driving',
-    'weather_driving',
-    'emergency_situations',
-    'defensive_driving',
+    'three_point_turn',
+    'uphill_park',
+    'downhill_park',
+    'reverse_park',
+    'parallel_parking',
+    'u_turn_left_turn',
+    'lane_change',
+    'emergency_full_stop',
   ];
   static const Map<String, String> _skillNameLookup = {
-    'basic_vehicle_control': 'Basic Vehicle Control',
-    'parking': 'Parking',
-    'city_driving': 'City Driving',
-    'highway_driving': 'Highway Driving',
-    'night_driving': 'Night Driving',
-    'weather_driving': 'Weather Driving',
-    'emergency_situations': 'Emergency Situations',
-    'defensive_driving': 'Defensive Driving',
+    'three_point_turn': '3 point turn',
+    'uphill_park': 'Uphill park',
+    'downhill_park': 'Downhill park',
+    'reverse_park': 'Reverse park',
+    'parallel_parking': 'Parallel Parking',
+    'u_turn_left_turn': 'U- Turn & Left Turn',
+    'lane_change': 'Lane change',
+    'emergency_full_stop': 'Emergency Full Stop',
   };
 
   @override
@@ -296,12 +296,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final rows = await SupabaseService.getLearnerSkillProgress(userId);
       if (!mounted) return;
 
-      final completed = rows.where((row) => row['is_completed'] == true).length;
       final completedIds = rows
           .where((row) => row['is_completed'] == true)
-          .map((row) => row['skill_id'] as String?)
+          .map((row) => row['skill_id']?.toString())
           .whereType<String>()
+          .where(_skillOrder.contains)
           .toSet();
+      final completed = completedIds.length;
 
       String? nextSkill;
       for (final id in _skillOrder) {

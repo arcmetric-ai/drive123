@@ -184,9 +184,9 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
   Widget _buildAchievementsCard() {
     final hasProgress =
         _skills.any((skill) => skill.status != LearnerSkillStatus.notStarted);
-    final parkingReady = _isSkillTestReady('parking');
-    final cityReady = _isSkillTestReady('city_driving');
-    final highwayReady = _isSkillTestReady('highway_driving');
+    final parallelReady = _isSkillTestReady('parallel_parking');
+    final laneChangeReady = _isSkillTestReady('lane_change');
+    final emergencyStopReady = _isSkillTestReady('emergency_full_stop');
 
     return Card(
       child: Padding(
@@ -214,9 +214,9 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
                 const SizedBox(width: 16),
                 _buildAchievement(
                   icon: Icons.local_parking,
-                  title: 'Parking Ready',
-                  description: 'Parking skills are test ready',
-                  isUnlocked: parkingReady,
+                  title: 'Parallel Ready',
+                  description: 'Parallel parking is test ready',
+                  isUnlocked: parallelReady,
                 ),
               ],
             ),
@@ -224,17 +224,17 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
             Row(
               children: [
                 _buildAchievement(
-                  icon: Icons.directions_car,
-                  title: 'City Ready',
-                  description: 'City driving is test ready',
-                  isUnlocked: cityReady,
+                  icon: Icons.alt_route_rounded,
+                  title: 'Lane Ready',
+                  description: 'Lane changes are test ready',
+                  isUnlocked: laneChangeReady,
                 ),
                 const SizedBox(width: 16),
                 _buildAchievement(
-                  icon: Icons.speed,
-                  title: 'Highway Ready',
-                  description: 'Highway driving is test ready',
-                  isUnlocked: highwayReady,
+                  icon: Icons.emergency_rounded,
+                  title: 'Stop Ready',
+                  description: 'Emergency stop is test ready',
+                  isUnlocked: emergencyStopReady,
                 ),
               ],
             ),

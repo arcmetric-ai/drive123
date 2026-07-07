@@ -297,13 +297,6 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                   },
                 ),
                 const SizedBox(height: AppSpacing.md),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: _passwordController,
-                  builder: (context, value, _) {
-                    return PasswordStrengthMeter(password: value.text);
-                  },
-                ),
-                const SizedBox(height: 32),
                 RoundedInputField(
                   controller: _confirmPasswordController,
                   hintText: 'Confirm Password',
@@ -317,6 +310,21 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                       return 'Passwords do not match';
                     }
                     return null;
+                  },
+                ),
+                const SizedBox(height: AppSpacing.md),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _passwordController,
+                  builder: (context, passwordValue, _) {
+                    return ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _confirmPasswordController,
+                      builder: (context, confirmValue, _) {
+                        return PasswordStrengthMeter(
+                          password: passwordValue.text,
+                          confirmPassword: confirmValue.text,
+                        );
+                      },
+                    );
                   },
                 ),
                 if (_errorMessage != null) ...[

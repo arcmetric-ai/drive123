@@ -59,51 +59,51 @@ class AppConstants {
   // Skills Configuration
   static const List<Map<String, dynamic>> drivingSkills = [
     {
-      'id': '1',
-      'name': 'Basic Vehicle Control',
-      'description': 'Steering, acceleration, and braking',
+      'id': 'three_point_turn',
+      'name': '3 point turn',
+      'description': 'Controlled turnabout in a confined space',
       'category': 'basic'
     },
     {
-      'id': '2',
-      'name': 'Parking',
-      'description': 'Parallel parking and angle parking',
+      'id': 'uphill_park',
+      'name': 'Uphill park',
+      'description': 'Parking uphill with correct wheel position',
       'category': 'basic'
     },
     {
-      'id': '3',
-      'name': 'City Driving',
-      'description': 'Traffic lights, signs, and intersections',
+      'id': 'downhill_park',
+      'name': 'Downhill park',
+      'description': 'Parking downhill with correct wheel position',
       'category': 'intermediate'
     },
     {
-      'id': '4',
-      'name': 'Highway Driving',
-      'description': 'Merging, lane changes, and speed control',
+      'id': 'reverse_park',
+      'name': 'Reverse park',
+      'description': 'Reversing safely into a parking space',
       'category': 'intermediate'
     },
     {
-      'id': '5',
-      'name': 'Night Driving',
-      'description': 'Driving in low light conditions',
+      'id': 'parallel_parking',
+      'name': 'Parallel Parking',
+      'description': 'Parallel parking with proper observation',
       'category': 'advanced'
     },
     {
-      'id': '6',
-      'name': 'Weather Driving',
-      'description': 'Driving in rain, snow, and other conditions',
+      'id': 'u_turn_left_turn',
+      'name': 'U- Turn & Left Turn',
+      'description': 'Safe U-turns and left turns at intersections',
       'category': 'advanced'
     },
     {
-      'id': '7',
-      'name': 'Emergency Situations',
-      'description': 'Handling unexpected situations',
+      'id': 'lane_change',
+      'name': 'Lane change',
+      'description': 'Mirror, signal, blind spot, and smooth lane changes',
       'category': 'advanced'
     },
     {
-      'id': '8',
-      'name': 'Defensive Driving',
-      'description': 'Advanced safety techniques',
+      'id': 'emergency_full_stop',
+      'name': 'Emergency Full Stop',
+      'description': 'Controlled emergency stop with safe recovery',
       'category': 'expert'
     },
   ];

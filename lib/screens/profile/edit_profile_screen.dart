@@ -2122,7 +2122,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           backgroundColor: AppColors.success,
         ),
       );
-      Navigator.of(context).pop(true);
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+      } else {
+        context.go(AppRoutes.instructorHome);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

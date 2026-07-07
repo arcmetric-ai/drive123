@@ -9,26 +9,42 @@ class PasswordStrengthMeter extends StatelessWidget {
   const PasswordStrengthMeter({
     super.key,
     required this.password,
+    this.confirmPassword,
   });
 
   final String password;
+  final String? confirmPassword;
+
+  bool get _hasConfirmPassword => confirmPassword != null;
+
+  bool get _passwordsMatch =>
+      _hasConfirmPassword &&
+      password.isNotEmpty &&
+      confirmPassword!.isNotEmpty &&
+      password == confirmPassword;
 
   int get _metCount {
-    return [
+    final requirements = [
       PasswordRules.hasMinimumLength(password),
       PasswordRules.hasLowercase(password),
       PasswordRules.hasUppercase(password),
       PasswordRules.hasDigit(password),
       PasswordRules.hasSymbol(password),
-    ].where((isMet) => isMet).length;
+      if (_hasConfirmPassword) _passwordsMatch,
+    ];
+    return requirements.where((isMet) => isMet).length;
   }
 
-  bool get _isValid => PasswordRules.isValid(password);
+  int get _requirementCount => _hasConfirmPassword ? 6 : 5;
+
+  bool get _isValid =>
+      PasswordRules.isValid(password) &&
+      (!_hasConfirmPassword || _passwordsMatch);
 
   @override
   Widget build(BuildContext context) {
     final metCount = _metCount;
-    final progress = password.isEmpty ? 0.0 : metCount / 5;
+    final progress = password.isEmpty ? 0.0 : metCount / _requirementCount;
     final progressColor = _isValid ? AppColors.success : AppColors.primaryBlue;
 
     return Container(
@@ -61,7 +77,7 @@ class PasswordStrengthMeter extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.md),
               Text(
-                '$metCount/5',
+                '$metCount/$_requirementCount',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -100,6 +116,16 @@ class PasswordStrengthMeter extends StatelessWidget {
             label: 'Symbol',
             isMet: PasswordRules.hasSymbol(password),
           ),
+          if (_hasConfirmPassword)
+            _RequirementRow(
+              label: confirmPassword!.isEmpty
+                  ? 'Confirm password'
+                  : _passwordsMatch
+                      ? 'Passwords match'
+                      : 'Passwords do not match',
+              isMet: _passwordsMatch,
+              isError: confirmPassword!.isNotEmpty && !_passwordsMatch,
+            ),
         ],
       ),
     );
@@ -110,20 +136,30 @@ class _RequirementRow extends StatelessWidget {
   const _RequirementRow({
     required this.label,
     required this.isMet,
+    this.isError = false,
   });
 
   final String label;
   final bool isMet;
+  final bool isError;
 
   @override
   Widget build(BuildContext context) {
-    final color = isMet ? AppColors.success : AppColors.mutedForeground;
+    final color = isMet
+        ? AppColors.success
+        : isError
+            ? AppColors.error
+            : AppColors.mutedForeground;
     return Padding(
       padding: const EdgeInsets.only(top: 7),
       child: Row(
         children: [
           Icon(
-            isMet ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+            isMet
+                ? Icons.check_circle_rounded
+                : isError
+                    ? Icons.cancel_rounded
+                    : Icons.radio_button_unchecked,
             size: 18,
             color: color,
           ),

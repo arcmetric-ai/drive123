@@ -238,11 +238,12 @@ async function saveInstructorQuestionnaire(
       ? instructor.preferredLocations
       : [];
   const defaultRate = numberValue(instructor.defaultRate);
+  const vehiclePhotoUrl = nullableString(instructor.vehiclePhotoUrl);
 
   const { data: existingInstructorProfile, error: instructorFetchError } =
     await admin
       .from('instructor_profiles')
-      .select('credentials_status')
+      .select('credentials_status, vehicle_photo_url')
       .eq('profile_id', authUserId)
       .maybeSingle();
 
@@ -260,6 +261,8 @@ async function saveInstructorQuestionnaire(
       offerings,
       offering_rates: offeringRates,
       default_rate: defaultRate,
+      vehicle_photo_url:
+        vehiclePhotoUrl ?? existingInstructorProfile?.vehicle_photo_url ?? null,
       pickup_preference: pickupPreference,
       preferred_locations: preferredLocations,
       credentials_status:
