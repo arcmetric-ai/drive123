@@ -8,16 +8,19 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.admin-list-review-queue]
-verify_jwt = true
+verify_jwt = false
 
 [functions.admin-get-review-documents]
-verify_jwt = true
+verify_jwt = false
 
 [functions.admin-update-review-status]
-verify_jwt = true
+verify_jwt = false
 
 [functions.admin-manage-user-account]
-verify_jwt = true
+verify_jwt = false
+
+[functions.admin-request-document]
+verify_jwt = false
 
 [functions.create-instructor-checkout-session]
 verify_jwt = true

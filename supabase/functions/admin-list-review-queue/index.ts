@@ -63,8 +63,24 @@ function normalizeProfile(row: Row) {
     lastName: row.last_name,
     city: row.city,
     createdAt: row.created_at,
+    onboardingStage: row.onboarding_stage,
     verificationStatus: row.verification_status,
     isVerified: row.is_verified === true,
+  };
+}
+
+function normalizeNewAccount(row: Row) {
+  const profile = asRow(row.profile ?? row.user ?? row);
+  return {
+    id: profile.id ?? row.id ?? row.profile_id,
+    profileId: row.profile_id ?? profile.id ?? row.id,
+    role: profile.role ?? row.role,
+    createdAt: profile.created_at ?? row.created_at,
+    onboardingStage: profile.onboarding_stage ?? row.onboarding_stage,
+    verificationStatus:
+      profile.verification_status ?? row.verification_status ?? 'not_started',
+    credentialsStatus: row.credentials_status ?? null,
+    profile: normalizeProfile(profile),
   };
 }
 
@@ -447,6 +463,8 @@ function buildLessonMetrics(
   identityReviews: ReturnType<typeof splitIdentityReviews>,
   guardianReviews: ReturnType<typeof splitIdentityReviews>,
   instructorReviews: ReturnType<typeof splitCredentialReviews>,
+  newLearners: ReturnType<typeof normalizeNewAccount>[],
+  newInstructors: ReturnType<typeof normalizeNewAccount>[],
 ) {
   let completedLessons = 0;
   let scheduledLessons = 0;
@@ -521,6 +539,8 @@ function buildLessonMetrics(
     pendingInstructorCredentials: instructorReviews.pending.length,
     approvedInstructors: instructorReviews.approved.length,
     rejectedInstructors: instructorReviews.rejected.length,
+    newLearners: newLearners.length,
+    newInstructors: newInstructors.length,
   };
 }
 
@@ -574,6 +594,33 @@ serve(async (request) => {
 
     if (identityError != null) {
       return jsonResponse({ error: identityError.message }, 400);
+    }
+
+    const { data: newLearnerRows, error: newLearnerError } = await admin
+      .from('profiles')
+      .select(
+        `
+          id,
+          email,
+          phone,
+          role,
+          age,
+          licence_number,
+          first_name,
+          last_name,
+          city,
+          created_at,
+          onboarding_stage,
+          verification_status,
+          is_verified
+        `,
+      )
+      .in('role', ['learner', 'guardian'])
+      .is('verification_status', null)
+      .order('created_at', { ascending: false });
+
+    if (newLearnerError != null) {
+      return jsonResponse({ error: newLearnerError.message }, 400);
     }
 
     const { data: credentialRows, error: credentialError } = await admin
@@ -735,17 +782,42 @@ serve(async (request) => {
       (instructorRows ?? []) as Row[],
       normalizedLessonHistory,
     );
+    const reviewStatuses = new Set(['pending', 'approved', 'rejected']);
+    const newLearners = ((newLearnerRows ?? []) as Row[])
+      .map(normalizeNewAccount)
+      .sort((a, b) =>
+        compareDatesDescending(
+          stringValue(a.createdAt),
+          stringValue(b.createdAt),
+        ),
+      );
+    const newInstructors = ((instructorRows ?? []) as Row[])
+      .filter((row) => {
+        const status = stringValue(row.credentials_status)?.toLowerCase();
+        return status == null || !reviewStatuses.has(status);
+      })
+      .map(normalizeNewAccount)
+      .sort((a, b) =>
+        compareDatesDescending(
+          stringValue(a.createdAt),
+          stringValue(b.createdAt),
+        ),
+      );
     const lessonMetrics = buildLessonMetrics(
       normalizedLessonHistory,
       identityReviews,
       guardianReviews,
       instructorCredentialReviews,
+      newLearners,
+      newInstructors,
     );
 
     return jsonResponse({
       identityReviews,
       guardianReviews,
       instructorCredentialReviews,
+      newLearners,
+      newInstructors,
       lessonHistory: normalizedLessonHistory.slice(0, 200),
       instructorUsage,
       lessonMetrics,
