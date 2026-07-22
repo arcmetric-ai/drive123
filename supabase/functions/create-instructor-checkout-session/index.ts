@@ -14,10 +14,10 @@ const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')!;
 const successUrl = Deno.env.get('STRIPE_CHECKOUT_SUCCESS_URL')!;
 const cancelUrl = Deno.env.get('STRIPE_CHECKOUT_CANCEL_URL')!;
-const configuredTrialDays = Number(Deno.env.get('STRIPE_INSTRUCTOR_TRIAL_DAYS') ?? '14');
+const configuredTrialDays = Number(Deno.env.get('STRIPE_INSTRUCTOR_TRIAL_DAYS') ?? '60');
 const instructorTrialDays = Number.isFinite(configuredTrialDays) && configuredTrialDays > 0
   ? Math.floor(configuredTrialDays)
-  : 14;
+  : 60;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
